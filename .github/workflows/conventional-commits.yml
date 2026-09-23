@@ -1,0 +1,21 @@
+name: Conventional Commits (PR)
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, edited]
+
+jobs:
+  lint-commits:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Fetch base branch
+        run: git fetch origin "${{ github.base_ref }}"
+      - name: Check PR commits
+        run: |
+          bash scripts/release/check_conventional_commits.sh \
+            "origin/${{ github.base_ref }}..HEAD"

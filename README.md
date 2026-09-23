@@ -57,3 +57,20 @@ python3 tests/skill_contracts.py
 ```
 
 Use [MANUAL_EVALUATION.md](MANUAL_EVALUATION.md) for clean-consumer and integration smoke tests.
+
+## Versioning
+
+`.cursor-plugin/plugin.json` is the plugin version. After a merge to `main`, GitHub Actions inspects Conventional Commits since the last tag:
+
+| Commits since last tag | Bump |
+| --- | --- |
+| `feat:` | minor |
+| `fix:` or `perf:` | patch |
+| `BREAKING CHANGE` or `type!` | major |
+| only `docs` / `chore` / `test` / `ci` / `build` / `style` / `refactor` | no release |
+
+If `main` has no tag yet, the workflow tags the current `plugin.json` version as the baseline and does not replay earlier history. Later merges bump from that tag.
+
+A releasable merge updates `plugin.json`, prepends [CHANGELOG.md](CHANGELOG.md), tags `vX.Y.Z`, and creates a GitHub Release. If the GitHub Release step fails after the tag is pushed, the next `main` run retries that release only. Cursor does not auto-refresh an installed plugin; reinstall or reload after the new tag if you need that version.
+
+PRs to `main` must use Conventional Commit subjects. Merge commits are allowed. Prefer squash merges with a conventional squash title so the next release is predictable.

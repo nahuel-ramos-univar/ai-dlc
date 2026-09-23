@@ -163,6 +163,18 @@ def test_context_generation_contract_has_required_examples() -> None:
     assert "declined" in bugbot
 
 
+def test_release_workflow_files_exist() -> None:
+    assert (ROOT / ".github" / "workflows" / "release.yml").is_file()
+    assert (ROOT / ".github" / "workflows" / "conventional-commits.yml").is_file()
+    assert (ROOT / "scripts" / "release" / "release.sh").is_file()
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert changelog.startswith("# Changelog")
+    version = json.loads((ROOT / ".cursor-plugin" / "plugin.json").read_text())["version"]
+    assert re.match(r"^\d+\.\d+\.\d+$", version)
+    gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+    assert "__pycache__/" in gitignore
+
+
 def test_manual_evaluation_and_shared_contracts_exist() -> None:
     assert (ROOT / "MANUAL_EVALUATION.md").is_file()
     for filename in (
@@ -185,6 +197,7 @@ if __name__ == "__main__":
         test_every_skill_uses_compact_response_style,
         test_context_retrieval_contract_is_wired,
         test_context_generation_contract_has_required_examples,
+        test_release_workflow_files_exist,
         test_manual_evaluation_and_shared_contracts_exist,
     ]
     for test in tests:

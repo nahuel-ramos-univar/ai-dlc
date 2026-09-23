@@ -1,6 +1,6 @@
 # Manual evaluation checklist
 
-These checks require a clean consumer workspace or authenticated host integration. They are not covered by the structural test.
+- [ ] Merge a `feat:` or `fix:` commit to `main` and confirm `plugin.json`, `CHANGELOG.md`, tag `vX.Y.Z`, and a GitHub Release update together.
 
 - [ ] Install the plugin into a clean consumer and confirm all eight skills and six agents are discovered.
 - [ ] Run `sync-context` against a small single-module repository. Confirm it creates one concise repository index and no manufactured `AIDLC_CONTEXT.md`.

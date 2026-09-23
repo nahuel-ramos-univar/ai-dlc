@@ -1,0 +1,41 @@
+name: Release on main
+
+# On every merge/push to main: if Conventional Commits since the last tag
+# imply a SemVer bump, update plugin.json + CHANGELOG.md, tag, and publish
+# a GitHub Release.
+#
+# major  ← BREAKING CHANGE / type!
+# minor  ← feat
+# patch  ← fix | perf
+# none   ← docs|chore|test|ci|… only  → no release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Dry-run (show bump)
+        run: bash scripts/release/release.sh --dry-run
+      - name: Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/release/release.sh --ci

@@ -6,6 +6,9 @@ disable-model-invocation: true
 
 # Resolve defect
 
+## Response shape
+Follow the shared [compact response style](../../../references/response-style.md).
+
 ## Workflow
 1. Read the reported behavior, environment, and existing linked Bugs through Jira MCP using the Jira integration contract when available.
 2. Search Jira for likely duplicates using symptoms, affected area, and error wording before proposing a new Bug. If Jira is unavailable, report duplicate search as unavailable.

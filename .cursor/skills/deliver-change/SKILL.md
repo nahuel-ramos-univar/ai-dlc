@@ -6,6 +6,9 @@ disable-model-invocation: true
 
 # Deliver change
 
+## Response shape
+Follow the shared [compact response style](../../../references/response-style.md).
+
 ## Capability detection
 Local Git supports repository inspection, diff, branch, commit, and push. It does not create provider pull requests, inspect provider checks or approvals, or merge a provider pull request.
 

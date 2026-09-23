@@ -6,6 +6,9 @@ disable-model-invocation: true
 
 # Implement change
 
+## Response shape
+Follow the shared [compact response style](../../../references/response-style.md).
+
 ## Prerequisites
 Require approved scope and acceptance criteria. Run repository preflight, then read the Story through Jira MCP when available. Revalidate it against affected code, contracts, dependencies, and local modifications immediately before edits. If material drift needs refinement, provide the user with a `/refine-story` handoff; do not claim it ran automatically.
 

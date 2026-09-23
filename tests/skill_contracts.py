@@ -110,12 +110,21 @@ def test_local_markdown_references_resolve() -> None:
             assert resolved.exists(), f"{path} references missing {target}"
 
 
+def test_every_skill_uses_compact_response_style() -> None:
+    for skill_name in EXPECTED_SKILLS:
+        skill = ROOT / ".cursor" / "skills" / skill_name / "SKILL.md"
+        assert "../../../references/response-style.md" in skill.read_text(
+            encoding="utf-8"
+        )
+
+
 def test_manual_evaluation_and_shared_contracts_exist() -> None:
     assert (ROOT / "MANUAL_EVALUATION.md").is_file()
     for filename in (
         "repository-preflight.md",
         "jira-integration.md",
         "skill-composition.md",
+        "response-style.md",
     ):
         assert (ROOT / "references" / filename).is_file()
 
@@ -127,6 +136,7 @@ if __name__ == "__main__":
         test_skill_frontmatter_and_unique_names,
         test_agent_frontmatter_and_readonly_boundaries,
         test_local_markdown_references_resolve,
+        test_every_skill_uses_compact_response_style,
         test_manual_evaluation_and_shared_contracts_exist,
     ]
     for test in tests:

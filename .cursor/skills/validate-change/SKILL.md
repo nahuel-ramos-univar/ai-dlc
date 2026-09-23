@@ -6,6 +6,9 @@ disable-model-invocation: true
 
 # Validate change
 
+## Response shape
+Follow the shared [compact response style](../../../references/response-style.md).
+
 ## Start condition
 Start when the user runs `/validate-change` with the changed paths, baseline, acceptance criteria, executed tests, and known gaps from implementation. Targeted fixes require an explicit `/implement-change` handoff, then a new `/validate-change` run for affected checks against the new code state.
 

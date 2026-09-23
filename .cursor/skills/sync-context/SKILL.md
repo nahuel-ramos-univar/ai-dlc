@@ -9,6 +9,9 @@ disable-model-invocation: true
 ## Purpose
 Create or refresh evidence-based repository context without scanning unrelated code.
 
+## Response shape
+Follow the shared [compact response style](../../../references/response-style.md).
+
 ## Inputs
 Accept a repository path, optional affected paths, and a requested freshness level. Default to the current workspace and impacted paths only.
 

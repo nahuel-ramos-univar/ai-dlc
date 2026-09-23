@@ -9,6 +9,9 @@ disable-model-invocation: true
 ## Purpose
 Turn business intent into an editable, evidence-based proposal without prematurely creating Jira work.
 
+## Response shape
+Follow the shared [compact response style](../../../references/response-style.md).
+
 ## Input and routing
 Accept natural language plus optional Jira key or URL and repository URL. Classify as a single Story, feature or Epic, sprint backlog, or update to existing work. Ask one focused question only when classification changes scope.
 

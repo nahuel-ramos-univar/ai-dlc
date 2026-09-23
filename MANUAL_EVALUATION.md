@@ -7,6 +7,7 @@ These checks require a clean consumer workspace or authenticated host integratio
 - [ ] Run `sync-context` against a monorepo. Confirm it creates `<module-root>/AIDLC_CONTEXT.md` only for meaningful architectural modules.
 - [ ] Run `sync-context` against two accessible Git roots. Confirm the short index distinguishes both roots, links to their colocated contexts, and adds `integration-map.md` only after a verified cross-repository dependency.
 - [ ] Use a non-writable module root. Confirm the index links to `aidlc-docs/context/<repo-id>/<module-id>.md` fallback instead of writing in the source tree.
+- [ ] Confirm `repo-id` is stable across clones: basename, or remote URL / workspace-relative path when names collide; never an absolute checkout path.
 - [ ] Re-run `sync-context` without relevant source changes. Confirm it preserves human content and does not rewrite unaffected module context.
 - [ ] Change one module after context generation. Confirm only that module is refreshed and stale evidence is flagged.
 - [ ] Confirm context retrieval reads the short index first, then selected colocated `AIDLC_CONTEXT.md` or its fallback, then current source and tests for implementation or review.

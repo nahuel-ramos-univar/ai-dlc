@@ -16,7 +16,7 @@ Each proposed rule must name an observed path and helper, interface, or invarian
 
 Use the narrow shape: "When a change in `<path>` affects `<named invariant>`, verify `<behavior>` because failure would `<impact>`." Add a leave-alone rule only for an observed intentional, generated, fixture, snapshot, or compatibility pattern.
 
-Show a preview with file paths and diffs. Ask once per repository before creating missing files. Create `.ai-dlc-config.md` in that repository root if it is absent. Record the decision in a `## Context decisions` section:
+Those approved BUGBOT paths are the only `.cursor/BUGBOT.md` writes allowed by the context-generation contract. Show a preview with file paths and diffs. Ask once per repository before creating missing files. Create `.ai-dlc-config.md` in that repository root if it is absent. Record the decision in a `## Context decisions` section:
 
 ```markdown
 ## Context decisions

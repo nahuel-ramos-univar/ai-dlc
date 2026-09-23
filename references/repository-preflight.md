@@ -8,6 +8,6 @@ Inspect staged, unstaged, and relevant untracked files. Preserve work outside th
 
 For each repository in a multi-repository request, run this preflight separately. Do not imply one atomic delivery action across repositories.
 
-Generated context writes are limited to `.ai-dlc-config.md`, `aidlc-docs/`, and an approved module root's `AIDLC_CONTEXT.md`. Do not use this exception to create arbitrary Markdown in source trees.
+Generated writes are limited to `.ai-dlc-config.md`, `aidlc-docs/`, an approved module root's `AIDLC_CONTEXT.md`, and after the per-repository Bugbot approval, `<git-root>/.cursor/BUGBOT.md` plus a nested `<approved-boundary-root>/.cursor/BUGBOT.md`. Do not use these exceptions to create arbitrary Markdown in source trees.
 
 Never initialize Git, stage the parent workspace, run `git add .` across unrelated work, or change parent repository configuration implicitly.

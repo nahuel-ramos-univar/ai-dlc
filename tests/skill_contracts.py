@@ -143,6 +143,9 @@ def test_context_generation_contract_has_required_examples() -> None:
     assert "<module-root>/AIDLC_CONTEXT.md" in generation
     assert "aidlc-docs/context/<repo-id>/<module-id>.md" in generation
     assert "replace any character outside `[a-z0-9]`" in generation
+    assert "<consumer-root>/.cursor/BUGBOT.md" in generation
+    assert "Never hash an absolute checkout path" in generation
+    assert "Do not write absolute local checkout paths" in generation
     assert "do not write `aidlc-docs/` at a parent folder" in generation
     assert "Create `.ai-dlc-config.md`" in bugbot
     assert "## Context decisions" in bugbot

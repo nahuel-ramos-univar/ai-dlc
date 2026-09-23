@@ -56,6 +56,17 @@ def test_manifest_paths_and_plugin_identity() -> None:
         assert_within_root(resolved)
 
 
+def test_team_marketplace_indexes_this_plugin() -> None:
+    marketplace = json.loads((ROOT / ".cursor-plugin" / "marketplace.json").read_text())
+    assert marketplace["name"] == "ai-dlc"
+    plugins = marketplace["plugins"]
+    assert len(plugins) == 1
+    entry = plugins[0]
+    assert entry["name"] == "simplified-ai-dlc-lifecycle"
+    assert entry["source"] == "."
+    assert (ROOT / ".cursor-plugin" / "plugin.json").is_file()
+
+
 def test_skill_frontmatter_and_unique_names() -> None:
     skill_files = sorted((ROOT / ".cursor" / "skills").glob("*/SKILL.md"))
     names = set()
@@ -112,6 +123,7 @@ def test_manual_evaluation_and_shared_contracts_exist() -> None:
 if __name__ == "__main__":
     tests = [
         test_manifest_paths_and_plugin_identity,
+        test_team_marketplace_indexes_this_plugin,
         test_skill_frontmatter_and_unique_names,
         test_agent_frontmatter_and_readonly_boundaries,
         test_local_markdown_references_resolve,

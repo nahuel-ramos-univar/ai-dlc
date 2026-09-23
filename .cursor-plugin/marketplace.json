@@ -1,0 +1,16 @@
+{
+  "name": "ai-dlc",
+  "owner": {
+    "name": "AI-DLC"
+  },
+  "metadata": {
+    "description": "Simplified AI-DLC lifecycle plugin"
+  },
+  "plugins": [
+    {
+      "name": "simplified-ai-dlc-lifecycle",
+      "source": ".",
+      "description": "Compact AI-DLC lifecycle"
+    }
+  ]
+}

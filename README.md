@@ -1,8 +1,28 @@
 # Simplified AI-DLC lifecycle (experimental)
 
-This is a Cursor Plugin. Its manifest is `.cursor-plugin/plugin.json` and it explicitly discovers its canonical sources from `.cursor/skills/<name>/SKILL.md`.
+This is a Cursor Plugin. Its plugin manifest is `.cursor-plugin/plugin.json`. The Team Marketplace index is `.cursor-plugin/marketplace.json`. Skills are discovered from `.cursor/skills/<name>/SKILL.md`.
 
-Install it from a local checkout for development. Do not treat this as Marketplace-ready until clean-consumer installation, skill discovery, agent delegation, and required host integrations have been manually verified.
+Do not treat this as public Marketplace-ready until clean-consumer installation, skill discovery, agent delegation, and required host integrations have been manually verified.
+
+### Local install (development)
+
+```sh
+git clone https://github.com/nahuel-ramos-univar/ai-dlc.git \
+  ~/.cursor/plugins/local/simplified-ai-dlc-lifecycle
+```
+
+Then run **Developer: Reload Window**. The plugin should appear as `simplified-ai-dlc-lifecycle` in Customize. Enterprise needs **Allow Local Plugin Imports**. If another plugin already uses the same `name`, the marketplace copy wins.
+
+### Team Marketplace (GitHub URL)
+
+An admin imports the repo as a Team Marketplace:
+
+1. Dashboard → **Plugins & MCPs** → **Import from Repo**
+2. Use `https://github.com/nahuel-ramos-univar/ai-dlc`
+3. Cursor indexes `.cursor-plugin/marketplace.json` and lists `simplified-ai-dlc-lifecycle`
+4. Each developer installs it from **Customize**
+
+`Univar/digital-ai-dlc` is not this plugin. Do not import that repo for this package.
 
 Invoke the included skills directly:
 

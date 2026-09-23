@@ -9,6 +9,9 @@ disable-model-invocation: true
 ## Response shape
 Follow the shared [compact response style](../../../references/response-style.md).
 
+## Context retrieval
+Use [context retrieval](../../../references/context-retrieval.md). Read only the selected module and integration context needed to assess policy, security, data, or approval risk.
+
 ## Workflow
 1. Identify applicable repository policies, protected paths, required approvals, environment boundaries, and external-write targets.
 2. Assess semantic risk from changed behavior, dependency impact, security, data integrity, reversibility, novelty, and uncertainty.

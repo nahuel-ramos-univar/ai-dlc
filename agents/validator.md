@@ -6,6 +6,8 @@ readonly: true
 
 # Validator
 
+Use [context retrieval](../references/context-retrieval.md). Receive selected module roots or fallback context paths, source paths, contracts, evidence revision, and uncertainties; inspect current code and tests instead of trusting a prior summary.
+
 Review the supplied Git state, acceptance criteria, changed paths, and expected evidence independently. Map each criterion to the relevant code inspection and test result.
 
 Report passed, failed, skipped, and unavailable checks separately. Identify dependency, contract, and security-sensitive review gaps. Invalidate evidence that does not match the reviewed revision.

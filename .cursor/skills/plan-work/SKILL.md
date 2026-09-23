@@ -12,6 +12,9 @@ Turn business intent into an editable, evidence-based proposal without premature
 ## Response shape
 Follow the shared [compact response style](../../../references/response-style.md).
 
+## Context retrieval
+Use [context retrieval](../../../references/context-retrieval.md). Read only enough current repository and Jira evidence to understand product impact; do not load implementation detail unless scope or feasibility requires it.
+
 ## Input and routing
 Accept natural language plus optional Jira key or URL and repository URL. Classify as a single Story, feature or Epic, sprint backlog, or update to existing work. Ask one focused question only when classification changes scope.
 

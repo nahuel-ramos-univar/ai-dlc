@@ -3,6 +3,20 @@
 These checks require a clean consumer workspace or authenticated host integration. They are not covered by the structural test.
 
 - [ ] Install the plugin into a clean consumer and confirm all eight skills and six agents are discovered.
+- [ ] Run `sync-context` against a small single-module repository. Confirm it creates one concise repository index and no manufactured `AIDLC_CONTEXT.md`.
+- [ ] Run `sync-context` against a monorepo. Confirm it creates `<module-root>/AIDLC_CONTEXT.md` only for meaningful architectural modules.
+- [ ] Run `sync-context` against two accessible Git roots. Confirm the short index distinguishes both roots, links to their colocated contexts, and adds `integration-map.md` only after a verified cross-repository dependency.
+- [ ] Use a non-writable module root. Confirm the index links to `aidlc-docs/context/<repo-id>/<module-id>.md` fallback instead of writing in the source tree.
+- [ ] Confirm `repo-id` is stable across clones: basename, or remote URL / workspace-relative path when names collide; never an absolute checkout path.
+- [ ] Re-run `sync-context` without relevant source changes. Confirm it preserves human content and does not rewrite unaffected module context.
+- [ ] Change one module after context generation. Confirm only that module is refreshed and stale evidence is flagged.
+- [ ] Confirm context retrieval reads the short index first, then selected colocated `AIDLC_CONTEXT.md` or its fallback, then current source and tests for implementation or review.
+- [ ] Decline the proposed BUGBOT files. Confirm `.ai-dlc-config.md` records `## Context decisions` and later sync runs do not prompt again.
+- [ ] Approve a proposed BUGBOT file in a disposable repository. Confirm only the previewed file is written and existing BUGBOT content is preserved.
+- [ ] Use a module with a distinct runtime or invariant. Confirm a nested BUGBOT proposal is created only for that boundary and does not repeat the root file.
+- [ ] Confirm each proposed Bugbot rule names an observed path plus helper, interface, or invariant, and avoids formatter or generic-security guidance.
+- [ ] Confirm generated, vendor, build, coverage, lockfile, and fixture directories receive no BUGBOT files.
+- [ ] Confirm BUGBOT guidance is not reported as Bugbot execution.
 - [ ] Run a single Story intake. Confirm the draft becomes ready for review, product review is requested, and publication needs an exact approved change set.
 - [ ] Run an Epic intake. Confirm overlapping Stories and missing outcome coverage are reported.
 - [ ] Run a backlog proposal. Confirm dependencies are identified without inventing sprint capacity.

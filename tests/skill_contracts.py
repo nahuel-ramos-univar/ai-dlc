@@ -118,6 +118,51 @@ def test_every_skill_uses_compact_response_style() -> None:
         )
 
 
+def test_context_retrieval_contract_is_wired() -> None:
+    retrieval = ROOT / "references" / "context-retrieval.md"
+    assert retrieval.is_file()
+    for skill_name in EXPECTED_SKILLS - {"sync-context"}:
+        skill = ROOT / ".cursor" / "skills" / skill_name / "SKILL.md"
+        assert "../../../references/context-retrieval.md" in skill.read_text(
+            encoding="utf-8"
+        )
+    for agent in (ROOT / "agents").glob("*.md"):
+        assert "../references/context-retrieval.md" in agent.read_text(
+            encoding="utf-8"
+        )
+
+
+def test_context_generation_contract_has_required_examples() -> None:
+    sync_dir = ROOT / ".cursor" / "skills" / "sync-context"
+    generation = (sync_dir / "references" / "context-generation.md").read_text(
+        encoding="utf-8"
+    )
+    bugbot = (sync_dir / "references" / "bugbot-configuration.md").read_text(
+        encoding="utf-8"
+    )
+    assert "<module-root>/AIDLC_CONTEXT.md" in generation
+    assert "aidlc-docs/context/<repo-id>/<module-id>.md" in generation
+    assert "replace any character outside `[a-z0-9]`" in generation
+    assert "<consumer-root>/.cursor/BUGBOT.md" in generation
+    assert "Never hash an absolute checkout path" in generation
+    assert "Do not write absolute local checkout paths" in generation
+    assert "do not write `aidlc-docs/` at a parent folder" in generation
+    assert "Create `.ai-dlc-config.md`" in bugbot
+    assert "## Context decisions" in bugbot
+    assert "meaningful review boundary" in bugbot
+    assert "Review only changed lines" in bugbot
+    assert "Prefer silence over speculation" in bugbot
+    assert "generated, vendor, build, coverage, lockfile, or fixture" in bugbot
+    for scenario in (
+        "Single-module repository",
+        "Monorepo",
+        "Multi-repository workspace",
+    ):
+        assert scenario in generation
+    assert "Ask once per repository" in bugbot
+    assert "declined" in bugbot
+
+
 def test_manual_evaluation_and_shared_contracts_exist() -> None:
     assert (ROOT / "MANUAL_EVALUATION.md").is_file()
     for filename in (
@@ -125,6 +170,7 @@ def test_manual_evaluation_and_shared_contracts_exist() -> None:
         "jira-integration.md",
         "skill-composition.md",
         "response-style.md",
+        "context-retrieval.md",
     ):
         assert (ROOT / "references" / filename).is_file()
 
@@ -137,6 +183,8 @@ if __name__ == "__main__":
         test_agent_frontmatter_and_readonly_boundaries,
         test_local_markdown_references_resolve,
         test_every_skill_uses_compact_response_style,
+        test_context_retrieval_contract_is_wired,
+        test_context_generation_contract_has_required_examples,
         test_manual_evaluation_and_shared_contracts_exist,
     ]
     for test in tests:

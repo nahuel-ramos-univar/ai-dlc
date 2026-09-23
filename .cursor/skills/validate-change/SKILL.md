@@ -9,6 +9,9 @@ disable-model-invocation: true
 ## Response shape
 Follow the shared [compact response style](../../../references/response-style.md).
 
+## Context retrieval
+Use [context retrieval](../../../references/context-retrieval.md). Read selected module context, then current source, tests, contracts, and reviewed diff before making validation claims.
+
 ## Start condition
 Start when the user runs `/validate-change` with the changed paths, baseline, acceptance criteria, executed tests, and known gaps from implementation. Targeted fixes require an explicit `/implement-change` handoff, then a new `/validate-change` run for affected checks against the new code state.
 

@@ -146,6 +146,10 @@ def test_context_generation_contract_has_required_examples() -> None:
     assert "do not write `aidlc-docs/` at a parent folder" in generation
     assert "Create `.ai-dlc-config.md`" in bugbot
     assert "## Context decisions" in bugbot
+    assert "meaningful review boundary" in bugbot
+    assert "Review only changed lines" in bugbot
+    assert "Prefer silence over speculation" in bugbot
+    assert "generated, vendor, build, coverage, lockfile, or fixture" in bugbot
     for scenario in (
         "Single-module repository",
         "Monorepo",

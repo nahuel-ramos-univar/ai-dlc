@@ -4,6 +4,18 @@ After context discovery, inspect each confirmed consumer Git root for `.cursor/B
 
 Use verified code, contracts, tests, and module context to decide whether a concise root file would help Bugbot find concrete regressions. Propose a nested file only when a module has distinct, actionable review concerns. Do not create files per folder or source file.
 
+## Placement
+
+Always consider `<repo-root>/.cursor/BUGBOT.md`. Propose a nested `<boundary>/.cursor/BUGBOT.md` only for a meaningful review boundary: distinct runtime, deployment, trust, framework, domain invariant, testing expectation, or high-risk integration.
+
+Prefer one root file. If two nested files would repeat a rule, lift it to the root. Do not create BUGBOT files under generated, vendor, build, coverage, lockfile, or fixture directories. A nested file supplements root guidance; it must not repeat it.
+
+## Rule quality
+
+Each proposed rule must name an observed path and helper, interface, or invariant. State the concrete regression it prevents. Review only changed lines. Prefer silence over speculation. Do not add generic security, style, formatter, lint, type-check, or test-runner rules.
+
+Use the narrow shape: "When a change in `<path>` affects `<named invariant>`, verify `<behavior>` because failure would `<impact>`." Add a leave-alone rule only for an observed intentional, generated, fixture, snapshot, or compatibility pattern.
+
 Show a preview with file paths and diffs. Ask once per repository before creating missing files. Create `.ai-dlc-config.md` in that repository root if it is absent. Record the decision in a `## Context decisions` section:
 
 ```markdown
@@ -13,7 +25,7 @@ Show a preview with file paths and diffs. Ask once per repository before creatin
 
 Use `approved`, `declined`, or `deferred`. Do not ask again after `declined` unless the user explicitly asks to reconsider. If a nested module root cannot be written, do not write `<module>/.cursor/BUGBOT.md` there; keep the proposal as fallback-only or skip that nested file.
 
-If BUGBOT files already exist, preserve them. Propose a narrow update separately only when current evidence makes a rule stale. Do not restate generic style guidance, invent company policy, duplicate unseen team rules, or claim that BUGBOT enables or invokes Bugbot.
+If BUGBOT files already exist, preserve them. Propose a narrow patch separately only when current evidence makes a rule stale, duplicated, contradictory, or tied to a missing path. Do not restate generic style guidance, invent company policy, duplicate unseen team rules, or claim that BUGBOT enables or invokes Bugbot.
 
 Example root proposal:
 

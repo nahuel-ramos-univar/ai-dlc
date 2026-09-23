@@ -12,6 +12,9 @@ These checks require a clean consumer workspace or authenticated host integratio
 - [ ] Confirm context retrieval reads the short index first, then selected colocated `AIDLC_CONTEXT.md` or its fallback, then current source and tests for implementation or review.
 - [ ] Decline the proposed BUGBOT files. Confirm `.ai-dlc-config.md` records `## Context decisions` and later sync runs do not prompt again.
 - [ ] Approve a proposed BUGBOT file in a disposable repository. Confirm only the previewed file is written and existing BUGBOT content is preserved.
+- [ ] Use a module with a distinct runtime or invariant. Confirm a nested BUGBOT proposal is created only for that boundary and does not repeat the root file.
+- [ ] Confirm each proposed Bugbot rule names an observed path plus helper, interface, or invariant, and avoids formatter or generic-security guidance.
+- [ ] Confirm generated, vendor, build, coverage, lockfile, and fixture directories receive no BUGBOT files.
 - [ ] Confirm BUGBOT guidance is not reported as Bugbot execution.
 - [ ] Run a single Story intake. Confirm the draft becomes ready for review, product review is requested, and publication needs an exact approved change set.
 - [ ] Run an Epic intake. Confirm overlapping Stories and missing outcome coverage are reported.

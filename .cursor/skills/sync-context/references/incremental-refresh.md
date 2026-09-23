@@ -4,11 +4,14 @@ Use code and versioned contracts as current evidence. Start from the short repos
 
 Each repository or module context record must include:
 
-- repository path and Git revision;
+- repository path and, when the consumer is a Git root, that root's revision;
+- a freshness fingerprint of examined paths (relative paths plus a short hash of their current contents);
 - relevant uncommitted modifications, without copying sensitive values;
 - paths examined and direct dependencies;
 - observed facts versus assumptions;
-- a freshness boundary, such as "valid for `src/payments/**` at revision `abc123`".
+- a freshness boundary such as "valid for `src/payments/**` at revision `abc123`, fingerprint `a1b2c3d4`" or, for an unversioned tree, "unversioned; fingerprint `a1b2c3d4` for `services/checkout/**`".
+
+Do not use a parent repository revision as freshness when that revision does not track the examined files.
 
 Preserve human-authored content where it does not conflict with source. Flag and refresh a stale summary; code and contracts remain authoritative. Do not scan vendor, build, cache, generated, or inaccessible sibling directories.
 

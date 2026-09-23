@@ -111,6 +111,11 @@ def test_local_markdown_references_resolve() -> None:
 
 
 def test_every_skill_uses_compact_response_style() -> None:
+    style = (ROOT / "references" / "response-style.md").read_text(encoding="utf-8")
+    assert "chat-facing reply" in style
+    assert "not a content budget" in style
+    assert "Do not apply this rule to file contents or other deliverables" in style
+    assert "Do not omit a requirement, test case, finding, constraint, or evidence" in style
     for skill_name in EXPECTED_SKILLS:
         skill = ROOT / ".cursor" / "skills" / skill_name / "SKILL.md"
         assert "../../../references/response-style.md" in skill.read_text(
@@ -140,6 +145,12 @@ def test_context_generation_contract_has_required_examples() -> None:
     bugbot = (sync_dir / "references" / "bugbot-configuration.md").read_text(
         encoding="utf-8"
     )
+    refresh = (sync_dir / "references" / "incremental-refresh.md").read_text(
+        encoding="utf-8"
+    )
+    preflight = (ROOT / "references" / "repository-preflight.md").read_text(
+        encoding="utf-8"
+    )
     assert "<module-root>/AIDLC_CONTEXT.md" in generation
     assert "aidlc-docs/context/<repo-id>/<module-id>.md" in generation
     assert "replace any character outside `[a-z0-9]`" in generation
@@ -153,6 +164,11 @@ def test_context_generation_contract_has_required_examples() -> None:
     assert "Review only changed lines" in bugbot
     assert "Prefer silence over speculation" in bugbot
     assert "generated, vendor, build, coverage, lockfile, or fixture" in bugbot
+    assert "One rule, one invariant" in bugbot
+    assert "Do not put ownership" in bugbot
+    assert "block generated writes by default" in preflight
+    assert "Never treat the enclosing parent revision" in generation
+    assert "freshness fingerprint" in refresh
     for scenario in (
         "Single-module repository",
         "Monorepo",

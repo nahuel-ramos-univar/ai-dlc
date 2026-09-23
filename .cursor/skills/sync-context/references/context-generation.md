@@ -7,7 +7,7 @@ Before writing, confirm the consumer repository root, generated-document root, a
 - `<approved-module-root>/AIDLC_CONTEXT.md`
 - after the per-repository Bugbot approval in `bugbot-configuration.md`: `<consumer-root>/.cursor/BUGBOT.md` and `<approved-boundary-root>/.cursor/BUGBOT.md`
 
-A plugin source directory inside another Git repository is not automatically the consumer root. Do not write other Markdown in source trees.
+A plugin source directory inside another Git repository is not automatically the consumer root. Do not write other Markdown in source trees. Do not write into a working directory that is not a Git root unless the user named an explicit write exception for that untracked tree. Never treat the enclosing parent revision as the consumer's evidence revision.
 
 Keep `.ai-dlc-config.md` minimal. Keep `aidlc-docs/repository-context.md` as a short workspace index. It lists each actual Git root, its repository ID, meaningful modules, source paths, freshness marker, and links to colocated context. It is not a codebase dump.
 
@@ -24,6 +24,8 @@ Generate IDs from stable, portable identity for the index and fallback only:
 Reject IDs outside `[a-z0-9-]`. Never use raw user input as a path. Record repository-relative source paths, and the remote URL when verified, inside each document. Do not write absolute local checkout paths into generated context.
 
 Each module `AIDLC_CONTEXT.md` states repository identity, source paths, responsibility, entry points, interfaces, callers or dependencies, verified tests and commands, constraints, evidence paths, freshness, and explicit unknowns. Do not copy source, generated output, vendor content, cache content, or secrets.
+
+Freshness is a content fingerprint of the examined paths, not a parent Git commit that does not contain those files. When the consumer is a Git root, record that root's revision plus the fingerprint of examined paths. When the tree is untracked, record `unversioned` and the fingerprint only. Never write "valid at enclosing revision X" for files that revision does not track.
 
 Refresh only modules affected by changed paths, requested scope, or stale evidence. Preserve human-authored sections. If a safe merge is unclear, show a targeted diff. Current code and contracts override a stale summary. Create `aidlc-docs/integration-map.md` only for verified cross-module or cross-repository dependencies. Link existing ADRs when relevant; never invent one.
 

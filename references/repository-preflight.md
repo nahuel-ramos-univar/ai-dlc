@@ -4,10 +4,12 @@ Before reading or changing Git state, resolve the requested working directory an
 
 The plugin source or installation directory may be a subdirectory of a consumer repository. That can be valid, especially in a monorepo. It does not authorize using the parent repository for delivery or generated context writes.
 
+If the requested working directory is not itself a Git root, block generated writes by default. Tell the user the actual Git root and that the working directory is untracked or nested. Offer only these next steps: sync against that Git root, initialize Git in the working directory themselves, or name an explicit write exception for this untracked tree. Never run `git init`. A confirmation that "this folder is the consumer" is not a write exception.
+
 Inspect staged, unstaged, and relevant untracked files. Preserve work outside the requested scope. If the target repository, remote, branch, consumer root, or generated-document root is unclear, ask the user before any Git or filesystem write.
 
 For each repository in a multi-repository request, run this preflight separately. Do not imply one atomic delivery action across repositories.
 
-Generated writes are limited to `.ai-dlc-config.md`, `aidlc-docs/`, an approved module root's `AIDLC_CONTEXT.md`, and after the per-repository Bugbot approval, `<git-root>/.cursor/BUGBOT.md` plus a nested `<approved-boundary-root>/.cursor/BUGBOT.md`. Do not use these exceptions to create arbitrary Markdown in source trees.
+Generated writes are limited to `.ai-dlc-config.md`, `aidlc-docs/`, an approved module root's `AIDLC_CONTEXT.md`, and after the per-repository Bugbot approval, `<consumer-root>/.cursor/BUGBOT.md` plus a nested `<approved-boundary-root>/.cursor/BUGBOT.md`. The consumer root is the Git root, or an untracked tree only after an explicit write exception. Do not use these exceptions to create arbitrary Markdown in source trees.
 
 Never initialize Git, stage the parent workspace, run `git add .` across unrelated work, or change parent repository configuration implicitly.

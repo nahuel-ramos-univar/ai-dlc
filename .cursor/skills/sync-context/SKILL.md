@@ -20,7 +20,7 @@ Use local Git for the repository revision, branch, tracked changes, and direct f
 
 ## Workflow
 1. Resolve the requested working directory, actual Git root, intended remote, and branch. For a multi-repository workspace, record each repository separately.
-2. Confirm the consumer root, generated-document root, and local-write scope before writing. A parent-root mismatch can be valid, but blocks writes until the user identifies the intended consumer repository.
+2. Confirm the consumer root, generated-document root, and local-write scope before writing. If the working directory is not a Git root, block writes until the user picks the actual Git root, initializes Git themselves, or names an explicit write exception for that untracked tree.
 3. Inspect the revision, branch, upstream, staged, unstaged, and relevant untracked modifications. Skip vendor, build, cache, generated, and inaccessible sibling directories.
 4. Read existing configuration and repository index. Create or update `.ai-dlc-config.md` when it is absent or when a Bugbot or context decision must be recorded.
 5. Identify meaningful modules by architectural responsibility. For a small single-module repository, keep one concise repository context.

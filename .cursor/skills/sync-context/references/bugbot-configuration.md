@@ -12,9 +12,11 @@ Prefer one root file. If two nested files would repeat a rule, lift it to the ro
 
 ## Rule quality
 
-Each proposed rule must name an observed path and helper, interface, or invariant. State the concrete regression it prevents. Review only changed lines. Prefer silence over speculation. Do not add generic security, style, formatter, lint, type-check, or test-runner rules.
+Each proposed rule must name an observed path and helper, interface, or invariant. State the concrete regression it prevents. One rule, one invariant. Do not mix unrelated tables, services, or contracts in the same bullet. Review only changed lines. Prefer silence over speculation. Do not add generic security, style, formatter, lint, type-check, or test-runner rules.
 
-Use the narrow shape: "When a change in `<path>` affects `<named invariant>`, verify `<behavior>` because failure would `<impact>`." Add a leave-alone rule only for an observed intentional, generated, fixture, snapshot, or compatibility pattern.
+Use the narrow shape: "When a change in `<path>` affects `<named invariant>`, verify `<behavior>` because failure would `<impact>`." Do not prescribe an implementation order, algorithm, or storage sequence unless reversing it would itself cause a user-visible defect. Do not put ownership, DevOps-task routing, or approval policy in BUGBOT.md; those belong to governance.
+
+Add a leave-alone rule only for an observed intentional, generated, fixture, snapshot, or compatibility pattern.
 
 Those approved BUGBOT paths are the only `.cursor/BUGBOT.md` writes allowed by the context-generation contract. Show a preview with file paths and diffs. Ask once per repository before creating missing files. Create `.ai-dlc-config.md` in that repository root if it is absent. Record the decision in a `## Context decisions` section:
 
@@ -39,9 +41,9 @@ Example root proposal:
 Example nested proposal:
 
 ```markdown
-# Orders API review focus
+# Checkout review focus
 
-- Check order-status transitions preserve the terminal-state guard.
+- When a change in `services/checkout/src/index.ts` affects `PUT /v1/carts/:cartId`, verify the path `cartId`, the DynamoDB item key, and the Redis key still identify the same cart, because a mismatch would return or persist the wrong cart.
 ```
 
 Colocated `AIDLC_CONTEXT.md` holds module workflow context. The artifact-home fallback exists when the source repository or that module root cannot be written. `.cursor/BUGBOT.md` holds Bugbot review instructions. Neither ordinary `.cursor/rules/*.mdc` files nor a BUGBOT file proves that `/review-bugbot` ran.

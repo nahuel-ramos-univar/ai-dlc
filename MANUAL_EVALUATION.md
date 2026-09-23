@@ -25,6 +25,9 @@
 - [ ] Disconnect Jira during a prepared operation. Reconnect and confirm the draft resumes without restarting intake.
 - [ ] Simulate an uncertain Jira write. Confirm the workflow reads the target before retrying.
 - [ ] Use a plugin source directory inside a parent Git repository. Confirm preflight asks for the intended consumer repository and does not stage the parent workspace.
+- [ ] Run `sync-context` on a folder that is not a Git root. Confirm writes are blocked until the user picks the Git root, initializes Git themselves, or names an explicit write exception.
+- [ ] Confirm freshness uses a content fingerprint of examined paths, never a parent revision that does not track those files.
+- [ ] Confirm Bugbot proposals keep one invariant per rule and do not include DevOps ownership or apply-gate policy.
 - [ ] Run delivery without an authenticated provider CLI. Confirm PR, check, and merge actions are pending with a manual handoff.
 - [ ] Open a draft PR before validation completes. Confirm outstanding checks are visible and it is not marked ready to merge.
 - [ ] Attempt a merge with missing or stale evidence. Confirm the workflow blocks merge.

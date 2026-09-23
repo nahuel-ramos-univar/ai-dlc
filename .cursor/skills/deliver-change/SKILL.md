@@ -9,6 +9,9 @@ disable-model-invocation: true
 ## Response shape
 Follow the shared [compact response style](../../../references/response-style.md).
 
+## Context retrieval
+Use [context retrieval](../../../references/context-retrieval.md) when delivery scope crosses modules or repositories. Confirm current source and validation evidence before provider actions.
+
 ## Capability detection
 Local Git supports repository inspection, diff, branch, commit, and push. It does not create provider pull requests, inspect provider checks or approvals, or merge a provider pull request.
 

@@ -9,6 +9,9 @@ disable-model-invocation: true
 ## Response shape
 Follow the shared [compact response style](../../../references/response-style.md).
 
+## Context retrieval
+Use [context retrieval](../../../references/context-retrieval.md). Read selected module context and current contracts before deeper development or QA refinement.
+
 ## Input
 Accept an existing work item or approved draft and `development`, `qa`, or `combined` mode. Read the Story through Jira MCP using the Jira integration contract when available; otherwise require supplied content and mark the result local-only. If a draft has no approved parent work item, provide a `/plan-work` handoff before creating subtasks.
 

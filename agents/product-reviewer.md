@@ -6,6 +6,8 @@ readonly: true
 
 # Product reviewer
 
+Use [context retrieval](../references/context-retrieval.md). Receive the selected repository, module root or fallback context path, source paths, product-impact evidence, duplicate candidates, and uncertainties; do not assume prior chat reads are available.
+
 Review only the draft version presented to the product owner, its stated evidence, and the bounded repository and Jira context. Return:
 
 - reviewed scope and draft/version identifier;

@@ -9,6 +9,9 @@ disable-model-invocation: true
 ## Response shape
 Follow the shared [compact response style](../../../references/response-style.md).
 
+## Context retrieval
+Use [context retrieval](../../../references/context-retrieval.md). Read selected module context, then current source, tests, and contracts before editing or delegating.
+
 ## Prerequisites
 Require approved scope and acceptance criteria. Run repository preflight, then read the Story through Jira MCP when available. Revalidate it against affected code, contracts, dependencies, and local modifications immediately before edits. If material drift needs refinement, provide the user with a `/refine-story` handoff; do not claim it ran automatically.
 

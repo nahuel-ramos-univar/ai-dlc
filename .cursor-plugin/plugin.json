@@ -1,12 +1,12 @@
 {
   "name": "simplified-ai-dlc-lifecycle",
   "version": "0.1.1",
-  "description": "A compact AI-DLC lifecycle for planning, refinement, implementation, validation, defects, delivery, context, and governance.",
+  "description": "A compact AI-DLC lifecycle for context, planning, scaffolding, refinement, implementation, validation, and delivery.",
   "keywords": [
     "ai-dlc",
     "planning",
     "software-delivery",
-    "governance"
+    "project-scaffolding"
   ],
   "skills": ".cursor/skills",
   "agents": "agents"

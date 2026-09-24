@@ -2,7 +2,7 @@
 # Validate Conventional Commit subject lines (for PRs / pre-push).
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+ROOT="${RELEASE_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 cd "$ROOT"
 
 RANGE="${1:-}"
@@ -16,8 +16,13 @@ fi
 
 PATTERN='^(feat|fix|perf|refactor|docs|chore|test|ci|build|style|revert)(\([^)]+\))?(!)?: .+'
 
+if ! log_output="$(git log "$RANGE" --pretty=format:'%h %s')"; then
+  echo "FAIL: cannot read commit range: $RANGE" >&2
+  exit 2
+fi
+
 fail=0
-while IFS= read -r line; do
+while IFS= read -r line || [[ -n "$line" ]]; do
   [[ -z "$line" ]] && continue
   subj="$line"
   if [[ "$line" =~ ^[0-9a-f]+[[:space:]]+(.*)$ ]]; then
@@ -37,7 +42,7 @@ while IFS= read -r line; do
   else
     echo "OK: $subj"
   fi
-done < <(git log "$RANGE" --pretty=format:'%h %s')
+done <<< "$log_output"
 
 if [[ "$fail" -ne 0 ]]; then
   echo

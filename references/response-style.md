@@ -1,4 +1,12 @@
-# Compact response style
+# Compact chat response style
+
+## Scope
+
+This rule applies only to the assistant's chat-facing reply: status updates, questions, summaries, and handoffs. It reduces chat output tokens. It is not a content budget.
+
+Do not apply this rule to file contents or other deliverables. Code, tests, generated Markdown, design artifacts, acceptance criteria, Jira payloads, review findings, commands, diagrams, changelogs, and evidence must contain the detail needed for correctness. Do not omit a requirement, test case, finding, constraint, or evidence merely to make a chat reply shorter.
+
+## Chat replies
 
 Default to a concise answer that starts with the outcome or decision. Use no more than five bullets unless the user asks for detail or the workflow needs a complete approval payload.
 

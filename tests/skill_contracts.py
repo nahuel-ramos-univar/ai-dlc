@@ -151,32 +151,59 @@ def test_context_generation_contract_has_required_examples() -> None:
     preflight = (ROOT / "references" / "repository-preflight.md").read_text(
         encoding="utf-8"
     )
+    templates = (sync_dir / "references" / "context-templates.md").read_text(
+        encoding="utf-8"
+    )
+    artifact_home = (sync_dir / "references" / "artifact-home.md").read_text(
+        encoding="utf-8"
+    )
     assert "<module-root>/AIDLC_CONTEXT.md" in generation
     assert "aidlc-docs/context/<repo-id>/<module-id>.md" in generation
-    assert "replace any character outside `[a-z0-9]`" in generation
-    assert "<consumer-root>/.cursor/BUGBOT.md" in generation
-    assert "Never hash an absolute checkout path" in generation
-    assert "Do not write absolute local checkout paths" in generation
-    assert "do not write `aidlc-docs/` at a parent folder" in generation
-    assert "Create `.ai-dlc-config.md`" in bugbot
-    assert "## Context decisions" in bugbot
+    assert "<source-root>/.cursor/BUGBOT.md" in generation
+    assert "absolute local checkout paths into generated context" in generation
+    assert "deterministic content fingerprint" in generation
+    assert "Initial discovery" in refresh
+    assert "Incremental refresh" in refresh
+    assert "Report actionable defects introduced by the change" in bugbot
+    assert "Inspect surrounding code" in bugbot
+    assert "IAM or security defects introduced by a diff" in bugbot
+    assert "artifact home's configuration" in bugbot
     assert "meaningful review boundary" in bugbot
-    assert "Review only changed lines" in bugbot
-    assert "Prefer silence over speculation" in bugbot
+    assert "over speculation" in bugbot
     assert "generated, vendor, build, coverage, lockfile, or fixture" in bugbot
     assert "One rule, one invariant" in bugbot
-    assert "Do not put ownership" in bugbot
-    assert "block generated writes by default" in preflight
-    assert "Never treat the enclosing parent revision" in generation
+    assert "Ownership, task assignment" in bugbot
+    assert "Nested tracked" in preflight
+    assert "Unversioned tree" in preflight
+    assert "Nested repository, submodule, or worktree" in preflight
+    assert "permit discovery" in preflight
     assert "freshness fingerprint" in refresh
+    assert "| 150 lines |" in templates
+    assert "| 300 lines |" in templates
+    assert "Anthropic requirement" in templates
+    assert "persisted repository ID" in artifact_home
     for scenario in (
         "Single-module repository",
         "Monorepo",
         "Multi-repository workspace",
     ):
         assert scenario in generation
-    assert "Ask once per repository" in bugbot
+    assert "once per repository for initial setup" in bugbot
     assert "declined" in bugbot
+
+
+def test_context_artifact_contract_and_skill_budgets() -> None:
+    sync_dir = ROOT / ".cursor" / "skills" / "sync-context"
+    for relative in (
+        "references/artifact-home.md",
+        "references/context-templates.md",
+        "references/context-generation.md",
+        "references/incremental-refresh.md",
+        "references/bugbot-configuration.md",
+    ):
+        assert (sync_dir / relative).is_file()
+    for skill in (ROOT / ".cursor" / "skills").glob("*/SKILL.md"):
+        assert len(skill.read_text(encoding="utf-8").splitlines()) < 500
 
 
 def test_release_workflow_files_exist() -> None:
@@ -213,6 +240,7 @@ if __name__ == "__main__":
         test_every_skill_uses_compact_response_style,
         test_context_retrieval_contract_is_wired,
         test_context_generation_contract_has_required_examples,
+        test_context_artifact_contract_and_skill_budgets,
         test_release_workflow_files_exist,
         test_manual_evaluation_and_shared_contracts_exist,
     ]

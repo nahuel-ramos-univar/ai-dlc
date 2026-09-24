@@ -5,13 +5,16 @@
 - [ ] Install the plugin into a clean consumer and confirm all eight skills and six agents are discovered.
 - [ ] Run `sync-context` against a small single-module repository. Confirm it creates one concise repository index and no manufactured `AIDLC_CONTEXT.md`.
 - [ ] Run `sync-context` against a monorepo. Confirm it creates `<module-root>/AIDLC_CONTEXT.md` only for meaningful architectural modules.
+- [ ] Run initial discovery in a clean repository with no prior context. Confirm it finds representative modules without claiming every source file was read.
+- [ ] Re-run as incremental refresh after a shared contract changes. Confirm affected consumers expand while unrelated contexts remain unchanged.
 - [ ] Run `sync-context` against two accessible Git roots. Confirm the short index distinguishes both roots, links to their colocated contexts, and adds `integration-map.md` only after a verified cross-repository dependency.
+- [ ] Use a read-only source repository with an authorized writable artifact home. Confirm the index and fallback context save there without modifying the source root.
 - [ ] Use a non-writable module root. Confirm the index links to `aidlc-docs/context/<repo-id>/<module-id>.md` fallback instead of writing in the source tree.
-- [ ] Confirm `repo-id` is stable across clones: basename, or remote URL / workspace-relative path when names collide; never an absolute checkout path.
+- [ ] Confirm `repo-id` is stable across clones: persisted ID, or canonical remote when no ID exists; never an absolute checkout path.
 - [ ] Re-run `sync-context` without relevant source changes. Confirm it preserves human content and does not rewrite unaffected module context.
 - [ ] Change one module after context generation. Confirm only that module is refreshed and stale evidence is flagged.
 - [ ] Confirm context retrieval reads the short index first, then selected colocated `AIDLC_CONTEXT.md` or its fallback, then current source and tests for implementation or review.
-- [ ] Decline the proposed BUGBOT files. Confirm `.ai-dlc-config.md` records `## Context decisions` and later sync runs do not prompt again.
+- [ ] Decline the proposed BUGBOT files. Confirm the artifact-home `.ai-dlc-config.md` records `## Context identities` and later sync runs do not prompt again.
 - [ ] Approve a proposed BUGBOT file in a disposable repository. Confirm only the previewed file is written and existing BUGBOT content is preserved.
 - [ ] Use a module with a distinct runtime or invariant. Confirm a nested BUGBOT proposal is created only for that boundary and does not repeat the root file.
 - [ ] Confirm each proposed Bugbot rule names an observed path plus helper, interface, or invariant, and avoids formatter or generic-security guidance.
@@ -25,11 +28,19 @@
 - [ ] Disconnect Jira during a prepared operation. Reconnect and confirm the draft resumes without restarting intake.
 - [ ] Simulate an uncertain Jira write. Confirm the workflow reads the target before retrying.
 - [ ] Use a plugin source directory inside a parent Git repository. Confirm preflight asks for the intended consumer repository and does not stage the parent workspace.
-- [ ] Run `sync-context` on a folder that is not a Git root. Confirm writes are blocked until the user picks the Git root, initializes Git themselves, or names an explicit write exception.
+- [ ] Run `sync-context` from a tracked monorepo package folder. Confirm generated `aidlc-docs/` lands at the Git root and writes are not blocked.
+- [ ] Run `sync-context` on an untracked folder inside another Git repository. Confirm discovery is permitted with baseline `unversioned` and writes wait until the write scope or artifact home is explicit.
+- [ ] Confirm an untracked Bugbot decision records `unversioned` plus a fingerprint, never the parent commit SHA.
 - [ ] Confirm freshness uses a content fingerprint of examined paths, never a parent revision that does not track those files.
 - [ ] Confirm Bugbot proposals keep one invariant per rule and do not include DevOps ownership or apply-gate policy.
+- [ ] Confirm a Bugbot review inspects surrounding callers, contracts, and tests for an introduced defect without reporting unrelated old defects.
+- [ ] Confirm approved, declined, and deferred Bugbot decisions persist under the configured artifact home by stable repository ID.
+- [ ] Confirm an unchanged second sync produces no content changes.
+- [ ] Confirm an over-budget generated context reports its line and approximate size rather than silently dropping required evidence.
 - [ ] Run delivery without an authenticated provider CLI. Confirm PR, check, and merge actions are pending with a manual handoff.
 - [ ] Open a draft PR before validation completes. Confirm outstanding checks are visible and it is not marked ready to merge.
 - [ ] Attempt a merge with missing or stale evidence. Confirm the workflow blocks merge.
 - [ ] Leave Bugbot pending. Confirm `validate-change` records it as pending and `deliver-change` consumes, rather than coordinates, that status.
 - [ ] Change code after validation. Confirm only affected checks are rerun against the new code state.
+- [ ] In a clean Cursor consumer, run `/sync-context`, then `/plan-work` for one module. Confirm plan-work reads only the selected index/module context and current source.
+- [ ] In a clean Cursor consumer, run a cross-module change. Confirm retrieval expands to the relevant adjacent context and contract only.

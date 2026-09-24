@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from context_tools import (  # noqa: E402
     classify_repository_scope,
     content_fingerprint,
+    detect_repository_id_collision,
     normalize_remote,
     stable_repository_id,
 )
@@ -115,12 +116,87 @@ def test_fingerprint_detects_changes_and_excludes_generated_output() -> None:
             assert pruned_paths == ("src/c.ts",)
 
 
+def test_generated_context_does_not_change_source_fingerprint() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        (root / "src").mkdir()
+        (root / "src" / "app.ts").write_text("export const app = 1;\n")
+        initial, paths = content_fingerprint(root)
+        assert paths == ("src/app.ts",)
+
+        (root / "AIDLC_CONTEXT.md").write_text("fingerprint: deadbeef\n")
+        (root / ".ai-dlc-config.md").write_text("## Context identities\n")
+        (root / ".cursor").mkdir()
+        (root / ".cursor" / "BUGBOT.md").write_text("When a change in src/app.ts...\n")
+        after_write, after_paths = content_fingerprint(root)
+        assert after_write == initial
+        assert after_paths == ("src/app.ts",)
+
+        (root / "AIDLC_CONTEXT.md").write_text(f"fingerprint: {after_write}\n")
+        after_update, _ = content_fingerprint(root)
+        assert after_update == initial
+
+
+def test_skill_source_changes_invalidate_fingerprint() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        skill = root / ".cursor" / "skills" / "sync-context"
+        skill.mkdir(parents=True)
+        (skill / "SKILL.md").write_text("# Sync context\n")
+        (root / "src").mkdir()
+        (root / "src" / "app.ts").write_text("export const app = 1;\n")
+        initial, paths = content_fingerprint(root)
+        assert ".cursor/skills/sync-context/SKILL.md" in paths
+
+        (skill / "SKILL.md").write_text("# Sync context\n\nChanged instruction.\n")
+        updated, _ = content_fingerprint(root)
+        assert updated != initial
+
+
+def test_parent_fingerprint_skips_nested_git_repository() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp) / "outer"
+        nested = root / "nested"
+        module = root / "packages" / "types"
+        nested.mkdir(parents=True)
+        module.mkdir(parents=True)
+        (root / "root.ts").write_text("export const root = 1;\n")
+        (module / "index.ts").write_text("export type Id = string;\n")
+        (nested / "private.py").write_text("SECRET = 1\n")
+        init_repo(root)
+        init_repo(nested)
+        run(nested, "git", "add", ".")
+        run(nested, "git", "commit", "-qm", "feat: nested")
+
+        fingerprint, paths = content_fingerprint(root)
+        assert "nested/private.py" not in paths
+        assert "root.ts" in paths
+        assert "packages/types/index.ts" in paths
+
+        nested_hash, nested_paths = content_fingerprint(nested)
+        assert nested_paths == ("private.py",)
+        assert nested_hash != fingerprint
+
+
 def test_identity_normalization_and_persistence() -> None:
     assert normalize_remote("git@github.com:owner/repo.git") == "github.com/owner/repo"
     assert normalize_remote("https://github.com/owner/repo.git") == "github.com/owner/repo"
     assert normalize_remote("https://example.test/owner/repo.git") is None
     assert stable_repository_id("team-payment-api", "github.com/a/b", None) == "team-payment-api"
-    assert stable_repository_id(None, "github.com/owner/repo", None) == "github-com-owner-repo"
+    first = stable_repository_id(None, "github.com/a-b/c", None)
+    second = stable_repository_id(None, "github.com/a/b-c", None)
+    third = stable_repository_id(None, "github.com/owner/repo", None)
+    assert first != second
+    assert first.startswith("github-com-a-b-c-")
+    assert second.startswith("github-com-a-b-c-")
+    assert third.startswith("github-com-owner-repo-")
+    assert detect_repository_id_collision(first, "github.com/a-b/c", {first: "github.com/a-b/c"}) is None
+    assert (
+        detect_repository_id_collision(
+            first, "github.com/other/repo", {first: "github.com/a-b/c"}
+        )
+        == "github.com/a-b/c"
+    )
 
 
 if __name__ == "__main__":
@@ -128,6 +204,9 @@ if __name__ == "__main__":
         test_scope_classification_and_relocation,
         test_untracked_and_nested_repository_ownership,
         test_fingerprint_detects_changes_and_excludes_generated_output,
+        test_generated_context_does_not_change_source_fingerprint,
+        test_skill_source_changes_invalidate_fingerprint,
+        test_parent_fingerprint_skips_nested_git_repository,
         test_identity_normalization_and_persistence,
     ]
     for test in tests:

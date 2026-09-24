@@ -16,7 +16,6 @@ from pathlib import Path
 
 EXCLUDED_PARTS = {
     ".git",
-    ".cursor",
     "aidlc-docs",
     "node_modules",
     "vendor",
@@ -26,7 +25,9 @@ EXCLUDED_PARTS = {
     "__pycache__",
     ".cache",
 }
+GENERATED_FILENAMES = {"aidlc_context.md", ".ai-dlc-config.md"}
 SECRET_FILENAMES = {".env", "id_rsa", "id_ed25519"}
+REPOSITORY_ID_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 
 @dataclass(frozen=True)
@@ -85,13 +86,43 @@ def stable_repository_id(
     persisted_id: str | None, canonical_remote: str | None, fallback_id: str | None
 ) -> str:
     """Prefer persisted identity; only derive when no identity exists."""
-    candidate = persisted_id or canonical_remote or fallback_id
+    if persisted_id:
+        if not REPOSITORY_ID_PATTERN.fullmatch(persisted_id):
+            raise ValueError("persisted repository ID must match [a-z0-9-]")
+        return persisted_id
+    candidate = canonical_remote or fallback_id
     if not candidate:
         raise ValueError("repository identity needs a persisted ID or verified remote")
     slug = re.sub(r"[^a-z0-9]+", "-", candidate.lower()).strip("-")
     if not slug:
         raise ValueError("repository identity is empty after normalization")
-    return slug
+    digest = hashlib.sha256(candidate.encode("utf-8")).hexdigest()[:8]
+    return f"{slug}-{digest}"
+
+
+def detect_repository_id_collision(
+    repo_id: str, canonical_identity: str, occupied: dict[str, str]
+) -> str | None:
+    """Return the occupying identity when repo_id is already claimed."""
+    owner = occupied.get(repo_id)
+    if owner is None or owner == canonical_identity:
+        return None
+    return owner
+
+
+def is_generated_artifact(path: Path) -> bool:
+    filename = path.name.lower()
+    if filename in GENERATED_FILENAMES:
+        return True
+    return path.name == "BUGBOT.md" and path.parent.name == ".cursor"
+
+
+def is_nested_git_root(path: Path, scope_root: Path) -> bool:
+    """True when path is a nested Git repository inside the declared scope."""
+    if path == scope_root:
+        return False
+    git_marker = path / ".git"
+    return git_marker.exists()
 
 
 def is_excluded(path: Path, scope_root: Path) -> bool:
@@ -99,6 +130,7 @@ def is_excluded(path: Path, scope_root: Path) -> bool:
     filename = path.name.lower()
     return (
         any(part in EXCLUDED_PARTS for part in relative.parts)
+        or is_generated_artifact(path)
         or filename in SECRET_FILENAMES
         or filename.startswith(".env.")
         or filename.endswith((".pem", ".key", ".p12", ".pfx"))
@@ -109,19 +141,22 @@ def iter_fingerprint_files(scope_root: Path) -> list[Path]:
     """Return sorted regular files for a declared source scope.
 
     Generated context and common cache/build directories are pruned during the
-    walk. Directory and file symlinks are skipped so content outside the
+    walk. Nested Git repositories are skipped so a parent hash does not mix
+    checkouts. Directory and file symlinks are skipped so content outside the
     approved root cannot enter the hash.
     """
     files: list[Path] = []
     for dirpath, dirnames, filenames in os.walk(scope_root, followlinks=False):
         current = Path(dirpath)
-        if current.is_symlink():
+        if current.is_symlink() or is_nested_git_root(current, scope_root):
             dirnames[:] = []
             continue
         dirnames[:] = [
             name
             for name in dirnames
-            if name not in EXCLUDED_PARTS and not (current / name).is_symlink()
+            if name not in EXCLUDED_PARTS
+            and not (current / name).is_symlink()
+            and not is_nested_git_root(current / name, scope_root)
         ]
         for name in filenames:
             path = current / name

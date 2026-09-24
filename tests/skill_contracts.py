@@ -182,6 +182,8 @@ def test_context_generation_contract_has_required_examples() -> None:
     assert "| 300 lines |" in templates
     assert "Anthropic requirement" in templates
     assert "persisted repository ID" in artifact_home
+    assert "short hash of the full canonical identity" in generation
+    assert "Do not exclude product source under `.cursor/skills`" in generation
     for scenario in (
         "Single-module repository",
         "Monorepo",

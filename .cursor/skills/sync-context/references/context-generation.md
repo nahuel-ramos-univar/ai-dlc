@@ -31,7 +31,11 @@ Generate IDs from stable, portable identity for the index and fallback only:
 
 - Reuse an existing persisted repository ID first.
 - Otherwise derive a first-time ID from a verified canonical remote. Normalize
-  only known equivalent SSH and HTTPS forms. Remove credentials.
+  only known equivalent SSH and HTTPS forms. Remove credentials. Combine a
+  readable slug with a short hash of the full canonical identity so similar
+  remotes do not collide.
+- Detect an ID collision against IDs already stored in the artifact home before
+  writing fallback paths or Bugbot decisions.
 - If no remote is usable, assign an explicit ID once and persist it in the
   artifact-home configuration.
 - Never derive identity from absolute paths, clone directory names, workspace
@@ -54,9 +58,11 @@ and its examined paths. Use `scripts/context_tools.py`:
    characters.
 4. Include relevant staged, unstaged, and selected untracked source because the
    helper reads the current working tree.
-5. Exclude generated context, `.git`, caches, build output, vendor directories,
-   recognized secret files (`.env`, key/certificate files), and symlinks outside
-   authorized roots.
+5. Exclude generated context (`AIDLC_CONTEXT.md`, `.ai-dlc-config.md`,
+   `aidlc-docs/`, and `.cursor/BUGBOT.md`), `.git`, nested Git checkouts,
+   caches, build output, vendor directories, recognized secret files
+   (`.env`, key/certificate files), and symlinks outside authorized roots.
+   Do not exclude product source under `.cursor/skills` or `.cursor/rules`.
 
 Record declared scope separately from examined files. The helper discovers
 additions, deletions, and renames inside scope through the current sorted file

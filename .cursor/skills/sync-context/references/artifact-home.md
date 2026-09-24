@@ -32,10 +32,13 @@ known equivalent SSH and HTTPS forms. Remove credentials. Never guess a
 canonical remote when several remotes are plausible.
 
 If no usable remote exists, ask for or assign an explicit ID once, then persist
-it in the artifact-home configuration. Do not derive identity from absolute
-paths, checkout names, open-workspace collisions, or a human responsibility
-label. Preserve module IDs across renames and moves when source evidence links
-them. Report ambiguous duplicate documents; do not delete human content.
+it in the artifact-home configuration. A derived ID is a readable slug plus a
+short hash of the canonical identity. Keep a valid persisted ID unchanged.
+Detect collisions against stored IDs before writing. Do not derive identity
+from absolute paths, checkout names, open-workspace collisions, or a human
+responsibility label. Preserve module IDs across renames and moves when source
+evidence links them. Report ambiguous duplicate documents; do not delete human
+content.
 
 ## Minimal configuration
 

@@ -31,7 +31,8 @@ Each repository or module context record must include:
 
 - repository path and, when the consumer is a Git root or nested tracked path,
   that Git root's revision;
-- a freshness fingerprint of examined paths (relative paths plus a short hash of their current contents);
+- a freshness fingerprint of examined source paths; generated context files do
+  not participate in that hash;
 - relevant uncommitted modifications, without copying sensitive values;
 - paths examined and direct dependencies;
 - observed facts versus assumptions;

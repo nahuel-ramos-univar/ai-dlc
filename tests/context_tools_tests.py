@@ -178,6 +178,19 @@ def test_parent_fingerprint_skips_nested_git_repository() -> None:
         assert nested_hash != fingerprint
 
 
+def test_fingerprint_includes_symlink_scope_root() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        real = Path(temp) / "real"
+        (real / "src").mkdir(parents=True)
+        (real / "src" / "a.ts").write_text("export const a = 1;\n")
+        link = Path(temp) / "link"
+        link.symlink_to(real)
+        direct, paths = content_fingerprint(real)
+        via_link, link_paths = content_fingerprint(link)
+        assert direct == via_link
+        assert paths == link_paths == ("src/a.ts",)
+
+
 def test_identity_normalization_and_persistence() -> None:
     assert normalize_remote("git@github.com:owner/repo.git") == "github.com/owner/repo"
     assert normalize_remote("https://github.com/owner/repo.git") == "github.com/owner/repo"
@@ -207,6 +220,7 @@ if __name__ == "__main__":
         test_generated_context_does_not_change_source_fingerprint,
         test_skill_source_changes_invalidate_fingerprint,
         test_parent_fingerprint_skips_nested_git_repository,
+        test_fingerprint_includes_symlink_scope_root,
         test_identity_normalization_and_persistence,
     ]
     for test in tests:

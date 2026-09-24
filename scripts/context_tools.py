@@ -142,13 +142,16 @@ def iter_fingerprint_files(scope_root: Path) -> list[Path]:
 
     Generated context and common cache/build directories are pruned during the
     walk. Nested Git repositories are skipped so a parent hash does not mix
-    checkouts. Directory and file symlinks are skipped so content outside the
-    approved root cannot enter the hash.
+    checkouts. Nested directory and file symlinks are skipped so content
+    outside the approved root cannot enter the hash. A symlink scope root is
+    walked as the declared source.
     """
     files: list[Path] = []
-    for dirpath, dirnames, filenames in os.walk(scope_root, followlinks=False):
+    scope = Path(scope_root)
+    for dirpath, dirnames, filenames in os.walk(scope, followlinks=False):
         current = Path(dirpath)
-        if current.is_symlink() or is_nested_git_root(current, scope_root):
+        nested_symlink = current.is_symlink() and current.resolve() != scope.resolve()
+        if nested_symlink or is_nested_git_root(current, scope):
             dirnames[:] = []
             continue
         dirnames[:] = [
@@ -156,14 +159,14 @@ def iter_fingerprint_files(scope_root: Path) -> list[Path]:
             for name in dirnames
             if name not in EXCLUDED_PARTS
             and not (current / name).is_symlink()
-            and not is_nested_git_root(current / name, scope_root)
+            and not is_nested_git_root(current / name, scope)
         ]
         for name in filenames:
             path = current / name
-            if path.is_symlink() or not path.is_file() or is_excluded(path, scope_root):
+            if path.is_symlink() or not path.is_file() or is_excluded(path, scope):
                 continue
             files.append(path)
-    return sorted(files, key=lambda item: item.relative_to(scope_root).as_posix())
+    return sorted(files, key=lambda item: item.relative_to(scope).as_posix())
 
 
 def content_fingerprint(scope_root: Path) -> tuple[str, tuple[str, ...]]:

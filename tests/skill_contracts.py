@@ -9,12 +9,11 @@ ROOT = Path(__file__).parents[1]
 EXPECTED_SKILLS = {
     "sync-context",
     "plan-work",
+    "scaffold-project",
     "refine-story",
     "implement-change",
     "validate-change",
-    "resolve-defect",
     "deliver-change",
-    "check-governance",
 }
 EXPECTED_AGENTS = {
     "product-reviewer",
@@ -22,7 +21,6 @@ EXPECTED_AGENTS = {
     "implementer",
     "implementation-reviewer",
     "validator",
-    "governance-reviewer",
 }
 READONLY_AGENTS = EXPECTED_AGENTS - {"implementer"}
 MARKDOWN_LINK = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
@@ -80,6 +78,21 @@ def test_skill_frontmatter_and_unique_names() -> None:
     assert names == EXPECTED_SKILLS
 
 
+def test_removed_components_are_not_exposed_or_referenced() -> None:
+    removed_skills = {"check-governance", "resolve-defect"}
+    assert not any(
+        (ROOT / ".cursor" / "skills" / skill).exists() for skill in removed_skills
+    )
+    assert not (ROOT / "agents" / "governance-reviewer.md").exists()
+
+    for path in ROOT.rglob("*.md"):
+        if path.name == "CHANGELOG.md":
+            continue
+        content = path.read_text(encoding="utf-8")
+        for name in (*removed_skills, "governance-reviewer"):
+            assert name not in content, f"{path} still references {name}"
+
+
 def test_agent_frontmatter_and_readonly_boundaries() -> None:
     agent_files = sorted((ROOT / "agents").glob("*.md"))
     names = set()
@@ -126,7 +139,8 @@ def test_every_skill_uses_compact_response_style() -> None:
 def test_context_retrieval_contract_is_wired() -> None:
     retrieval = ROOT / "references" / "context-retrieval.md"
     assert retrieval.is_file()
-    for skill_name in EXPECTED_SKILLS - {"sync-context"}:
+    context_aware_skills = EXPECTED_SKILLS - {"sync-context", "scaffold-project"}
+    for skill_name in context_aware_skills:
         skill = ROOT / ".cursor" / "skills" / skill_name / "SKILL.md"
         assert "../../../references/context-retrieval.md" in skill.read_text(
             encoding="utf-8"
@@ -237,6 +251,7 @@ if __name__ == "__main__":
         test_manifest_paths_and_plugin_identity,
         test_team_marketplace_indexes_this_plugin,
         test_skill_frontmatter_and_unique_names,
+        test_removed_components_are_not_exposed_or_referenced,
         test_agent_frontmatter_and_readonly_boundaries,
         test_local_markdown_references_resolve,
         test_every_skill_uses_compact_response_style,

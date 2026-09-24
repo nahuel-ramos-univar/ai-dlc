@@ -2,7 +2,9 @@
 
 - [ ] Merge a `feat:` or `fix:` commit to `main` and confirm `plugin.json`, `CHANGELOG.md`, tag `vX.Y.Z`, and a GitHub Release update together.
 
-- [ ] Install the plugin into a clean consumer and confirm all eight skills and six agents are discovered.
+- [ ] Install the plugin into a clean consumer and confirm all seven skills and five agents are discovered.
+- [ ] Run `scaffold-project` in an empty authorized destination. Confirm it presents an approved minimal proposal before writing, preserves existing files, writes a concise README, and reports actual validation results.
+- [ ] Run `scaffold-project` in an existing application. Confirm it proposes a bounded addition or stops for clarification without overwriting the application.
 - [ ] Run `sync-context` against a small single-module repository. Confirm it creates one concise repository index and no manufactured `AIDLC_CONTEXT.md`.
 - [ ] Run `sync-context` against a monorepo. Confirm it creates `<module-root>/AIDLC_CONTEXT.md` only for meaningful architectural modules.
 - [ ] Run initial discovery in a clean repository with no prior context. Confirm it finds representative modules without claiming every source file was read.
@@ -14,7 +16,7 @@
 - [ ] Re-run `sync-context` without relevant source changes. Confirm it preserves human content and does not rewrite unaffected module context.
 - [ ] Change one module after context generation. Confirm only that module is refreshed and stale evidence is flagged.
 - [ ] Confirm context retrieval reads the short index first, then selected colocated `AIDLC_CONTEXT.md` or its fallback, then current source and tests for implementation or review.
-- [ ] Decline the proposed BUGBOT files. Confirm the artifact-home `.ai-dlc-config.md` records `## Context identities` and later sync runs do not prompt again.
+- [ ] Decline the proposed BUGBOT files. Confirm the artifact-home `.ai-dlc-config.md` records `## Bugbot decisions` and later sync runs do not prompt again.
 - [ ] Approve a proposed BUGBOT file in a disposable repository. Confirm only the previewed file is written and existing BUGBOT content is preserved.
 - [ ] Use a module with a distinct runtime or invariant. Confirm a nested BUGBOT proposal is created only for that boundary and does not repeat the root file.
 - [ ] Confirm each proposed Bugbot rule names an observed path plus helper, interface, or invariant, and avoids formatter or generic-security guidance.

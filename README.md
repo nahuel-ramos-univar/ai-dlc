@@ -29,12 +29,11 @@ Invoke the included skills directly:
 ```text
 /sync-context
 /plan-work Create a user story for guest checkout
+/scaffold-project Create a new ecommerce project
 /refine-story PAY-123 combined
 /implement-change PAY-123
 /validate-change PAY-123
-/resolve-defect Checkout fails after a declined payment retry
 /deliver-change
-/check-governance
 ```
 
 The skills are deliberately dry-run for Jira, Git, pull-request, merge, and deployment actions until the user approves an exact external change set. `plan-work` separates **ready for review** from **approved for publication**. It requests independent product review before publication, but records review as pending or unavailable when the host cannot delegate it. `/review-bugbot` remains a separate interactive Cursor command; `validate-change` coordinates its status but cannot run it itself.
@@ -55,7 +54,7 @@ The skills are deliberately dry-run for Jira, Git, pull-request, merge, and depl
 - **Agents:** The plugin defines reviewer prompts, but does not expose a dispatch API. The main chat uses host-supported independent delegation when available. A host general-purpose subagent may receive a bounded reviewer prompt when named plugin-agent dispatch is unavailable; that is reported as general-purpose review, not native agent dispatch. Otherwise review remains visibly pending or requires a named human review or policy-permitted exception.
 - **Canvas and Bugbot:** Canvas has structured-chat fallback. Bugbot requires user invocation through `/review-bugbot`; its presence in chat does not prove it ran.
 
-The main chat drafts planning and refinement. Independent agents are used only for review or bounded implementation: `product-reviewer`, `refinement-reviewer`, `implementer`, `implementation-reviewer`, `validator`, and `governance-reviewer`. Reviewer agents declare `readonly: true`; Cursor must recognize that setting in the installed host for write restrictions to be enforced. This plugin does not provide an agent orchestration API.
+The main chat drafts planning and refinement. Independent agents are used only for review or bounded implementation: `product-reviewer`, `refinement-reviewer`, `implementer`, `implementation-reviewer`, and `validator`. Reviewer agents declare `readonly: true`; Cursor must recognize that setting in the installed host for write restrictions to be enforced. This plugin does not provide an agent orchestration API.
 
 There is no package-manager build or separate packager in this repository. The manifest and skill sources are authoritative. Structural checks do not verify runtime host behavior or external integrations. Run:
 

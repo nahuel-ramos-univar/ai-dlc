@@ -40,11 +40,15 @@ filesystem write.
 
 For each repository in a multi-repository request, run this preflight separately. Do not imply one atomic delivery action across repositories.
 
-Generated writes are limited to the configured artifact home's
+Context-discovery writes are limited to the configured artifact home's
 `.ai-dlc-config.md` and `aidlc-docs/`, an approved module root's
 `AIDLC_CONTEXT.md`, and after per-repository Bugbot approval,
 `<source-root>/.cursor/BUGBOT.md` plus a nested
-`<approved-boundary-root>/.cursor/BUGBOT.md`. Do not use these exceptions to
+`<approved-boundary-root>/.cursor/BUGBOT.md`. Do not use those exceptions to
 create arbitrary Markdown in source trees.
+
+Scaffold-project writes follow the approved proposal and authorized destination.
+That approved scope may include source files, project configuration, and
+README files. Do not apply the context-discovery write list to those files.
 
 Never initialize Git, stage the parent workspace, run `git add .` across unrelated work, or change parent repository configuration implicitly.

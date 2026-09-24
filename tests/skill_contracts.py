@@ -191,6 +191,8 @@ def test_context_generation_contract_has_required_examples() -> None:
     assert "Unversioned tree" in preflight
     assert "Nested repository, submodule, or worktree" in preflight
     assert "permit discovery" in preflight
+    assert "Context-discovery writes" in preflight
+    assert "Scaffold-project writes follow the approved proposal" in preflight
     assert "freshness fingerprint" in refresh
     assert "| 150 lines |" in templates
     assert "| 300 lines |" in templates

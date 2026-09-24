@@ -91,8 +91,18 @@ def test_fingerprint_detects_changes_and_excludes_generated_output() -> None:
         (root / "aidlc-docs").mkdir()
         (root / "aidlc-docs" / "repository-context.md").write_text("generated\n")
         (root / ".env").write_text("secret\n")
+        (root / ".env.local").write_text("secret-local\n")
         unchanged, _ = content_fingerprint(root)
         assert initial == unchanged
+
+        (root / ".env.example").write_text("KEY=\n")
+        with_template, template_paths = content_fingerprint(root)
+        assert with_template != initial
+        assert template_paths == (".env.example", "src/a.ts")
+        (root / ".env.example").unlink()
+        restored, restored_paths = content_fingerprint(root)
+        assert restored == initial
+        assert restored_paths == ("src/a.ts",)
 
         (root / "src" / "b.ts").write_text("export const b = 2;\n")
         added, paths = content_fingerprint(root)
@@ -191,6 +201,45 @@ def test_fingerprint_includes_symlink_scope_root() -> None:
         assert paths == link_paths == ("src/a.ts",)
 
 
+def test_fingerprint_rejects_unavailable_scope() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        empty = Path(temp) / "empty"
+        empty.mkdir()
+        missing = Path(temp) / "missing"
+        as_file = Path(temp) / "not-a-dir.txt"
+        as_file.write_text("export const x = 1;\n")
+        empty_hash, empty_paths = content_fingerprint(empty)
+        assert empty_paths == ()
+        assert empty_hash
+        try:
+            content_fingerprint(missing)
+        except FileNotFoundError:
+            pass
+        else:
+            raise AssertionError("missing scope must not fingerprint")
+        try:
+            content_fingerprint(as_file)
+        except NotADirectoryError:
+            pass
+        else:
+            raise AssertionError("file scope must not fingerprint")
+
+        blocked = Path(temp) / "blocked"
+        inner = blocked / "inner"
+        inner.mkdir(parents=True)
+        (inner / "a.ts").write_text("export const a = 1;\n")
+        os.chmod(inner, 0)
+        try:
+            try:
+                content_fingerprint(blocked)
+            except OSError:
+                pass
+            else:
+                raise AssertionError("unreadable scope must not fingerprint")
+        finally:
+            os.chmod(inner, 0o755)
+
+
 def test_identity_normalization_and_persistence() -> None:
     assert normalize_remote("git@github.com:owner/repo.git") == "github.com/owner/repo"
     assert normalize_remote("https://github.com/owner/repo.git") == "github.com/owner/repo"
@@ -221,6 +270,7 @@ if __name__ == "__main__":
         test_skill_source_changes_invalidate_fingerprint,
         test_parent_fingerprint_skips_nested_git_repository,
         test_fingerprint_includes_symlink_scope_root,
+        test_fingerprint_rejects_unavailable_scope,
         test_identity_normalization_and_persistence,
     ]
     for test in tests:

@@ -27,6 +27,7 @@ EXCLUDED_PARTS = {
 }
 GENERATED_FILENAMES = {"aidlc_context.md", ".ai-dlc-config.md"}
 SECRET_FILENAMES = {".env", "id_rsa", "id_ed25519"}
+ENV_TEMPLATE_FILENAMES = {".env.example", ".env.sample", ".env.template", ".env.dist"}
 REPOSITORY_ID_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
 
@@ -125,6 +126,12 @@ def is_nested_git_root(path: Path, scope_root: Path) -> bool:
     return git_marker.exists()
 
 
+def is_secret_env_file(filename: str) -> bool:
+    if filename in ENV_TEMPLATE_FILENAMES:
+        return False
+    return filename == ".env" or filename.startswith(".env.")
+
+
 def is_excluded(path: Path, scope_root: Path) -> bool:
     relative = path.relative_to(scope_root)
     filename = path.name.lower()
@@ -132,9 +139,13 @@ def is_excluded(path: Path, scope_root: Path) -> bool:
         any(part in EXCLUDED_PARTS for part in relative.parts)
         or is_generated_artifact(path)
         or filename in SECRET_FILENAMES
-        or filename.startswith(".env.")
+        or is_secret_env_file(filename)
         or filename.endswith((".pem", ".key", ".p12", ".pfx"))
     )
+
+
+def _raise_walk_error(error: OSError) -> None:
+    raise error
 
 
 def iter_fingerprint_files(scope_root: Path) -> list[Path]:
@@ -144,11 +155,18 @@ def iter_fingerprint_files(scope_root: Path) -> list[Path]:
     walk. Nested Git repositories are skipped so a parent hash does not mix
     checkouts. Nested directory and file symlinks are skipped so content
     outside the approved root cannot enter the hash. A symlink scope root is
-    walked as the declared source.
+    walked as the declared source. Missing, non-directory, or unreadable
+    scopes raise instead of hashing an empty tree.
     """
-    files: list[Path] = []
     scope = Path(scope_root)
-    for dirpath, dirnames, filenames in os.walk(scope, followlinks=False):
+    if not scope.exists():
+        raise FileNotFoundError(f"fingerprint scope does not exist: {scope}")
+    if not scope.is_dir():
+        raise NotADirectoryError(f"fingerprint scope is not a directory: {scope}")
+    files: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(
+        scope, followlinks=False, onerror=_raise_walk_error
+    ):
         current = Path(dirpath)
         nested_symlink = current.is_symlink() and current.resolve() != scope.resolve()
         if nested_symlink or is_nested_git_root(current, scope):
@@ -173,8 +191,9 @@ def content_fingerprint(scope_root: Path) -> tuple[str, tuple[str, ...]]:
     """SHA-256 over NUL-delimited relative path and file-content hashes."""
     digest = hashlib.sha256()
     relative_paths: list[str] = []
-    for path in iter_fingerprint_files(scope_root):
-        relative = path.relative_to(scope_root).as_posix()
+    scope = Path(scope_root)
+    for path in iter_fingerprint_files(scope):
+        relative = path.relative_to(scope).as_posix()
         content_hash = hashlib.sha256(path.read_bytes()).hexdigest()
         digest.update(relative.encode("utf-8"))
         digest.update(b"\0")

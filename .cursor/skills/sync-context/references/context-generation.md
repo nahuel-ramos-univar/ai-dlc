@@ -61,8 +61,11 @@ and its examined paths. Use `scripts/context_tools.py`:
 5. Exclude generated context (`AIDLC_CONTEXT.md`, `.ai-dlc-config.md`,
    `aidlc-docs/`, and `.cursor/BUGBOT.md`), `.git`, nested Git checkouts,
    caches, build output, vendor directories, recognized secret files
-   (`.env`, key/certificate files), and symlinks outside authorized roots.
+   (`.env` and non-template `.env.*`, key/certificate files), and symlinks
+   outside authorized roots. Include committed templates such as `.env.example`.
    Do not exclude product source under `.cursor/skills` or `.cursor/rules`.
+6. If the declared scope is missing, is not a directory, or the walk fails,
+   do not record a fingerprint. Treat freshness as unavailable.
 
 Record declared scope separately from examined files. The helper discovers
 additions, deletions, and renames inside scope through the current sorted file

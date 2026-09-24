@@ -32,5 +32,7 @@ validation would help, describe it honestly as a next step.
 Return the approved scope, files created, actual validation results, preserved
 content, and any deferred work.
 
-Read [repository preflight](../../../references/repository-preflight.md) and
-[skill composition](../../../references/skill-composition.md).
+Read [repository preflight](../../../references/repository-preflight.md) for Git
+classification, authorization, and preservation rules, and
+[skill composition](../../../references/skill-composition.md). The
+context-discovery write list does not apply to approved scaffold files.

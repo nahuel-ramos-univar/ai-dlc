@@ -13,7 +13,10 @@ diff and do not read every source file by default.
 
 Record examined paths, declared scope, and unknowns. “Initial discovery
 completed” means only that the recorded scope was examined; it never means the
-whole repository was read.
+whole repository was read. Never equate a Git listing or a fingerprint's file
+set with having examined, analyzed, or verified every one of those files;
+inventoried, inspected, and verified are different evidence levels and the
+generated record must not blur them.
 
 ## Incremental refresh
 
@@ -39,6 +42,8 @@ Each repository or module context record must include:
 - a freshness boundary such as "valid for `src/payments/**` at revision `abc123`, fingerprint `a1b2c3d4`" or, for an unversioned tree, "unversioned; fingerprint `a1b2c3d4` for `services/checkout/**`".
 
 Do not use a parent repository revision as freshness when that revision does not track the examined files.
+
+The fingerprint algorithm is `content_fingerprint` in `scripts/context_tools.py`: a deterministic SHA-256 over each examined file's repository-relative path and content hash, truncated to 16 hexadecimal characters. It detects a change in the included inputs; it does not prove semantic accuracy or that every file was fully inspected. A recorded Git revision by itself does not cover uncommitted working-tree changes; the fingerprint must include relevant staged, unstaged, and selected untracked source so the recorded freshness reflects the actual working tree, not only the last commit. If the prior baseline is missing or incompatible with the current scope, perform a fresh scoped inspection and report that limitation rather than reusing a stale comparison.
 
 Preserve human-authored content where it does not conflict with source. Flag and
 refresh a stale summary; code and contracts remain authoritative. Do not scan

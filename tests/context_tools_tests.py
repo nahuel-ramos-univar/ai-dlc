@@ -13,10 +13,16 @@ ROOT = Path(__file__).parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from context_tools import (  # noqa: E402
+    check_document_budget,
     classify_repository_scope,
     content_fingerprint,
     detect_repository_id_collision,
+    extract_table_column,
+    find_duplicate_values,
+    find_stale_source_paths,
     normalize_remote,
+    parse_recorded_fingerprint,
+    resolve_markdown_links,
     stable_repository_id,
 )
 
@@ -261,6 +267,90 @@ def test_identity_normalization_and_persistence() -> None:
     )
 
 
+def test_document_budget_flags_documents_over_the_limit() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        short = Path(temp) / "short.md"
+        short.write_text("\n".join(f"line {i}" for i in range(50)) + "\n")
+        assert check_document_budget(short, max_lines=300)
+
+        long = Path(temp) / "long.md"
+        long.write_text("\n".join(f"line {i}" for i in range(301)) + "\n")
+        assert not check_document_budget(long, max_lines=300)
+
+
+def test_resolve_markdown_links_classifies_targets() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        (root / "aidlc-docs").mkdir()
+        index = root / "aidlc-docs" / "repository-context.md"
+        (root / "apps" / "web").mkdir(parents=True)
+        (root / "apps" / "web" / "AIDLC_CONTEXT.md").write_text("# web\n")
+        index.write_text(
+            "\n".join(
+                [
+                    "[web](../apps/web/AIDLC_CONTEXT.md)",
+                    "[missing](../apps/admin/AIDLC_CONTEXT.md)",
+                    "[outside](../../../../etc/passwd)",
+                    "[anchor](#scope)",
+                    "[remote](https://example.test)",
+                ]
+            )
+        )
+        statuses = resolve_markdown_links(index, root)
+        assert statuses["../apps/web/AIDLC_CONTEXT.md"] == "ok"
+        assert statuses["../apps/admin/AIDLC_CONTEXT.md"] == "missing"
+        assert statuses["../../../../etc/passwd"] == "unresolvable"
+        assert statuses["#scope"] == "external"
+        assert statuses["https://example.test"] == "external"
+
+
+def test_extract_table_column_and_duplicate_detection() -> None:
+    text = "\n".join(
+        [
+            "## Modules",
+            "",
+            "| Module | Source | Context |",
+            "| --- | --- | --- |",
+            "| `web` | `apps/web` | [x](a.md) |",
+            "| `admin` | `apps/admin` | [x](b.md) |",
+            "| `web` | `apps/web-copy` | [x](c.md) |",
+        ]
+    )
+    modules = extract_table_column(text, "## Modules", "Module")
+    assert modules == ["web", "admin", "web"]
+    assert find_duplicate_values(modules) == ["web"]
+    assert extract_table_column(text, "## Missing", "Module") == []
+    assert extract_table_column(text, "## Modules", "Nope") == []
+
+
+def test_find_stale_source_paths_flags_deleted_and_escaping_paths() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        (root / "apps" / "web").mkdir(parents=True)
+        stale = find_stale_source_paths(
+            ["apps/web", "apps/removed", "../outside"], root
+        )
+        assert stale == ["apps/removed", "../outside"]
+
+
+def test_parse_recorded_fingerprint_round_trips_with_content_fingerprint() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        (root / "src").mkdir()
+        (root / "src" / "a.ts").write_text("export const a = 1;\n")
+        fingerprint, _ = content_fingerprint(root)
+        baseline = "4aaa827d45771edd23464e767f24f27eef2033b7"  # 40-hex Git revision
+        doc = f"- Baseline and fingerprint: `{baseline}` / `{fingerprint}`\n"
+        assert parse_recorded_fingerprint(doc) == fingerprint
+
+        unchanged, _ = content_fingerprint(root)
+        assert parse_recorded_fingerprint(doc) == unchanged
+
+        (root / "src" / "a.ts").write_text("export const a = 2;\n")
+        changed, _ = content_fingerprint(root)
+        assert parse_recorded_fingerprint(doc) != changed
+
+
 if __name__ == "__main__":
     tests = [
         test_scope_classification_and_relocation,
@@ -272,6 +362,11 @@ if __name__ == "__main__":
         test_fingerprint_includes_symlink_scope_root,
         test_fingerprint_rejects_unavailable_scope,
         test_identity_normalization_and_persistence,
+        test_document_budget_flags_documents_over_the_limit,
+        test_resolve_markdown_links_classifies_targets,
+        test_extract_table_column_and_duplicate_detection,
+        test_find_stale_source_paths_flags_deleted_and_escaping_paths,
+        test_parse_recorded_fingerprint_round_trips_with_content_fingerprint,
     ]
     for test in tests:
         test()

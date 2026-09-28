@@ -2,7 +2,7 @@
 
 - [ ] Merge a `feat:` or `fix:` commit to `main` and confirm `plugin.json`, `CHANGELOG.md`, tag `vX.Y.Z`, and a GitHub Release update together.
 
-- [ ] Install the plugin into a clean consumer and confirm all seven skills and five agents are discovered.
+- [ ] Install the plugin into a clean consumer and confirm all seven skills and six agents are discovered.
 - [ ] Run `scaffold-project` in an empty authorized destination. Confirm it presents an approved minimal proposal before writing, preserves existing files, writes a concise README, and reports actual validation results.
 - [ ] Run `scaffold-project` in an existing application. Confirm it proposes a bounded addition or stops for clarification without overwriting the application.
 - [ ] Run `sync-context` against a small single-module repository. Confirm it creates one concise repository index and no manufactured `AIDLC_CONTEXT.md`.
@@ -39,6 +39,12 @@
 - [ ] Confirm approved, declined, and deferred Bugbot decisions persist under the configured artifact home by stable repository ID.
 - [ ] Confirm an unchanged second sync produces no content changes.
 - [ ] Confirm an over-budget generated context reports its line and approximate size rather than silently dropping required evidence.
+- [ ] Confirm the repository index's `Examined` field names actual inspected paths, not a count of tracked or fingerprinted files.
+- [ ] Confirm an Unknowns entry never restates a fact already asserted elsewhere in the same context documents.
+- [ ] Run initial `sync-context` discovery and confirm an independent `context-reviewer` assessment is requested, or reported unavailable with a reason, before the result is called final.
+- [ ] Make a small factual update with no material boundary change and confirm `sync-context` states that independent review was skipped and why deterministic validation and targeted checking were enough.
+- [ ] Confirm deterministic validation reports a broken root-to-module link, a stale module source path, and a duplicate module ID rather than silently passing.
+- [ ] Confirm a `context-reviewer` finding is either applied with a rerun of the affected checks, or disputed with cited source evidence; confirm at most one targeted follow-up review runs before remaining issues are reported to the user.
 - [ ] Run delivery without an authenticated provider CLI. Confirm PR, check, and merge actions are pending with a manual handoff.
 - [ ] Open a draft PR before validation completes. Confirm outstanding checks are visible and it is not marked ready to merge.
 - [ ] Attempt a merge with missing or stale evidence. Confirm the workflow blocks merge.

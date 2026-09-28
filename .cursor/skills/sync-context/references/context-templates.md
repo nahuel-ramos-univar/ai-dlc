@@ -28,6 +28,15 @@ and link existing documentation. Split only at real architectural boundaries.
 Never hide required evidence in a giant line or silently drop it. Report any
 remaining over-budget result.
 
+Remediate an over-budget document in this order: (1) remove repetition and
+unnecessary source-code narration; (2) move module-specific detail into the
+relevant existing `AIDLC_CONTEXT.md` instead of expanding the index; (3) split
+only when a real architectural boundary justifies a new module document.
+Never truncate a document silently and never create arbitrary numbered
+fragments (`repository-context-2.md`) to dodge the limit. Do not create one
+context file per source file or directory merely to stay under budget;
+generate module context only where it is useful and distinct.
+
 ## Repository index template
 
 ```markdown

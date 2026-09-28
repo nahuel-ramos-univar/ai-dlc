@@ -48,13 +48,17 @@ The skills are deliberately dry-run for Jira, Git, pull-request, merge, and depl
   source roots cannot be written. It proposes BUGBOT guidance separately and
   writes it only after a per-repository approval. Context files are not
   implicitly loaded by Cursor; lifecycle skills read the index and selected
-  module context explicitly.
+  module context explicitly. Before treating context as final, it runs
+  deterministic validation (line budgets, links, fingerprints, stale or
+  duplicate entries) and requests an independent `context-reviewer`
+  assessment for initial generation or a material change; it states plainly
+  when that review was skipped or unavailable.
 - **Git:** Local Git supports repository inspection, branch, diff, commit, and push only. Each workflow resolves the actual Git root and preserves unrelated work.
 - **Provider operations:** Pull requests, remote checks, approvals, and provider merge need a verified provider integration. GitHub can use an already installed and authenticated `gh` CLI. Without it, the plugin completes only supported local actions and provides a manual handoff.
 - **Agents:** The plugin defines reviewer prompts, but does not expose a dispatch API. The main chat uses host-supported independent delegation when available. A host general-purpose subagent may receive a bounded reviewer prompt when named plugin-agent dispatch is unavailable; that is reported as general-purpose review, not native agent dispatch. Otherwise review remains visibly pending or requires a named human review or policy-permitted exception.
 - **Canvas and Bugbot:** Canvas has structured-chat fallback. Bugbot requires user invocation through `/review-bugbot`; its presence in chat does not prove it ran.
 
-The main chat drafts planning and refinement. Independent agents are used only for review or bounded implementation: `product-reviewer`, `refinement-reviewer`, `implementer`, `implementation-reviewer`, and `validator`. Reviewer agents declare `readonly: true`; Cursor must recognize that setting in the installed host for write restrictions to be enforced. This plugin does not provide an agent orchestration API.
+The main chat drafts planning and refinement. Independent agents are used only for review or bounded implementation: `product-reviewer`, `refinement-reviewer`, `implementer`, `implementation-reviewer`, `validator`, and `context-reviewer`. `context-reviewer` checks generated or updated repository context against current source for `sync-context`; it does not replace deterministic validation and a clean result covers only the scope it reviewed. Reviewer agents declare `readonly: true`; Cursor must recognize that setting in the installed host for write restrictions to be enforced. This plugin does not provide an agent orchestration API.
 
 There is no package-manager build or separate packager in this repository. The manifest and skill sources are authoritative. Structural checks do not verify runtime host behavior or external integrations. Run:
 

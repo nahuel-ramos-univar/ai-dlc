@@ -212,3 +212,133 @@ def document_metrics(path: Path) -> tuple[int, int]:
 def is_writable_directory(path: Path) -> bool:
     """Best-effort check; callers must not claim this proves authorization."""
     return os.access(path, os.W_OK)
+
+
+# --- Deterministic validation for generated context -----------------------
+#
+# These checks confirm measurable properties of generated documents. A
+# passing result never proves an Unknown is accurate, that a described
+# dependency is correct, or that a claim is well-supported. Those judgments
+# belong to independent review, not to this module.
+
+MARKDOWN_LINK_PATTERN = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
+HEX16_TOKEN_PATTERN = re.compile(r"`([0-9a-f]{16})`")
+
+
+def check_document_budget(path: Path, max_lines: int = 300) -> bool:
+    """True when the document's line count is within the declared budget."""
+    lines, _ = document_metrics(path)
+    return lines <= max_lines
+
+
+def resolve_markdown_links(markdown_path: Path, repo_root: Path) -> dict[str, str]:
+    """Classify each local Markdown link in `markdown_path`.
+
+    Status is one of: "external" (a URL or a same-document anchor, not
+    verified here), "unresolvable" (the link resolves outside `repo_root`,
+    reported as a failure rather than silently accepted), "missing" (the
+    target does not exist), or "ok". An unavailable or external reference is
+    never reported as verified.
+    """
+    text = markdown_path.read_text(encoding="utf-8")
+    statuses: dict[str, str] = {}
+    resolved_root = repo_root.resolve()
+    for target in MARKDOWN_LINK_PATTERN.findall(text):
+        if "://" in target or target.startswith("#"):
+            statuses[target] = "external"
+            continue
+        local_path = target.split("#", 1)[0]
+        if not local_path:
+            statuses[target] = "external"
+            continue
+        resolved = (markdown_path.parent / local_path).resolve()
+        try:
+            resolved.relative_to(resolved_root)
+        except ValueError:
+            statuses[target] = "unresolvable"
+            continue
+        statuses[target] = "ok" if resolved.exists() else "missing"
+    return statuses
+
+
+def extract_table_column(markdown_text: str, heading: str, column: str) -> list[str]:
+    """Return raw cell values for `column` in the first table under `heading`.
+
+    Expects a GitHub-flavored Markdown pipe table immediately following a
+    heading line that matches `heading` exactly, with a header row and a
+    separator row. Returns an empty list when the heading or table shape is
+    not found; callers must treat that as unresolved, not as a passing check.
+    """
+    lines = markdown_text.splitlines()
+    try:
+        start = next(i for i, line in enumerate(lines) if line.strip() == heading)
+    except StopIteration:
+        return []
+    table_lines: list[str] = []
+    for line in lines[start + 1 :]:
+        stripped = line.strip()
+        if stripped.startswith("|"):
+            table_lines.append(stripped)
+        elif table_lines:
+            break
+    if len(table_lines) < 2:
+        return []
+    headers = [cell.strip() for cell in table_lines[0].strip("|").split("|")]
+    if column not in headers:
+        return []
+    index = headers.index(column)
+    values: list[str] = []
+    for row in table_lines[2:]:
+        cells = [cell.strip() for cell in row.strip("|").split("|")]
+        if index < len(cells):
+            values.append(cells[index].strip("`"))
+    return values
+
+
+def find_duplicate_values(values: list[str]) -> list[str]:
+    """Return values that occur more than once, in first-seen order."""
+    counts: dict[str, int] = {}
+    for value in values:
+        counts[value] = counts.get(value, 0) + 1
+    duplicates: list[str] = []
+    for value in values:
+        if counts[value] > 1 and value not in duplicates:
+            duplicates.append(value)
+    return duplicates
+
+
+def find_stale_source_paths(source_paths: list[str], repo_root: Path) -> list[str]:
+    """Return declared repository-relative source paths that do not exist.
+
+    A path escaping `repo_root` is reported as stale rather than resolved.
+    """
+    resolved_root = repo_root.resolve()
+    stale: list[str] = []
+    for raw in source_paths:
+        candidate = (repo_root / raw).resolve()
+        try:
+            candidate.relative_to(resolved_root)
+        except ValueError:
+            stale.append(raw)
+            continue
+        if not candidate.exists():
+            stale.append(raw)
+    return stale
+
+
+def parse_recorded_fingerprint(markdown_text: str) -> str | None:
+    r"""Extract the recorded fingerprint from a "...fingerprint..." line.
+
+    Matches both a standalone `Fingerprint: \`<16 hex>\`` line and a combined
+    `Baseline and fingerprint: \`<git revision>\` / \`<16 hex>\`` line. A
+    40-character Git revision on the same line is not 16 hex characters, so
+    it is never mistaken for the fingerprint; when a line has more than one
+    16-hex token, the last one is treated as the fingerprint.
+    """
+    for line in markdown_text.splitlines():
+        if "fingerprint" not in line.lower():
+            continue
+        matches = HEX16_TOKEN_PATTERN.findall(line)
+        if matches:
+            return matches[-1]
+    return None

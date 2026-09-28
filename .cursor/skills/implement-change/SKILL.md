@@ -27,7 +27,7 @@ Require approved scope and acceptance criteria. Run repository preflight, then r
 9. Give the user a `/validate-change` handoff with changed paths, commands, baseline, reviewer findings, and known gaps. Do not claim the slash command ran automatically.
 
 ## Boundaries
-Infrastructure, IAM, security, data migration, and production-affecting changes require `check-governance` and explicit approvals before state-changing operations. Use local Git for read-only baseline inspection. Do not commit, push, open a PR, or deploy.
+Infrastructure, IAM, security, data migration, and production-affecting changes require explicit review and scoped approval before state-changing operations. Dedicated governance integration and defect investigation are deferred. Use local Git for read-only baseline inspection. Do not commit, push, open a PR, or deploy.
 
 ## Output
 Return changed behavior, files, baseline, tests added or updated, known risks, and validation handoff.

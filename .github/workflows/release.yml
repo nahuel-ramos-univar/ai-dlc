@@ -33,6 +33,11 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Run required release checks
+        run: |
+          python3 tests/skill_contracts.py
+          python3 tests/context_tools_tests.py
+          python3 tests/release_contracts.py
       - name: Dry-run (show bump)
         run: bash scripts/release/release.sh --dry-run
       - name: Release

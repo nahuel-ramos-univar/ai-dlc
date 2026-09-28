@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).parents[1]
@@ -80,11 +83,70 @@ def test_prepend_changelog_and_apply_version() -> None:
     assert "old" in text
 
 
+def git(repo: Path, *args: str) -> None:
+    subprocess.run(
+        ["git", *args],
+        cwd=repo,
+        check=True,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+
+
+def commit(repo: Path, subject: str) -> None:
+    marker = repo / f"{len(list(repo.glob('*.txt')))}.txt"
+    marker.write_text(subject + "\n", encoding="utf-8")
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", subject)
+
+
+def check_commits(repo: Path, commit_range: str = "HEAD") -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["bash", str(ROOT / "scripts" / "release" / "check_conventional_commits.sh"), commit_range],
+        cwd=repo,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env={**os.environ, "RELEASE_ROOT": str(repo)},
+    )
+
+
+def test_conventional_commit_validator() -> None:
+    with tempfile.TemporaryDirectory() as temporary:
+        repo = Path(temporary)
+        git(repo, "init", "-q")
+        git(repo, "config", "user.name", "Test User")
+        git(repo, "config", "user.email", "test@example.invalid")
+
+        commit(repo, "invalid subject")
+        invalid = check_commits(repo)
+        assert invalid.returncode == 1
+        assert "invalid subject" in invalid.stdout
+
+        commit(repo, "fix: accepted final record")
+        valid = check_commits(repo, "HEAD^..HEAD")
+        assert valid.returncode == 0
+
+        commit(repo, "still invalid")
+        multiple = check_commits(repo, "HEAD~2..HEAD")
+        assert multiple.returncode == 1
+        assert "still invalid" in multiple.stdout
+
+        invalid_range = check_commits(repo, "missing..HEAD")
+        assert invalid_range.returncode == 2
+        assert "cannot read commit range" in invalid_range.stderr
+
+        commit(repo, "Merge pull request #123 from example/branch")
+        merge = check_commits(repo, "HEAD^..HEAD")
+        assert merge.returncode == 0
+
+
 if __name__ == "__main__":
     tests = [
         test_bump_rules,
         test_changelog_grouping_and_links,
         test_prepend_changelog_and_apply_version,
+        test_conventional_commit_validator,
     ]
     for test in tests:
         test()

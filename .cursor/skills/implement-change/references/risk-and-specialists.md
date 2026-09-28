@@ -4,7 +4,7 @@ Use **fast** depth for well-understood, reversible, isolated changes. Independen
 
 Use **standard** depth when behavior, contracts, regressions, or cross-component impact may change. Request an independent `implementation-reviewer` assessment before validation.
 
-Use **deep** depth for security, identity, infrastructure, payments, data integrity, destructive operations, public/shared contracts, or substantial uncertainty. Request an independent review and involve `governance-reviewer` when applicable.
+Use **deep** depth for security, identity, infrastructure, payments, data integrity, destructive operations, public/shared contracts, or substantial uncertainty. Request an independent review and identify required approvals. Dedicated governance integration is deferred.
 
 The main chat may use an `implementer` for bounded frontend, backend, infrastructure, integration, or testing work. Give the agent its objective, boundaries, baseline, paths, acceptance criteria, dependencies, constraints, expected output, validation responsibility, and stop conditions. Avoid concurrent edits to the same path.
 

@@ -23,7 +23,7 @@ Start when the user runs `/validate-change` with the changed paths, baseline, ac
 5. The main chat may request an independent `validator` or `implementation-reviewer` assessment for standard or deep-risk changes when a second review reduces uncertainty. Scope frontend/accessibility, backend/data integrity, infrastructure/permissions, contracts/integrations, QA/E2E, or architecture review only when relevant.
 6. Coordinate Bugbot status as part of this workflow. Record it as passed, failed, blocked, not run, or not applicable with its reviewed code state.
 7. Invalidate affected evidence if material code or configuration changes after a check.
-8. Request `check-governance` for high-risk changes or materially stale review rules.
+8. For high-risk changes or materially stale review rules, identify the required review and approval. Dedicated governance integration is deferred.
 9. Return **ready to deliver** only when policy-required evidence is passed or an approved exception is recorded. Otherwise provide a targeted implementation handoff and identify the verification scope that must rerun.
 
 ## Bugbot

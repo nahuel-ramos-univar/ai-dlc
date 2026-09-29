@@ -856,6 +856,10 @@ def test_validate_generated_context_true_multi_repo_engagement_passes() -> None:
         assert statuses["modules:source:payments:services/api"] == "passed"
         assert statuses["modules:fingerprint:../../web/apps/api/AIDLC_CONTEXT.md"] == "passed"
         assert statuses["modules:fingerprint:../../payments/services/api/AIDLC_CONTEXT.md"] == "passed"
+        assert all(check.status in ("passed", "not_applicable") for check in checks)
+        assert cli_validate(
+            [str(index), "--root", f"web={web}", "--root", f"payments={payments}"]
+        ) == 0
 
 
 def test_cli_validate_exit_codes() -> None:
@@ -1254,6 +1258,222 @@ def test_artifact_home_fallback_document_is_not_required_inside_source() -> None
         assert statuses["modules:fingerprint:context/web/storefront.md"] == "passed"
         assert statuses["modules:identity:context/web/storefront.md"] == "passed"
         assert not fallback.is_relative_to(source)
+        assert cli_validate([str(index), "--root", f"web={web}", "--index-repository-id", "web"]) == 0
+
+
+def _insert_before_generated_end(path: Path, extra: str) -> None:
+    text = path.read_text()
+    path.write_text(text.replace("<!-- AI-DLC:generated:end -->", f"{extra}\n<!-- AI-DLC:generated:end -->", 1))
+
+
+def _duplicate_section(path: Path, heading: str) -> None:
+    lines = path.read_text().splitlines()
+    start = next(index for index, line in enumerate(lines) if line.strip() == heading)
+    end = start + 1
+    while end < len(lines):
+        if lines[end].startswith("## ") or lines[end].strip() == "<!-- AI-DLC:generated:end -->":
+            break
+        end += 1
+    block = "\n".join(lines[start:end]).rstrip()
+    _insert_before_generated_end(path, block)
+
+
+def _replace_context_target(index: Path, target: str) -> None:
+    text = index.read_text().replace("[x](../apps/storefront/AIDLC_CONTEXT.md)", f"[x]({target})")
+    index.write_text(text)
+
+
+def test_https_context_target_fails_without_skipping_the_module() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web, index, module_doc = _single_repo_fixture(temp)
+        _replace_context_target(index, "https://example.com/context.md")
+        module_doc.write_text("this is not a valid context document\n")
+        checks = validate_generated_context(index, {"web": web})
+        link = next(check for check in checks if check.name == "modules:link:https://example.com/context.md")
+        assert link.status == "failed"
+        assert not any(check.name.startswith("modules:identity:") and check.status == "passed" for check in checks)
+        assert not any(check.name.startswith("modules:fingerprint:") and check.status == "passed" for check in checks)
+        assert cli_validate([str(index), "--root", f"web={web}"]) == 1
+
+
+def test_anchor_context_target_fails() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web, index, module_doc = _single_repo_fixture(temp)
+        _replace_context_target(index, "#scope")
+        module_doc.write_text("this is not a valid context document\n")
+        checks = validate_generated_context(index, {"web": web})
+        link = next(check for check in checks if check.name == "modules:link:#scope")
+        assert link.status == "failed"
+        assert not any(check.status == "passed" and check.name.startswith("modules:identity:") for check in checks)
+        assert cli_validate([str(index), "--root", f"web={web}"]) == 1
+
+
+def test_local_context_target_may_include_a_fragment() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web, index, _module_doc = _single_repo_fixture(temp)
+        target = "../apps/storefront/AIDLC_CONTEXT.md#identity"
+        _replace_context_target(index, target)
+        checks = validate_generated_context(index, {"web": web})
+        statuses = {check.name: check.status for check in checks}
+        assert statuses[f"modules:link:{target}"] == "passed"
+        assert statuses[f"modules:identity:{target}"] == "passed"
+        assert statuses[f"modules:fingerprint:{target}"] == "passed"
+        assert cli_validate([str(index), "--root", f"web={web}"]) == 0
+
+
+def test_external_evidence_link_stays_not_applicable() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web, index, module_doc = _single_repo_fixture(temp)
+        _insert_before_generated_end(
+            module_doc,
+            "\n".join(
+                [
+                    "## Evidence and existing docs",
+                    "",
+                    "- [guide](https://example.com/guide)",
+                    "",
+                ]
+            ),
+        )
+        checks = validate_generated_context(index, {"web": web})
+        evidence = next(
+            check for check in checks if check.name.endswith("https://example.com/guide")
+        )
+        assert evidence.status == "not_applicable"
+        assert all(check.status in ("passed", "not_applicable") for check in checks)
+        assert cli_validate([str(index), "--root", f"web={web}"]) == 0
+
+
+def test_duplicate_module_identity_sections_with_conflicting_values_fail() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web, index, module_doc = _single_repo_fixture(temp)
+        _insert_before_generated_end(
+            module_doc,
+            "\n".join(
+                [
+                    "## Identity and scope",
+                    "",
+                    "- Repository ID: `wrong`",
+                    "- Module ID: `wrong`",
+                    "- Source: `missing`",
+                    "",
+                ]
+            ),
+        )
+        label = "../apps/storefront/AIDLC_CONTEXT.md"
+        checks = validate_generated_context(index, {"web": web})
+        statuses = {check.name: check.status for check in checks}
+        assert statuses[f"modules:structure:{label}"] == "failed"
+        assert statuses[f"modules:identity:{label}"] == "failed"
+        assert statuses[f"modules:fingerprint:{label}"] != "passed"
+        assert cli_validate([str(index), "--root", f"web={web}"]) == 1
+
+
+def test_duplicate_module_identity_sections_with_identical_values_fail() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web, index, module_doc = _single_repo_fixture(temp)
+        _duplicate_section(module_doc, "## Identity and scope")
+        label = "../apps/storefront/AIDLC_CONTEXT.md"
+        checks = validate_generated_context(index, {"web": web})
+        statuses = {check.name: check.status for check in checks}
+        assert statuses[f"modules:structure:{label}"] == "failed"
+        assert statuses[f"modules:identity:{label}"] == "failed"
+        assert statuses[f"modules:fingerprint:{label}"] != "passed"
+        assert cli_validate([str(index), "--root", f"web={web}"]) == 1
+
+
+def test_duplicate_index_scope_sections_fail() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web, index, _module_doc = _single_repo_fixture(temp)
+        _duplicate_section(index, "## Scope")
+        checks = validate_generated_context(index, {"web": web})
+        statuses = {check.name: check.status for check in checks}
+        assert statuses["index:structure"] == "failed"
+        assert statuses["index:identity"] != "passed"
+        assert statuses["index:fingerprint"] != "passed"
+        assert cli_validate([str(index), "--root", f"web={web}"]) == 1
+
+
+def test_duplicate_index_modules_sections_fail() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web, index, _module_doc = _single_repo_fixture(temp)
+        _duplicate_section(index, "## Modules")
+        checks = validate_generated_context(index, {"web": web})
+        statuses = {check.name: check.status for check in checks}
+        assert statuses["modules:table"] == "failed"
+        assert cli_validate([str(index), "--root", f"web={web}"]) == 1
+
+
+def _assert_fenced_heading_is_not_a_duplicate(fence: str) -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web, index, module_doc = _single_repo_fixture(temp)
+        _insert_before_generated_end(
+            module_doc,
+            "\n".join(
+                [
+                    fence,
+                    "## Identity and scope",
+                    "",
+                    "- Repository ID: `wrong`",
+                    "- Module ID: `wrong`",
+                    "- Source: `missing`",
+                    fence,
+                    "",
+                ]
+            ),
+        )
+        _insert_before_generated_end(
+            index,
+            "\n".join(
+                [
+                    fence,
+                    "## Scope",
+                    "",
+                    "- Repository ID: `wrong`",
+                    fence,
+                    "",
+                    fence,
+                    "## Modules",
+                    fence,
+                    "",
+                ]
+            ),
+        )
+        checks = validate_generated_context(index, {"web": web})
+        assert all(check.status in ("passed", "not_applicable") for check in checks)
+        assert cli_validate([str(index), "--root", f"web={web}"]) == 0
+
+
+def test_backtick_fenced_canonical_headings_are_not_duplicate_sections() -> None:
+    _assert_fenced_heading_is_not_a_duplicate("```")
+
+
+def test_tilde_fenced_canonical_headings_are_not_duplicate_sections() -> None:
+    _assert_fenced_heading_is_not_a_duplicate("~~~")
+
+
+def test_canonical_heading_outside_generated_block_is_not_a_duplicate() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web, index, module_doc = _single_repo_fixture(temp)
+        module_doc.write_text(
+            module_doc.read_text()
+            + "\n## Identity and scope\n\n- Repository ID: `wrong`\n- Module ID: `wrong`\n- Source: `missing`\n"
+        )
+        index.write_text(
+            index.read_text() + "\n## Scope\n\n- Repository ID: `wrong`\n\n## Modules\n\n| Module |\n| --- |\n| `other` |\n"
+        )
+        checks = validate_generated_context(index, {"web": web})
+        assert all(check.status in ("passed", "not_applicable") for check in checks)
+        assert cli_validate([str(index), "--root", f"web={web}"]) == 0
+
+
+def test_valid_single_and_multi_repository_documents_still_pass() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web, index, _module_doc = _single_repo_fixture(temp)
+        checks = validate_generated_context(index, {"web": web})
+        assert all(check.status in ("passed", "not_applicable") for check in checks)
+        assert cli_validate([str(index), "--root", f"web={web}"]) == 0
+    test_validate_generated_context_true_multi_repo_engagement_passes()
 
 
 if __name__ == "__main__":
@@ -1315,6 +1535,18 @@ if __name__ == "__main__":
         test_failed_check_takes_exit_precedence_over_unresolved,
         test_unavailable_repository_is_unresolved_not_failed,
         test_artifact_home_fallback_document_is_not_required_inside_source,
+        test_https_context_target_fails_without_skipping_the_module,
+        test_anchor_context_target_fails,
+        test_local_context_target_may_include_a_fragment,
+        test_external_evidence_link_stays_not_applicable,
+        test_duplicate_module_identity_sections_with_conflicting_values_fail,
+        test_duplicate_module_identity_sections_with_identical_values_fail,
+        test_duplicate_index_scope_sections_fail,
+        test_duplicate_index_modules_sections_fail,
+        test_backtick_fenced_canonical_headings_are_not_duplicate_sections,
+        test_tilde_fenced_canonical_headings_are_not_duplicate_sections,
+        test_canonical_heading_outside_generated_block_is_not_a_duplicate,
+        test_valid_single_and_multi_repository_documents_still_pass,
     ]
     for test in tests:
         test()

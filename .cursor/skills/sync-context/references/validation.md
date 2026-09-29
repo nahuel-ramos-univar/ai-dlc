@@ -128,10 +128,23 @@ returns a list of `ValidationCheck(name, status, detail)`. `status` is one of:
 Index rows are also checked against each module document's `Repository ID`,
 `Module ID`, and `Source` inside its generated metadata. Freshness is
 computed only after those three agree. A fallback document may live outside
-the source directory. Context links must resolve to a regular file; a
-directory target fails instead of being read as text. `missing` and
-`unresolvable` references fail. `unavailable` and an unresolved repository
-identity stay `unresolved`.
+the source directory. A Modules-table Context target must be a local,
+authorized, readable file. A URL or a same-document anchor is not a
+substitute, and the check fails without fetching anything. A `#fragment`
+on that local path is allowed. An external link in ordinary documentation
+or in `## Evidence and existing docs` is different: it stays
+`not_applicable` when it is explicitly unverified. `missing` and
+`unresolvable` references fail. A directory target fails instead of being
+read as text. `unavailable` and an unresolved repository identity stay
+`unresolved`.
+
+A generated repository index has exactly one live `## Scope` and exactly
+one live `## Modules`. A generated module document has exactly one live
+`## Identity and scope`. A second copy fails even when the text matches.
+Headings inside backtick or tilde fences, and headings outside the
+generated block, are not that copy. When the metadata section is
+ambiguous, identity and fingerprint are not reported as passed. An
+ambiguous freshness check is not a successful freshness check.
 
 `## Evidence and existing docs` path references are checked too. A bullet
 that is only a Markdown link is resolved relative to the context document.

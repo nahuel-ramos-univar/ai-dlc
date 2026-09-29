@@ -566,16 +566,53 @@ def _live_lines(markdown_text: str) -> list[str]:
     return live
 
 
+@dataclass(frozen=True)
+class LiveSection:
+    """One live section, or why it is not an unambiguous match.
+
+    `status` is "ok", "missing", or "ambiguous". "ambiguous" means the same
+    heading appears more than once outside fenced examples. Callers must not
+    read `lines` unless status is "ok".
+    """
+
+    status: str
+    lines: tuple[str, ...] = ()
+
+
+def find_live_section(markdown_text: str, heading: str) -> LiveSection:
+    """Find the unique live section under `heading`.
+
+    Fenced backtick and tilde examples are ignored. A second live heading
+    with the same text is ambiguous even when the two sections match.
+    """
+    heading_level = len(heading) - len(heading.lstrip("#"))
+    lines = _live_lines(markdown_text)
+    starts = [index for index, line in enumerate(lines) if line.strip() == heading]
+    if not starts:
+        return LiveSection("missing")
+    if len(starts) > 1:
+        return LiveSection("ambiguous")
+    section: list[str] = []
+    for line in lines[starts[0] + 1 :]:
+        heading_match = HEADING_PATTERN.match(line.strip())
+        if heading_match and len(heading_match.group(1)) <= heading_level:
+            break
+        section.append(line)
+    return LiveSection("ok", tuple(section))
+
+
 def _section_lines(markdown_text: str, heading: str) -> list[str] | None:
-    """Return the live lines of the section under `heading`, or None if absent.
+    """Return the live lines of the first section under `heading`, or None.
 
     Heading discovery ignores fenced examples. The section stops at the next
-    live heading of the same or higher level.
+    live heading of the same or higher level. Canonical validation must use
+    `find_live_section` instead, so a duplicate heading is not silently
+    reduced to this first match.
     """
     heading_level = len(heading) - len(heading.lstrip("#"))
     lines = _live_lines(markdown_text)
     try:
-        start = next(i for i, line in enumerate(lines) if line.strip() == heading)
+        start = next(index for index, line in enumerate(lines) if line.strip() == heading)
     except StopIteration:
         return None
     section: list[str] = []
@@ -739,7 +776,8 @@ def parse_recorded_fingerprint(markdown_text: str) -> FingerprintField:
     "malformed" when a fingerprint field line does not match either canonical
     shape, or when the generated markers themselves are malformed. Returns
     "ambiguous" when more than one canonical field is present, even if the
-    values match, when a well-formed field coexists with a malformed one, or
+    values match, when a well-formed field coexists with a malformed one,
+    when the metadata heading is duplicated inside the generated block, or
     when more than one generated block exists. A line that merely contains
     the word "fingerprint" or "fingerprinted" is not a field. Never falls
     back to text outside the generated block, and never silently prefers one
@@ -751,10 +789,17 @@ def parse_recorded_fingerprint(markdown_text: str) -> FingerprintField:
     if block.status != "ok":
         return FingerprintField("ambiguous" if block.status == "ambiguous" else "malformed")
 
-    section = _section_lines(block.text, "## Identity and scope")
-    if section is None:
-        section = _section_lines(block.text, "## Scope")
-    if section is None:
+    identity_section = find_live_section(block.text, "## Identity and scope")
+    scope_section = find_live_section(block.text, "## Scope")
+    if identity_section.status == "ambiguous":
+        return FingerprintField("ambiguous")
+    if identity_section.status == "ok":
+        section = list(identity_section.lines)
+    elif scope_section.status == "ambiguous":
+        return FingerprintField("ambiguous")
+    elif scope_section.status == "ok":
+        section = list(scope_section.lines)
+    else:
         return FingerprintField("missing")
 
     candidates: list[str] = []
@@ -798,10 +843,25 @@ class ValidationCheck:
     detail: str
 
 
-def _reference_check(name: str, status: str, ok_detail: str) -> ValidationCheck:
+def _reference_check(
+    name: str, status: str, ok_detail: str, *, mandatory_local: bool = False
+) -> ValidationCheck:
+    """Map a link classification to a validation check.
+
+    `mandatory_local` is only for a module row's Context target, which must
+    be a local readable document. A URL or same-document anchor fails that
+    check. Ordinary documentation and evidence links keep the default:
+    external references stay not_applicable and are not fetched.
+    """
     if status == "ok":
         return ValidationCheck(name, "passed", ok_detail)
     if status == "external":
+        if mandatory_local:
+            return ValidationCheck(
+                name,
+                "failed",
+                "context target must be a local readable document, not a URL or anchor",
+            )
         return ValidationCheck(name, "not_applicable", "external or anchor reference")
     if status in {"unavailable", "unresolved"}:
         return ValidationCheck(name, "unresolved", f"reference status: {status}")
@@ -827,11 +887,18 @@ def _structure_from_text(name: str, text: str, required_heading: str) -> Validat
     block = parse_generated_block(text)
     if block.status != "ok":
         return ValidationCheck(name, "failed", f"generated block status: {block.status}")
-    if _section_lines(block.text, required_heading) is None:
+    found = find_live_section(block.text, required_heading)
+    if found.status == "missing":
         return ValidationCheck(
             name,
             "failed",
             f"missing required heading {required_heading!r} inside the generated block",
+        )
+    if found.status == "ambiguous":
+        return ValidationCheck(
+            name,
+            "failed",
+            f"duplicate heading {required_heading!r} inside the generated block",
         )
     return ValidationCheck(name, "passed", f"markers and {required_heading!r} present")
 
@@ -864,10 +931,12 @@ def resolve_index_identity(markdown_text: str, supplied_id: str | None) -> Index
     block = parse_generated_block(markdown_text)
     if block.status != "ok":
         return IndexIdentity("unresolved", detail=f"generated block status: {block.status}")
-    section = _section_lines(block.text, "## Scope")
-    if section is None:
+    found = find_live_section(block.text, "## Scope")
+    if found.status == "ambiguous":
+        return IndexIdentity("unresolved", detail="duplicate ## Scope inside the generated block")
+    if found.status != "ok":
         return IndexIdentity("unresolved", detail="missing ## Scope inside the generated block")
-    fields = parse_labeled_fields(section)
+    fields = parse_labeled_fields(list(found.lines))
     if fields.status != "ok":
         return IndexIdentity("unresolved", detail=fields.detail)
 
@@ -975,79 +1044,96 @@ def _module_document_checks(
         return checks
 
     block = parse_generated_block(text)
-    section = _section_lines(block.text, "## Identity and scope") if block.status == "ok" else None
-    fields = parse_labeled_fields(section) if section is not None else None
-    if block.status != "ok" or section is None or fields is None or fields.status != "ok":
-        detail = "module metadata is missing or ambiguous"
-        if fields is not None and fields.status != "ok":
-            detail = fields.detail
-        elif block.status != "ok":
-            detail = f"generated block status: {block.status}"
-        checks.append(ValidationCheck(identity_name, "unresolved", detail))
-        checks.append(ValidationCheck(fingerprint_name, "unresolved", detail))
+    found = find_live_section(block.text, "## Identity and scope") if block.status == "ok" else None
+    if found is not None and found.status == "ambiguous":
+        checks.append(
+            ValidationCheck(
+                identity_name,
+                "failed",
+                "duplicate ## Identity and scope inside the generated block",
+            )
+        )
+        checks.append(
+            ValidationCheck(
+                fingerprint_name,
+                "unresolved",
+                "identity section is ambiguous, so freshness was not compared",
+            )
+        )
     else:
-        declared_repo = fields.values.get("Repository ID") or ""
-        declared_module = fields.values.get("Module ID") or ""
-        declared_source = fields.values.get("Source") or ""
-        conflicts: list[str] = []
-        blocked: list[str] = []
-        if not repository_id:
-            blocked.append("index row has no repository identity")
-        elif declared_repo != repository_id:
-            conflicts.append(f"Repository ID {declared_repo!r} != index {repository_id!r}")
-        if not module_id:
-            blocked.append("index row has no module ID")
-        elif declared_module != module_id:
-            conflicts.append(f"Module ID {declared_module!r} != index {module_id!r}")
-        if not source_path or not declared_source:
-            blocked.append("source scope is missing from the index row or the module document")
-        root = authorized_roots.get(repository_id) if repository_id else None
-        agreed_scope: Path | None = None
-        if source_path and declared_source:
-            if root is None:
-                blocked.append(f"repository {repository_id!r} is not in authorized_roots")
-            elif not Path(root).resolve().is_dir():
-                blocked.append(f"repository {repository_id!r} root is not accessible")
-            else:
-                index_scope = _resolved_inside(Path(root), source_path)
-                document_scope = _resolved_inside(Path(root), declared_source)
-                if index_scope is None or document_scope is None:
-                    conflicts.append("declared source path escapes its repository root")
-                elif index_scope != document_scope:
-                    conflicts.append(f"Source {declared_source!r} != index {source_path!r}")
-                else:
-                    agreed_scope = index_scope
-        if conflicts:
-            checks.append(ValidationCheck(identity_name, "failed", "; ".join(conflicts)))
-            checks.append(
-                ValidationCheck(
-                    fingerprint_name,
-                    "unresolved",
-                    "freshness is compared only after repository, module, and source agree",
-                )
-            )
-        elif blocked:
-            checks.append(ValidationCheck(identity_name, "unresolved", "; ".join(blocked)))
-            checks.append(
-                ValidationCheck(
-                    fingerprint_name,
-                    "unresolved",
-                    "freshness is compared only after repository, module, and source agree",
-                )
-            )
+        section = list(found.lines) if found is not None and found.status == "ok" else None
+        fields = parse_labeled_fields(section) if section is not None else None
+        if block.status != "ok" or section is None or fields is None or fields.status != "ok":
+            detail = "module metadata is missing or ambiguous"
+            if fields is not None and fields.status != "ok":
+                detail = fields.detail
+            elif block.status != "ok":
+                detail = f"generated block status: {block.status}"
+            checks.append(ValidationCheck(identity_name, "unresolved", detail))
+            checks.append(ValidationCheck(fingerprint_name, "unresolved", detail))
         else:
-            checks.append(ValidationCheck(identity_name, "passed", "repository, module, and source agree"))
-            fingerprint_field = parse_recorded_fingerprint(text)
-            if fingerprint_field.status != "ok" or fingerprint_field.value is None or agreed_scope is None:
+            declared_repo = fields.values.get("Repository ID") or ""
+            declared_module = fields.values.get("Module ID") or ""
+            declared_source = fields.values.get("Source") or ""
+            conflicts: list[str] = []
+            blocked: list[str] = []
+            if not repository_id:
+                blocked.append("index row has no repository identity")
+            elif declared_repo != repository_id:
+                conflicts.append(f"Repository ID {declared_repo!r} != index {repository_id!r}")
+            if not module_id:
+                blocked.append("index row has no module ID")
+            elif declared_module != module_id:
+                conflicts.append(f"Module ID {declared_module!r} != index {module_id!r}")
+            if not source_path or not declared_source:
+                blocked.append("source scope is missing from the index row or the module document")
+            root = authorized_roots.get(repository_id) if repository_id else None
+            agreed_scope: Path | None = None
+            if source_path and declared_source:
+                if root is None:
+                    blocked.append(f"repository {repository_id!r} is not in authorized_roots")
+                elif not Path(root).resolve().is_dir():
+                    blocked.append(f"repository {repository_id!r} root is not accessible")
+                else:
+                    index_scope = _resolved_inside(Path(root), source_path)
+                    document_scope = _resolved_inside(Path(root), declared_source)
+                    if index_scope is None or document_scope is None:
+                        conflicts.append("declared source path escapes its repository root")
+                    elif index_scope != document_scope:
+                        conflicts.append(f"Source {declared_source!r} != index {source_path!r}")
+                    else:
+                        agreed_scope = index_scope
+            if conflicts:
+                checks.append(ValidationCheck(identity_name, "failed", "; ".join(conflicts)))
                 checks.append(
                     ValidationCheck(
                         fingerprint_name,
                         "unresolved",
-                        f"fingerprint field status: {fingerprint_field.status}",
+                        "freshness is compared only after repository, module, and source agree",
+                    )
+                )
+            elif blocked:
+                checks.append(ValidationCheck(identity_name, "unresolved", "; ".join(blocked)))
+                checks.append(
+                    ValidationCheck(
+                        fingerprint_name,
+                        "unresolved",
+                        "freshness is compared only after repository, module, and source agree",
                     )
                 )
             else:
-                checks.append(_compare_fingerprint(fingerprint_name, fingerprint_field.value, agreed_scope))
+                checks.append(ValidationCheck(identity_name, "passed", "repository, module, and source agree"))
+                fingerprint_field = parse_recorded_fingerprint(text)
+                if fingerprint_field.status != "ok" or fingerprint_field.value is None or agreed_scope is None:
+                    checks.append(
+                        ValidationCheck(
+                            fingerprint_name,
+                            "unresolved",
+                            f"fingerprint field status: {fingerprint_field.status}",
+                        )
+                    )
+                else:
+                    checks.append(_compare_fingerprint(fingerprint_name, fingerprint_field.value, agreed_scope))
 
     evidence_name = f"modules:evidence:{label}"
     if text is None or block.status != "ok":
@@ -1184,6 +1270,16 @@ def validate_generated_context(
         )
         return checks
     generated = block.text
+    modules_section = find_live_section(generated, "## Modules")
+    if modules_section.status == "ambiguous":
+        checks.append(
+            ValidationCheck(
+                "modules:table",
+                "failed",
+                "duplicate ## Modules section inside the generated block",
+            )
+        )
+        return checks
     module_ids = extract_table_column(generated, "## Modules", "Module")
     sources = extract_table_column(generated, "## Modules", "Source")
     contexts = extract_table_column(generated, "## Modules", "Context")
@@ -1291,7 +1387,9 @@ def validate_generated_context(
                 index_path, resolved_target, authorized_roots, require_file=True
             )
             check_name = f"modules:link:{resolved_target}"
-            checks.append(_reference_check(check_name, status, "link resolves"))
+            checks.append(
+                _reference_check(check_name, status, "link resolves", mandatory_local=True)
+            )
             if status != "ok":
                 continue
             module_path = (index_path.parent / resolved_target.split("#", 1)[0]).resolve()

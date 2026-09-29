@@ -45,6 +45,9 @@ of either document.
 A single-repository index declares `Index: \`single-repository\`` and one
 `Repository ID`. Its fingerprint covers that repository. Do not add a
 `Repository` column unless every row repeats that same repository ID.
+The Context cell is a link to a local context file, not a URL or a
+same-document anchor. Each generated index has one `## Scope` and one
+`## Modules`. Each module document has one `## Identity and scope`.
 
 ```markdown
 # Repository context

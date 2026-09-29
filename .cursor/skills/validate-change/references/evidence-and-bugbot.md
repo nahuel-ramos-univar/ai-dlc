@@ -8,4 +8,4 @@ Evidence identifies the checked revision, uncommitted state, command or inspecti
 
 Mark it **pending user invocation** until evidence is returned. Record Bugbot as passed, failed, blocked, not run, or not applicable. Tie that status to the reviewed revision and working-tree state.
 
-Remote Bugbot depends on actual repository and pull-request settings. Do not promise remote execution, deduplication, or billing behavior. `deliver-change` may inspect configured checks but must not coordinate or infer Bugbot results.
+Remote Bugbot depends on actual repository and pull-request settings. Do not promise remote execution, deduplication, or billing behavior. `validate-change` records Bugbot status from evidence the developer supplies or from checks that are actually visible. It does not merge, and it does not infer a result that was not observed.

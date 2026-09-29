@@ -13,7 +13,7 @@ EXPECTED_SKILLS = {
     "refine-story",
     "implement-change",
     "validate-change",
-    "deliver-change",
+    "create-e2e-tests",
 }
 EXPECTED_AGENTS = {
     "product-reviewer",
@@ -21,6 +21,7 @@ EXPECTED_AGENTS = {
     "implementer",
     "implementation-reviewer",
     "validator",
+    "context-reviewer",
 }
 READONLY_AGENTS = EXPECTED_AGENTS - {"implementer"}
 MARKDOWN_LINK = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
@@ -79,7 +80,7 @@ def test_skill_frontmatter_and_unique_names() -> None:
 
 
 def test_removed_components_are_not_exposed_or_referenced() -> None:
-    removed_skills = {"check-governance", "resolve-defect"}
+    removed_skills = {"check-governance", "resolve-defect", "deliver-change"}
     assert not any(
         (ROOT / ".cursor" / "skills" / skill).exists() for skill in removed_skills
     )
@@ -218,10 +219,61 @@ def test_context_artifact_contract_and_skill_budgets() -> None:
         "references/context-generation.md",
         "references/incremental-refresh.md",
         "references/bugbot-configuration.md",
+        "references/validation.md",
+        "references/review-handoff.md",
     ):
         assert (sync_dir / relative).is_file()
     for skill in (ROOT / ".cursor" / "skills").glob("*/SKILL.md"):
         assert len(skill.read_text(encoding="utf-8").splitlines()) < 500
+
+
+def test_context_review_contract_has_required_language() -> None:
+    sync_dir = ROOT / ".cursor" / "skills" / "sync-context"
+
+    def flat(relative: Path) -> str:
+        return " ".join(relative.read_text(encoding="utf-8").split())
+
+    skill = flat(sync_dir / "SKILL.md")
+    generation = flat(sync_dir / "references" / "context-generation.md")
+    refresh = flat(sync_dir / "references" / "incremental-refresh.md")
+    validation = flat(sync_dir / "references" / "validation.md")
+    handoff = flat(sync_dir / "references" / "review-handoff.md")
+    reviewer = flat(ROOT / "agents" / "context-reviewer.md")
+
+    assert "inventoried" in skill.lower()
+    assert "inspected" in skill.lower()
+    assert "verified" in skill.lower()
+    assert "context-reviewer" in skill
+    assert "at most one targeted follow-up" in skill
+
+    assert "proves that test code exists, not that it passed" in generation
+    assert "proves that a job is configured, not that it ran successfully" in generation
+    assert "does not prove runtime usage" in generation
+    assert "does not prove authenticated connectivity" in generation
+    assert "Never describe all tracked or fingerprinted files as examined" in generation
+    assert "Do not create one context file per source file or directory" in generation
+
+    assert "does not prove semantic accuracy or that every file was fully inspected" in refresh
+    assert "does not cover uncommitted working-tree changes" in refresh
+
+    assert "check_document_budget" in validation
+    assert "resolve_markdown_links" in validation
+    assert "resolve_source_path" in validation
+    assert "find_stale_source_paths" in validation
+    assert "find_duplicate_values" in validation
+    assert "find_duplicate_identities" in validation
+    assert "find_duplicate_context_targets" in validation
+    assert "parse_recorded_fingerprint" in validation
+    assert "validate_generated_context" in validation
+    assert "authorized_roots" in validation
+    assert "not semantic correctness" in validation
+    assert "Never treat this as passing" in validation
+    assert "Do not write an absolute local path" in validation
+
+    assert "at most one targeted follow-up" in handoff
+    assert "Do not trigger review solely by file count" in handoff
+    assert "never call main-chat self-review independent" in handoff
+    assert "is not proof that the entire repository context is correct" in reviewer
 
 
 def test_release_workflow_files_exist() -> None:
@@ -234,6 +286,56 @@ def test_release_workflow_files_exist() -> None:
     assert re.match(r"^\d+\.\d+\.\d+$", version)
     gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
     assert "__pycache__/" in gitignore
+
+
+def test_context_review_fixture_documents_expected_findings() -> None:
+    """Structural check only: the fixture exists and names its seeded defects.
+
+    This does not run `context-reviewer` and does not assert that any
+    reviewer catches these defects. It only confirms the fixture and its
+    expected-findings document are present, labeled unevaluated, and agree
+    on which defect markers they describe. The reviewer-facing document
+    (`AIDLC_CONTEXT.md`) must not label its own defects inline; the answer
+    key lives only in `expected_findings.md`.
+    """
+    fixture_dir = ROOT / "tests" / "fixtures" / "context_review"
+    fixture = (fixture_dir / "AIDLC_CONTEXT.md").read_text(encoding="utf-8")
+    findings = (fixture_dir / "expected_findings.md").read_text(encoding="utf-8")
+
+    assert "one recorded fallback review" in findings.lower()
+    assert "not native named-agent verification" in findings
+    assert "not an automated semantic regression test" in findings
+    assert "answer key" in findings.lower()
+    assert "Live evaluation record" in findings
+
+    markers = {
+        "unsupported-coverage-claim",
+        "unsupported-claim",
+        "omitted-dependency",
+        "fact-contradicted-by-unknown",
+    }
+    for marker in markers:
+        # The reviewer-facing fixture must never label its own seeded defects.
+        assert f"fixture-defect: {marker}" not in fixture, (
+            f"AIDLC_CONTEXT.md must not reveal its own seeded defect {marker}"
+        )
+        assert marker in findings, f"expected_findings.md is missing marker {marker}"
+    assert "fixture-defect" not in fixture
+    assert "expected_findings.md" not in fixture
+
+    # The fixture's source tree must back the omitted-dependency finding with
+    # a real, grep-able import, not just prose.
+    receipts = (fixture_dir / "source" / "receipts" / "receipts_digest.py").read_text(
+        encoding="utf-8"
+    )
+    assert "from notifications.notifications_worker import NOTIFICATION_SENT_TOPIC" in receipts
+    notifications_files = sorted(
+        (fixture_dir / "source" / "notifications").glob("*.py")
+    )
+    assert len(notifications_files) == 2, (
+        "the coverage-claim finding depends on source/notifications having "
+        "exactly 2 files, not the 4 the fixture claims to have examined"
+    )
 
 
 def test_manual_evaluation_and_shared_contracts_exist() -> None:
@@ -260,6 +362,8 @@ if __name__ == "__main__":
         test_context_retrieval_contract_is_wired,
         test_context_generation_contract_has_required_examples,
         test_context_artifact_contract_and_skill_budgets,
+        test_context_review_contract_has_required_language,
+        test_context_review_fixture_documents_expected_findings,
         test_release_workflow_files_exist,
         test_manual_evaluation_and_shared_contracts_exist,
     ]

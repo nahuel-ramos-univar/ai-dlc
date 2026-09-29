@@ -47,6 +47,7 @@ content.
 - Repository: `payments-api`
   - Canonical remote: `github.com/example/payments-api`
   - Artifact home: `.`
+  - Root: `.`
 - Module: `payments-api`
   - ID: `payments-api`
   - Source: `services/payments`
@@ -55,3 +56,29 @@ content.
 Do not create `.ai-dlc-config.md` in every source repository to record a
 Bugbot decision. Store decisions under the configured artifact home, keyed by
 the stable repository ID.
+
+## Multi-repository `Root`
+
+For a workspace that spans more than one repository (an engagement index that
+links to sibling repositories, or a repository index that links into a shared
+package repository), record each linked repository's own `Root:` field
+relative to the artifact home, for example `Root: ../payments-api` or
+`Root: ../../shared/design-system`. This `Root` is what
+[validation.md](validation.md) turns into an `authorized_roots` entry: a
+mapping from repository ID to that repository's actual root path, so
+`resolve_markdown_links` and `resolve_source_path` know which local
+directories are in scope without guessing from the filesystem or treating the
+whole machine as authorized.
+
+`Root` in `.ai-dlc-config.md` must stay a path relative to the artifact home,
+never an absolute local checkout path; only the running validator resolves it
+to an absolute path in memory for that one run. Do not write an absolute
+machine-local path into `.ai-dlc-config.md`, `AIDLC_CONTEXT.md`, or any other
+portable generated document — a different checkout of the same workspace has
+a different absolute path, and a committed absolute path would leak local
+machine layout into shared, versioned context.
+
+A repository with no declared `Root` cannot be added to `authorized_roots`
+for that validation run. Its own links and source paths report `unresolved`,
+not silently `ok`; report this to the user as a workspace configuration gap,
+not as a passing check.

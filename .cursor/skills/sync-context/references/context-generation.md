@@ -19,7 +19,7 @@ module as the analysis scope. An unversioned tree may be analyzed with baseline
 
 Keep `.ai-dlc-config.md` minimal. Keep `aidlc-docs/repository-context.md` as a short workspace index. It lists each actual Git root, its repository ID, meaningful modules, source paths, freshness marker, and links to colocated context. It is not a codebase dump.
 
-Use `<module-root>/AIDLC_CONTEXT.md` for useful modules. A module has an architectural responsibility: app, API, service, shared package, or infrastructure stack. Do not infer a module from directory depth. A small single-module repository keeps one concise repository context and no manufactured module file.
+Use `<module-root>/AIDLC_CONTEXT.md` for useful modules. A module has an architectural responsibility: app, API, service, shared package, or infrastructure stack. Do not infer a module from directory depth. A small single-module repository keeps one concise repository context and no manufactured module file. Do not create one context file per source file or directory; generate module context only where it provides useful, distinct information beyond the repository index.
 
 If the source repository or module root cannot be written, use the documented
 fallback `<artifact-home>/aidlc-docs/context/<repo-id>/<module-id>.md` and link
@@ -48,6 +48,12 @@ repository-relative source paths and the verified remote when available. Do not
 write absolute local checkout paths into generated context.
 
 Each module `AIDLC_CONTEXT.md` states repository identity, source paths, responsibility, entry points, interfaces, callers or dependencies, verified tests and commands, constraints, evidence paths, freshness, and explicit unknowns. Do not copy source, generated output, vendor content, cache content, or secrets.
+
+Ground a material claim about architecture, behavior, integrations, configuration, security boundaries, or testing in source evidence: a repository-relative path plus the relevant symbol or configuration key. Avoid relying only on a line number, because it goes stale. A test file proves that test code exists, not that it passed. A CI configuration proves that a job is configured, not that it ran successfully. A declared dependency does not prove runtime usage. A configured integration does not prove authenticated connectivity. Repository documentation supports evidence; it does not automatically override current code.
+
+Distinguish a verified fact, an inference labeled as such, and an unresolved unknown. Do not list an assertion under Unknowns when the same or another generated document already states it as a verified fact elsewhere; that is a contradiction, not an unknown. For each material unknown, state briefly what remains unknown, what evidence is missing, and how it could be verified. Where code and documentation conflict, record the discrepancy rather than silently choosing a narrative. Skip a generic unknown that is irrelevant to the module's own responsibility.
+
+Never describe all tracked or fingerprinted files as examined, analyzed, or verified merely because their paths were listed by Git or included in a fingerprint. Reading a manifest does not verify every component it lists; reading part of a file does not verify the whole file. State the repository index's `Examined` field as the boundaries and representative paths actually inspected, not a count of tracked or fingerprinted files.
 
 Freshness is a deterministic content fingerprint of the declared source scope
 and its examined paths. Use `scripts/context_tools.py`:

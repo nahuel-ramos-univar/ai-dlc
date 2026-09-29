@@ -258,10 +258,17 @@ def test_context_review_contract_has_required_language() -> None:
 
     assert "check_document_budget" in validation
     assert "resolve_markdown_links" in validation
+    assert "resolve_source_path" in validation
     assert "find_stale_source_paths" in validation
     assert "find_duplicate_values" in validation
+    assert "find_duplicate_identities" in validation
+    assert "find_duplicate_context_targets" in validation
     assert "parse_recorded_fingerprint" in validation
+    assert "validate_generated_context" in validation
+    assert "authorized_roots" in validation
     assert "not semantic correctness" in validation
+    assert "Never treat this as passing" in validation
+    assert "Do not write an absolute local path" in validation
 
     assert "at most one targeted follow-up" in handoff
     assert "Do not trigger review solely by file count" in handoff
@@ -287,7 +294,9 @@ def test_context_review_fixture_documents_expected_findings() -> None:
     This does not run `context-reviewer` and does not assert that any
     reviewer catches these defects. It only confirms the fixture and its
     expected-findings document are present, labeled unevaluated, and agree
-    on which defect markers they describe.
+    on which defect markers they describe. The reviewer-facing document
+    (`AIDLC_CONTEXT.md`) must not label its own defects inline; the answer
+    key lives only in `expected_findings.md`.
     """
     fixture_dir = ROOT / "tests" / "fixtures" / "context_review"
     fixture = (fixture_dir / "AIDLC_CONTEXT.md").read_text(encoding="utf-8")
@@ -295,16 +304,37 @@ def test_context_review_fixture_documents_expected_findings() -> None:
 
     assert "unevaluated fixture" in findings.lower()
     assert "is not a passing semantic test" in findings
+    assert "answer key" in findings.lower()
+    assert "Live evaluation record" in findings
 
     markers = {
-        "coverage-overclaim",
+        "unsupported-coverage-claim",
         "unsupported-claim",
         "omitted-dependency",
         "fact-contradicted-by-unknown",
     }
     for marker in markers:
-        assert f"fixture-defect: {marker}" in fixture, f"fixture is missing marker {marker}"
+        # The reviewer-facing fixture must never label its own seeded defects.
+        assert f"fixture-defect: {marker}" not in fixture, (
+            f"AIDLC_CONTEXT.md must not reveal its own seeded defect {marker}"
+        )
         assert marker in findings, f"expected_findings.md is missing marker {marker}"
+    assert "fixture-defect" not in fixture
+    assert "expected_findings.md" not in fixture
+
+    # The fixture's source tree must back the omitted-dependency finding with
+    # a real, grep-able import, not just prose.
+    receipts = (fixture_dir / "source" / "receipts" / "receipts_digest.py").read_text(
+        encoding="utf-8"
+    )
+    assert "from notifications.notifications_worker import NOTIFICATION_SENT_TOPIC" in receipts
+    notifications_files = sorted(
+        (fixture_dir / "source" / "notifications").glob("*.py")
+    )
+    assert len(notifications_files) == 2, (
+        "the coverage-claim finding depends on source/notifications having "
+        "exactly 2 files, not the 4 the fixture claims to have examined"
+    )
 
 
 def test_manual_evaluation_and_shared_contracts_exist() -> None:

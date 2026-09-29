@@ -48,10 +48,14 @@ Distinguish three evidence levels and never conflate them: **inventoried** (a pa
    only for verified cross-boundary dependencies. If no output location is
    writable, return a proposal without claiming files were saved. Keep every
    generated document inside its line budget.
-8. Run deterministic validation: line budgets, required structure, root-to-
-   module links, source-reference paths, fingerprint comparison, stale module
-   entries, and duplicate outputs. Report each result explicitly, including an
-   unresolved reference.
+8. Run deterministic validation through `validate_generated_context` in
+   `scripts/context_tools.py` (line budgets, required structure, workspace
+   references, declared source paths, fingerprint freshness, and duplicate
+   module identities or outputs), built from an explicit `authorized_roots`
+   mapping per [validation.md](references/validation.md). Do not improvise
+   ad-hoc checks in place of this entry point. Report each result explicitly,
+   including an unresolved reference, and never treat `unresolved` as
+   passing.
 9. Request an independent `context-reviewer` assessment when warranted. State
    plainly when review was skipped and why targeted checking was enough
    instead.

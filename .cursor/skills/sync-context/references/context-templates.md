@@ -57,6 +57,19 @@ generate module context only where it is useful and distinct.
 | --- | --- | --- | --- |
 | `<module-id>` | `<path>` | `<relative link>` | current / stale / unknown |
 
+For an index whose `## Scope` authorizes more than one repository (a
+multi-repository engagement index), add a `Repository` column and fill it on
+every row:
+
+| Module | Repository | Source | Context | Status |
+| --- | --- | --- | --- | --- |
+| `<module-id>` | `<repository-id>` | `<path>` | `<relative link>` | current / stale / unknown |
+
+Without that column, a validator or reviewer cannot tell which repository a
+`Source` path belongs to and must not guess; a shared module name like `api`
+in two different repositories is not a duplicate, but only the `Repository`
+column can prove that.
+
 ## Verified integration boundaries
 
 <Link to integration map only when verified.>

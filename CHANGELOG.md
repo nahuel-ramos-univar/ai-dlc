@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.3.0 — 2026-09-29
+
+Bump: `minor`
+Compare: [v0.2.0...v0.3.0](https://github.com/nahuel-ramos-univar/ai-dlc/compare/v0.2.0...v0.3.0)
+
+### Added
+
+- feat: review generated context after sync ([`0d4f15d`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/0d4f15d32519caa0257dc9d1e18e91eae43abe58))
+
+### Fixed
+
+- fix: require local Context targets and reject duplicate canonical sections ([`c1e8c0c`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/c1e8c0c32167b1c2da3e06e81021bb87bae518bd))
+- fix: validate declared context identity and align the skill catalog ([`dd4ff14`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/dd4ff149f9d94361c646b0444c982189850b7ae4))
+- fix: validate context links against authorized repository roots ([`b3f4df9`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/b3f4df9b023878ca10d59d33c8b6d1db5246b980))
+
+### Other
+
+- Merge pull request #4 from nahuel-ramos-univar/feat/sync-context-review ([`5498a23`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/5498a2361ea6d1474bf5025366c5c0f144f98b4c))
+
 ## 0.2.0 — 2026-09-28
 
 Bump: `minor`

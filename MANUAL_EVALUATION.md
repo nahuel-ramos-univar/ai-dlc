@@ -45,10 +45,10 @@
 - [ ] Make a small factual update with no material boundary change and confirm `sync-context` states that independent review was skipped and why deterministic validation and targeted checking were enough.
 - [ ] Confirm deterministic validation reports a broken root-to-module link, a stale module source path, and a duplicate module ID rather than silently passing.
 - [ ] Confirm a `context-reviewer` finding is either applied with a rerun of the affected checks, or disputed with cited source evidence; confirm at most one targeted follow-up review runs before remaining issues are reported to the user.
-- [ ] Run delivery without an authenticated provider CLI. Confirm PR, check, and merge actions are pending with a manual handoff.
-- [ ] Open a draft PR before validation completes. Confirm outstanding checks are visible and it is not marked ready to merge.
-- [ ] Attempt a merge with missing or stale evidence. Confirm the workflow blocks merge.
-- [ ] Leave Bugbot pending. Confirm `validate-change` records it as pending and `deliver-change` consumes, rather than coordinates, that status.
+- [ ] Confirm `validate-change` does not commit, push, open a pull request, or merge. Delivery stays with the developer, using normal Git and pull-request tools, after the skill reports ready.
+- [ ] Leave Bugbot pending. Confirm `validate-change` records it as pending and does not treat that status as passed.
+- [ ] Run `create-e2e-tests` for one journey. Confirm it reuses the existing framework, or proposes a minimal setup and waits for approval before adding one. Confirm a written test is not reported as a successful run when the environment cannot execute it.
+- [ ] Run `implement-change` in defect mode with a supplied reproduction. Confirm it separates reproduced behavior from a hypothesis, adds a regression test, and hands off to `validate-change` without turning the bug into a new feature.
 - [ ] Change code after validation. Confirm only affected checks are rerun against the new code state.
 - [ ] In a clean Cursor consumer, run `/sync-context`, then `/plan-work` for one module. Confirm plan-work reads only the selected index/module context and current source.
 - [ ] In a clean Cursor consumer, run a cross-module change. Confirm retrieval expands to the relevant adjacent context and contract only.

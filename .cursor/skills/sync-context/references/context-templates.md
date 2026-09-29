@@ -39,11 +39,21 @@ generate module context only where it is useful and distinct.
 
 ## Repository index template
 
+Use one of the two shapes below. The instructions between them are not part
+of either document.
+
+A single-repository index declares `Index: \`single-repository\`` and one
+`Repository ID`. Its fingerprint covers that repository. Do not add a
+`Repository` column unless every row repeats that same repository ID.
+
 ```markdown
 # Repository context
 
+<!-- AI-DLC:generated:start -->
+
 ## Scope
 
+- Index: `single-repository`
 - Repository ID: `<persisted-id>`
 - Repository root: `<portable workspace-relative path>`
 - Artifact home: `<portable workspace-relative path>`
@@ -57,18 +67,40 @@ generate module context only where it is useful and distinct.
 | --- | --- | --- | --- |
 | `<module-id>` | `<path>` | `<relative link>` | current / stale / unknown |
 
-For an index whose `## Scope` authorizes more than one repository (a
-multi-repository engagement index), add a `Repository` column and fill it on
-every row:
+## Verified integration boundaries
+
+<Link to integration map only when verified.>
+
+## Unknowns
+
+- <Unknown, evidence gap, or intentionally unexamined area.>
+
+<!-- AI-DLC:generated:end -->
+```
+
+A multi-repository engagement index declares `Index: \`multi-repository\``
+and does not declare one `Repository ID` or one repository-wide fingerprint.
+Every Modules row needs a `Repository` column. The same module ID may appear
+in two repositories. Without that column, validation cannot assign a source
+path and must not guess. The number of authorized roots does not decide
+which shape this is.
+
+```markdown
+# Repository context
+
+<!-- AI-DLC:generated:start -->
+
+## Scope
+
+- Index: `multi-repository`
+- Artifact home: `<portable workspace-relative path>`
+- Examined: `<paths and boundaries>`
+
+## Modules
 
 | Module | Repository | Source | Context | Status |
 | --- | --- | --- | --- | --- |
 | `<module-id>` | `<repository-id>` | `<path>` | `<relative link>` | current / stale / unknown |
-
-Without that column, a validator or reviewer cannot tell which repository a
-`Source` path belongs to and must not guess; a shared module name like `api`
-in two different repositories is not a duplicate, but only the `Repository`
-column can prove that.
 
 ## Verified integration boundaries
 
@@ -77,19 +109,44 @@ column can prove that.
 ## Unknowns
 
 - <Unknown, evidence gap, or intentionally unexamined area.>
+
+<!-- AI-DLC:generated:end -->
 ```
 
 ## Module context template
 
+`Repository ID`, `Module ID`, and `Source` must match the index row.
+`Source` is the repository-relative scope that freshness is computed
+against. The context file itself may live in the module directory or in an
+artifact-home fallback path.
+
+Evidence bullets have three path forms, and only those forms are checked:
+
+- A bullet that is only a Markdown link is resolved relative to this
+  document. Use it for a file in this checkout, including a sibling
+  repository when that repository is an authorized root.
+- A bullet that is only `` `apps/storefront/index.ts` `` (a slash, or a
+  filename extension, and nothing else in the bullet) is resolved in this
+  module's owning repository.
+- A bullet that is only `` `payments-api:services/payments/handler.ts` ``
+  is a path in another authorized repository. The text before the colon is
+  the repository ID.
+
+A symbol name such as `` `OrderPlacedEvent` `` is not a file path. Prose
+that mentions a path inline is not checked. A path that exists is not proof
+that it supports the surrounding claim.
+
 ```markdown
 # AIDLC context — <module name>
+
+<!-- AI-DLC:generated:start -->
 
 ## Identity and scope
 
 - Repository ID: `<persisted-id>`
 - Module ID: `<stable-id>`
-- Source: `<repository-relative paths>`
-- Baseline and fingerprint: `<values>`
+- Source: `<repository-relative directory>`
+- Baseline and fingerprint: `<git revision>` / `<fingerprint>`
 - Examined: `<source, contracts, tests>`
 
 ## Responsibility
@@ -110,11 +167,14 @@ column can prove that.
 
 ## Evidence and existing docs
 
-- `<relative source or document link>`
+- `services/payments/handler.ts`
+- document-relative Markdown link to `services/payments/handler.ts`
 
 ## Unknowns
 
 - <Evidence that was not available or not inspected.>
+
+<!-- AI-DLC:generated:end -->
 ```
 
 Use the same body for an artifact-home fallback module context. Its title must

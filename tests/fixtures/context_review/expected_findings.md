@@ -1,17 +1,16 @@
 # Expected findings — context review fixture
 
-**Status: unevaluated fixture.** No `context-reviewer` execution, live or
-simulated, had run against `AIDLC_CONTEXT.md` in this fixture directory as
-of the last update to this file. The table below documents what a correct
-review should flag if `context-reviewer` (or a human reviewer following
+**Status: one recorded fallback review.** A general-purpose fallback run,
+not native `context-reviewer` dispatch, was recorded under "Live evaluation
+record" below. That record is not native named-agent verification and it is
+not an automated semantic regression test. The table documents what a
+correct review should flag if `context-reviewer` (or a human reviewer
+following
 [review-handoff.md](../../../.cursor/skills/sync-context/references/review-handoff.md))
 is run against `AIDLC_CONTEXT.md` plus the `source/` tree in this same
-directory. It is not a passing semantic test, and no automated check in this
-repository claims to reproduce a reviewer's judgment. Do not cite this file
-as evidence that `context-reviewer` catches these defects; only an actual
-review run is that evidence. If a live evaluation run has happened, its
-outcome is recorded under "Live evaluation record" below, not by editing
-this table.
+directory. No automated check in this repository reproduces a reviewer's
+judgment. Do not cite this file, or that one fallback run, as proof that
+native `context-reviewer` catches these defects on every run.
 
 ## Limitation: this file sits next to the material under review
 

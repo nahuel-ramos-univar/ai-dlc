@@ -13,7 +13,7 @@ EXPECTED_SKILLS = {
     "refine-story",
     "implement-change",
     "validate-change",
-    "deliver-change",
+    "create-e2e-tests",
 }
 EXPECTED_AGENTS = {
     "product-reviewer",
@@ -80,7 +80,7 @@ def test_skill_frontmatter_and_unique_names() -> None:
 
 
 def test_removed_components_are_not_exposed_or_referenced() -> None:
-    removed_skills = {"check-governance", "resolve-defect"}
+    removed_skills = {"check-governance", "resolve-defect", "deliver-change"}
     assert not any(
         (ROOT / ".cursor" / "skills" / skill).exists() for skill in removed_skills
     )
@@ -302,8 +302,9 @@ def test_context_review_fixture_documents_expected_findings() -> None:
     fixture = (fixture_dir / "AIDLC_CONTEXT.md").read_text(encoding="utf-8")
     findings = (fixture_dir / "expected_findings.md").read_text(encoding="utf-8")
 
-    assert "unevaluated fixture" in findings.lower()
-    assert "is not a passing semantic test" in findings
+    assert "one recorded fallback review" in findings.lower()
+    assert "not native named-agent verification" in findings
+    assert "not an automated semantic regression test" in findings
     assert "answer key" in findings.lower()
     assert "Live evaluation record" in findings
 

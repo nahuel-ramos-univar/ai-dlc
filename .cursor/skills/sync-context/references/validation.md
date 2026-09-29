@@ -30,11 +30,13 @@ run. Do not write an absolute local path into `.ai-dlc-config.md`,
   `document_metrics`. Use 150 for `aidlc-docs/repository-context.md` and 300
   for a module context or fallback document, per
   [context-templates.md](context-templates.md).
-- **Required structure.** Confirm the generated document still has its
-  required headings (`## Identity and scope` for a module, `## Scope` for the
-  repository index) inside the `<!-- AI-DLC:generated:start -->` /
-  `<!-- AI-DLC:generated:end -->` markers. A missing heading means a merge
-  dropped content; do not report the document as current.
+- **Required structure.** Confirm exactly one well-formed
+  `<!-- AI-DLC:generated:start -->` / `<!-- AI-DLC:generated:end -->` block,
+  and confirm the required heading (`## Identity and scope` for a module,
+  `## Scope` for the repository index) is inside that block. A heading
+  outside the block does not count. Missing, repeated, nested, or unclosed
+  markers fail this check. Fenced examples are ignored, including example
+  headings and example marker strings.
 - **Workspace references.** For every link in the repository index's Modules
   table, resolve it with `resolve_markdown_links(index_path, authorized_roots)`.
   It returns one of five states per link: `"ok"` (resolves inside an
@@ -57,19 +59,17 @@ run. Do not write an absolute local path into `.ai-dlc-config.md`,
   from a missing file), and `"unresolvable"` (the path escapes its own
   repository root).
 - **Fingerprint metadata and freshness.** Parse the recorded fingerprint with
-  `parse_recorded_fingerprint(document_text)`. It reads only the canonical
-  field inside the `<!-- AI-DLC:generated:start/end -->` block and inside
-  that document type's metadata section (`## Scope` for a repository index,
-  `## Identity and scope` for a module): a standalone `` - Fingerprint:
-  `<16 hex>` `` line, or a combined `` - Baseline and fingerprint: `<git
-  revision>` / `<16 hex>` `` line. It never mistakes a Git revision for a
-  fingerprint (the two field shapes require an exact 16-hex-character token)
-  and never reads a human note, an unrelated mention of the word, or a fenced
-  example outside that section. Its `status` is `"ok"`, `"missing"`,
-  `"malformed"` (a fingerprint-labeled line that matches neither canonical
-  shape), or `"ambiguous"` (more than one differing candidate, or a
-  well-formed field alongside a malformed one) — never a silent pick among
-  candidates. Recompute the current value with `content_fingerprint(scope_root)`
+  `parse_recorded_fingerprint(document_text)`. It reads only a canonical
+  field line inside the one generated block and inside that document type's
+  metadata section (`## Scope` for a repository index, `## Identity and
+  scope` for a module): a line that is exactly `` - Fingerprint: `<16 hex>` ``,
+  or exactly `` - Baseline and fingerprint: `<git revision>` / `<16 hex>` ``.
+  A sentence that merely contains "fingerprint" or "fingerprinted" is not a
+  field. Duplicate canonical fields are ambiguous even when the values match.
+  Missing generated markers are "missing"; the parser does not scan the rest
+  of the document. Repeated or malformed marker pairs are not a silent choice
+  of one block. It never mistakes a Git revision for a fingerprint. Its
+  `status` is `"ok"`, `"missing"`, `"malformed"`, or `"ambiguous"`. Recompute the current value with `content_fingerprint(scope_root)`
   over the document's declared scope and compare. A mismatch means the
   document is stale for that scope; it does not by itself mean the prose is
   wrong, and a match does not by itself mean the prose is right. If a format
@@ -116,9 +116,30 @@ returns a list of `ValidationCheck(name, status, detail)`. `status` is one of:
   an inaccessible repository, or a parsing failure. Never treat this as
   passing.
 - `"not_applicable"` — the check does not apply here, for example an
-  external link, or a top-level fingerprint comparison for a true
-  multi-repository engagement index that has no single owning repository
-  (pass `index_repository_id=None` for that case).
+  external link, or a repository-wide fingerprint on an index whose
+  generated `## Scope` declares `Index: \`multi-repository\``. Omitting
+  `--index-repository-id`, or passing more than one `--root`, does not make
+  an index multi-repository. A single-repository index is identified by
+  `Repository ID` in that section (optionally with
+  `Index: \`single-repository\``). A supplied `--index-repository-id` must
+  match that field. A conflict fails. Missing or duplicate identity metadata
+  is unresolved, and that run does not return exit code 0.
+
+Index rows are also checked against each module document's `Repository ID`,
+`Module ID`, and `Source` inside its generated metadata. Freshness is
+computed only after those three agree. A fallback document may live outside
+the source directory. Context links must resolve to a regular file; a
+directory target fails instead of being read as text. `missing` and
+`unresolvable` references fail. `unavailable` and an unresolved repository
+identity stay `unresolved`.
+
+`## Evidence and existing docs` path references are checked too. A bullet
+that is only a Markdown link is resolved relative to the context document.
+A bullet that is only `` `repository-relative/path` `` is resolved in the
+row's owning repository. A bullet that is only `` `repository-id:relative/path` ``
+is resolved in that authorized repository. A backtick symbol name, or prose
+with inline code, is not a path. File existence does not prove the file
+supports the claim.
 
 Do not treat missing configuration, an inaccessible repository, or a parsing
 failure as passing or `not_applicable`. This function is read-only: it never
@@ -142,11 +163,13 @@ python3 <resolved-path-to>/context_tools.py validate <index-path> \
   [--index-repository-id <repo-id>] [--index-budget 150] [--module-budget 300]
 ```
 
-Exit code `0` means every check passed or was not applicable. Exit code `1`
-means at least one check failed. Exit code `2` means at least one check was
-unresolved (or the arguments themselves were invalid) — incomplete validation
-must never look like a clean success. Report the exit code and every
-individual check result; do not summarize a mixed run as simply "passed."
+Exit code `1` means at least one check failed. That takes precedence when
+failed and unresolved checks are both present. Exit code `2` means no check
+failed, but at least one is unresolved, or the arguments are invalid. Exit
+code `0` means every check passed or was not applicable. Incomplete
+validation must never look like a clean success. Report the exit code and
+every individual check result; do not summarize a mixed run as simply
+"passed."
 
 ## Boundaries
 

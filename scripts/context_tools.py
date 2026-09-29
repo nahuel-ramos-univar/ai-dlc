@@ -236,13 +236,27 @@ MARKDOWN_LINK_PATTERN = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
 HEX16_TOKEN_PATTERN = re.compile(r"`([0-9a-f]{16})`")
 HEADING_PATTERN = re.compile(r"^(#{1,6})\s")
 SEPARATOR_CELL_PATTERN = re.compile(r"^:?-+:?$")
-GENERATED_BLOCK_PATTERN = re.compile(
-    r"<!--\s*AI-DLC:generated:start\s*-->(.*?)<!--\s*AI-DLC:generated:end\s*-->",
-    re.DOTALL,
-)
 FINGERPRINT_FIELD_PATTERN = re.compile(r"^-\s*Fingerprint:\s*`([0-9a-f]{16})`\s*$")
 BASELINE_AND_FINGERPRINT_FIELD_PATTERN = re.compile(
     r"^-\s*Baseline and fingerprint:\s*`[^`]+`\s*/\s*`([0-9a-f]{16})`\s*$"
+)
+LABELED_FIELD_PATTERN = re.compile(r"^-\s+([^:`]+):\s+`([^`]*)`\s*$")
+GENERATED_START_PATTERN = re.compile(r"^<!--\s*AI-DLC:generated:start\s*-->$")
+GENERATED_END_PATTERN = re.compile(r"^<!--\s*AI-DLC:generated:end\s*-->$")
+EVIDENCE_LINK_PATTERN = re.compile(r"^- \[[^\]]+\]\(([^)]+)\)\s*$")
+EVIDENCE_PATH_PATTERN = re.compile(r"^- `([^`]+)`\s*$")
+CROSS_REPO_PATH_PATTERN = re.compile(r"^([a-z0-9]+(?:-[a-z0-9]+)*):(.+)$")
+PATH_EXTENSIONS = (
+    ".py",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".md",
+    ".json",
+    ".yml",
+    ".yaml",
+    ".toml",
 )
 
 
@@ -269,6 +283,67 @@ def _best_matching_root(resolved: Path, resolved_roots: dict[str, Path]) -> Path
     return best
 
 
+def read_text_document(path: Path) -> tuple[str | None, str | None]:
+    """Read a context document as UTF-8 text.
+
+    Returns `(text, None)` for a regular file. Returns `(None, detail)` for
+    an expected failure: missing path, directory or other non-file, invalid
+    encoding, or a permission error. Other exceptions propagate.
+    """
+    if not path.exists():
+        return None, f"{path} does not exist"
+    if not path.is_file():
+        return None, f"{path} is not a regular file"
+    try:
+        return path.read_text(encoding="utf-8"), None
+    except UnicodeDecodeError:
+        return None, f"{path} is not valid UTF-8 text"
+    except IsADirectoryError:
+        return None, f"{path} is not a regular file"
+    except PermissionError as error:
+        return None, f"{path} is not readable: {error.strerror}"
+    except FileNotFoundError:
+        return None, f"{path} does not exist"
+
+
+def _classify_local_target(
+    resolved: Path, resolved_roots: dict[str, Path], *, require_file: bool = False
+) -> str:
+    root = _best_matching_root(resolved, resolved_roots)
+    if root is None:
+        return "unresolvable"
+    if not root.is_dir():
+        return "unavailable"
+    if not resolved.exists():
+        return "missing"
+    if require_file and not resolved.is_file():
+        return "not_a_file"
+    return "ok"
+
+
+def classify_markdown_target(
+    document_path: Path,
+    target: str,
+    authorized_roots: dict[str, Path],
+    *,
+    require_file: bool = False,
+) -> str:
+    """Classify one Markdown link target against authorized roots.
+
+    `require_file` is for context documents, which must be regular files.
+    Source scopes and other existing paths may be directories.
+    """
+    if "://" in target or target.startswith("#"):
+        return "external"
+    local_path = target.split("#", 1)[0]
+    if not local_path:
+        return "external"
+    resolved = (document_path.parent / local_path).resolve()
+    return _classify_local_target(
+        resolved, _resolve_roots(authorized_roots), require_file=require_file
+    )
+
+
 def resolve_markdown_links(
     markdown_path: Path, authorized_roots: dict[str, Path]
 ) -> dict[str, str]:
@@ -278,7 +353,8 @@ def resolve_markdown_links(
     it must be explicit workspace configuration, never guessed from the
     filesystem or expanded to the whole filesystem. Status is one of:
 
-    - "ok": the target exists inside an authorized, available root.
+    - "ok": the target exists inside an authorized, available root. A
+      directory can be "ok" here; context documents use `require_file`.
     - "missing": the target's owning authorized root is available, but the
       target does not exist there.
     - "unavailable": the target falls under a configured root that is not
@@ -287,30 +363,17 @@ def resolve_markdown_links(
       segments, does not fall under any authorized root. This is a hard
       rejection of parent-directory traversal and symlink escape, not a
       permissive fallback to the whole filesystem.
+    - "not_a_file": only when a caller requires a regular file and the
+      target exists as something else, such as a directory.
     - "external": a URL or a same-document anchor, not verified here.
 
     An unavailable, unresolvable, or external reference is never reported as
     "ok".
     """
     text = markdown_path.read_text(encoding="utf-8")
-    resolved_roots = _resolve_roots(authorized_roots)
     statuses: dict[str, str] = {}
     for target in MARKDOWN_LINK_PATTERN.findall(text):
-        if "://" in target or target.startswith("#"):
-            statuses[target] = "external"
-            continue
-        local_path = target.split("#", 1)[0]
-        if not local_path:
-            statuses[target] = "external"
-            continue
-        resolved = (markdown_path.parent / local_path).resolve()
-        root = _best_matching_root(resolved, resolved_roots)
-        if root is None:
-            statuses[target] = "unresolvable"
-        elif not root.is_dir():
-            statuses[target] = "unavailable"
-        else:
-            statuses[target] = "ok" if resolved.exists() else "missing"
+        statuses[target] = classify_markdown_target(markdown_path, target, authorized_roots)
     return statuses
 
 
@@ -466,33 +529,137 @@ def _split_row(row: str) -> list[str]:
     return [cell.strip() for cell in row.strip("|").split("|")]
 
 
-def _section_lines(markdown_text: str, heading: str) -> list[str] | None:
-    """Return the raw lines of the section under `heading`, or None if absent.
+def _open_fence(line: str) -> tuple[str, int] | None:
+    """Return the fence character and length when `line` opens a fence."""
+    match = re.match(r"^(```+|~~~+)(.*)$", line.strip())
+    if match is None:
+        return None
+    marker, rest = match.group(1), match.group(2)
+    if marker[0] == "`" and "`" in rest:
+        return None
+    return marker[0], len(marker)
 
-    Bounded by the next heading of the same or higher level. Lines inside a
-    fenced code block are dropped, so a documented example is never read as
-    live content.
+
+def _closes_fence(line: str, fence: tuple[str, int]) -> bool:
+    character, length = fence
+    return re.fullmatch(rf"{re.escape(character)}{{{length},}}", line.strip()) is not None
+
+
+def _live_lines(markdown_text: str) -> list[str]:
+    """Drop fenced examples, tracking fences from the start of the document.
+
+    A heading or table inside a backtick or tilde fence is not live content.
+    The fence state starts before the first heading, so an example that
+    appears earlier cannot hide or replace a later real section.
+    """
+    live: list[str] = []
+    fence: tuple[str, int] | None = None
+    for line in markdown_text.splitlines():
+        if fence is None:
+            opened = _open_fence(line)
+            if opened is not None:
+                fence = opened
+                continue
+            live.append(line)
+        elif _closes_fence(line, fence):
+            fence = None
+    return live
+
+
+def _section_lines(markdown_text: str, heading: str) -> list[str] | None:
+    """Return the live lines of the section under `heading`, or None if absent.
+
+    Heading discovery ignores fenced examples. The section stops at the next
+    live heading of the same or higher level.
     """
     heading_level = len(heading) - len(heading.lstrip("#"))
-    lines = markdown_text.splitlines()
+    lines = _live_lines(markdown_text)
     try:
         start = next(i for i, line in enumerate(lines) if line.strip() == heading)
     except StopIteration:
         return None
     section: list[str] = []
-    in_fence = False
     for line in lines[start + 1 :]:
-        stripped = line.strip()
-        if stripped.startswith("```"):
-            in_fence = not in_fence
-            continue
-        if in_fence:
-            continue
-        heading_match = HEADING_PATTERN.match(stripped)
+        heading_match = HEADING_PATTERN.match(line.strip())
         if heading_match and len(heading_match.group(1)) <= heading_level:
             break
         section.append(line)
     return section
+
+
+@dataclass(frozen=True)
+class GeneratedBlock:
+    """One unambiguous `AI-DLC:generated` region, or why it could not be read."""
+
+    status: str
+    text: str = ""
+
+
+def parse_generated_block(markdown_text: str) -> GeneratedBlock:
+    """Return the single generated block, ignoring markers inside fences.
+
+    `status` is "ok", "missing", "malformed", or "ambiguous". Missing,
+    unclosed, nested, or repeated blocks are rejected. This function does
+    not fall back to treating the rest of the document as generated content.
+    """
+    fence: tuple[str, int] | None = None
+    blocks: list[list[str]] = []
+    current: list[str] | None = None
+    malformed = False
+    for line in markdown_text.splitlines():
+        if fence is not None:
+            if _closes_fence(line, fence):
+                fence = None
+            continue
+        opened = _open_fence(line)
+        if opened is not None:
+            fence = opened
+            continue
+        stripped = line.strip()
+        if GENERATED_START_PATTERN.match(stripped):
+            if current is not None:
+                malformed = True
+            current = []
+            continue
+        if GENERATED_END_PATTERN.match(stripped):
+            if current is None:
+                malformed = True
+            else:
+                blocks.append(current)
+                current = None
+            continue
+        if current is not None:
+            current.append(line)
+    if current is not None or malformed:
+        return GeneratedBlock("malformed")
+    if not blocks:
+        return GeneratedBlock("missing")
+    if len(blocks) > 1:
+        return GeneratedBlock("ambiguous")
+    return GeneratedBlock("ok", "\n".join(blocks[0]))
+
+
+@dataclass(frozen=True)
+class LabeledFields:
+    """Unique backtick fields from one metadata section."""
+
+    status: str
+    values: dict[str, str]
+    detail: str = ""
+
+
+def parse_labeled_fields(section: list[str]) -> LabeledFields:
+    """Read labeled backtick fields. Duplicate names are ambiguous."""
+    found: dict[str, list[str]] = {}
+    for line in section:
+        match = LABELED_FIELD_PATTERN.match(line.strip())
+        if match is None:
+            continue
+        found.setdefault(match.group(1).strip(), []).append(match.group(2).strip())
+    duplicates = [name for name, values in found.items() if len(values) > 1]
+    if duplicates:
+        return LabeledFields("ambiguous", {}, f"duplicate metadata fields: {duplicates}")
+    return LabeledFields("ok", {name: values[0] for name, values in found.items()})
 
 
 def extract_table_column(markdown_text: str, heading: str, column: str) -> TableColumn:
@@ -567,19 +734,26 @@ def parse_recorded_fingerprint(markdown_text: str) -> FingerprintField:
     Git revision on the same line is never mistaken for the 16-character
     fingerprint, because it does not match the 16-hex-character shape.
 
-    Returns "missing" when no metadata section or no fingerprint-labeled
-    line is found there, "malformed" when a fingerprint-labeled line does
-    not match either canonical shape, and "ambiguous" when more than one
-    differing candidate is found, or when a well-formed field coexists with
-    a malformed one on another line. Never silently prefers one candidate
-    over another.
+    Returns "missing" when the generated block or metadata section is absent,
+    or when that section has no canonical fingerprint field. Returns
+    "malformed" when a fingerprint field line does not match either canonical
+    shape, or when the generated markers themselves are malformed. Returns
+    "ambiguous" when more than one canonical field is present, even if the
+    values match, when a well-formed field coexists with a malformed one, or
+    when more than one generated block exists. A line that merely contains
+    the word "fingerprint" or "fingerprinted" is not a field. Never falls
+    back to text outside the generated block, and never silently prefers one
+    candidate over another.
     """
-    block_match = GENERATED_BLOCK_PATTERN.search(markdown_text)
-    block = block_match.group(1) if block_match else markdown_text
+    block = parse_generated_block(markdown_text)
+    if block.status == "missing":
+        return FingerprintField("missing")
+    if block.status != "ok":
+        return FingerprintField("ambiguous" if block.status == "ambiguous" else "malformed")
 
-    section = _section_lines(block, "## Identity and scope")
+    section = _section_lines(block.text, "## Identity and scope")
     if section is None:
-        section = _section_lines(block, "## Scope")
+        section = _section_lines(block.text, "## Scope")
     if section is None:
         return FingerprintField("missing")
 
@@ -587,7 +761,10 @@ def parse_recorded_fingerprint(markdown_text: str) -> FingerprintField:
     malformed = False
     for line in section:
         stripped = line.strip()
-        if "fingerprint" not in stripped.lower():
+        lower = stripped.lower()
+        if not (
+            lower.startswith("- fingerprint:") or lower.startswith("- baseline and fingerprint:")
+        ):
             continue
         match = FINGERPRINT_FIELD_PATTERN.match(stripped) or (
             BASELINE_AND_FINGERPRINT_FIELD_PATTERN.match(stripped)
@@ -601,7 +778,7 @@ def parse_recorded_fingerprint(markdown_text: str) -> FingerprintField:
         return FingerprintField("missing")
     if malformed:
         return FingerprintField("malformed" if not candidates else "ambiguous")
-    if len(set(candidates)) > 1:
+    if len(candidates) > 1:
         return FingerprintField("ambiguous")
     return FingerprintField("ok", candidates[0])
 
@@ -621,59 +798,290 @@ class ValidationCheck:
     detail: str
 
 
-def _budget_check(name: str, path: Path, max_lines: int) -> ValidationCheck:
-    if not path.exists():
-        return ValidationCheck(name, "unresolved", f"{path} does not exist")
-    lines, _ = document_metrics(path)
+def _reference_check(name: str, status: str, ok_detail: str) -> ValidationCheck:
+    if status == "ok":
+        return ValidationCheck(name, "passed", ok_detail)
+    if status == "external":
+        return ValidationCheck(name, "not_applicable", "external or anchor reference")
+    if status in {"unavailable", "unresolved"}:
+        return ValidationCheck(name, "unresolved", f"reference status: {status}")
+    return ValidationCheck(name, "failed", f"reference status: {status}")
+
+
+def _budget_from_text(name: str, text: str, max_lines: int) -> ValidationCheck:
+    lines = len(text.splitlines())
     if lines <= max_lines:
         return ValidationCheck(name, "passed", f"{lines} lines (budget {max_lines})")
     return ValidationCheck(name, "failed", f"{lines} lines exceeds budget {max_lines}")
 
 
-def _structure_check(name: str, path: Path, required_heading: str) -> ValidationCheck:
-    if not path.exists():
-        return ValidationCheck(name, "unresolved", f"{path} does not exist")
-    text = path.read_text(encoding="utf-8")
-    if GENERATED_BLOCK_PATTERN.search(text) is None:
-        return ValidationCheck(name, "failed", "missing AI-DLC:generated markers")
-    if _section_lines(text, required_heading) is None:
-        return ValidationCheck(name, "failed", f"missing required heading {required_heading!r}")
+def _budget_check(name: str, path: Path, max_lines: int) -> ValidationCheck:
+    text, error = read_text_document(path)
+    if error or text is None:
+        status = "failed" if error and "not a regular file" in error else "unresolved"
+        return ValidationCheck(name, status, error or f"{path} is not readable")
+    return _budget_from_text(name, text, max_lines)
+
+
+def _structure_from_text(name: str, text: str, required_heading: str) -> ValidationCheck:
+    block = parse_generated_block(text)
+    if block.status != "ok":
+        return ValidationCheck(name, "failed", f"generated block status: {block.status}")
+    if _section_lines(block.text, required_heading) is None:
+        return ValidationCheck(
+            name,
+            "failed",
+            f"missing required heading {required_heading!r} inside the generated block",
+        )
     return ValidationCheck(name, "passed", f"markers and {required_heading!r} present")
 
 
-def _module_fingerprint_check(
-    label: str,
-    module_path: Path,
-    repository_id: str | None,
-    source_path: str | None,
-    authorized_roots: dict[str, Path],
-) -> ValidationCheck:
-    name = f"modules:fingerprint:{label}"
-    if not module_path.exists():
-        return ValidationCheck(name, "unresolved", f"{module_path} does not exist")
-    fingerprint_field = parse_recorded_fingerprint(module_path.read_text(encoding="utf-8"))
-    if fingerprint_field.status != "ok":
-        return ValidationCheck(name, "unresolved", f"fingerprint field status: {fingerprint_field.status}")
-    if repository_id is None or source_path is None:
-        return ValidationCheck(name, "not_applicable", "repository or source path unknown for this row")
-    root = authorized_roots.get(repository_id)
-    if root is None:
-        return ValidationCheck(name, "unresolved", f"repository {repository_id!r} is not in authorized_roots")
-    root_resolved = Path(root).resolve()
-    if not root_resolved.is_dir():
-        return ValidationCheck(name, "unresolved", f"repository {repository_id!r} root is not accessible")
-    scope = (root_resolved / source_path).resolve()
+def _structure_check(name: str, path: Path, required_heading: str) -> ValidationCheck:
+    text, error = read_text_document(path)
+    if error or text is None:
+        status = "failed" if error and "not a regular file" in error else "unresolved"
+        return ValidationCheck(name, status, error or f"{path} is not readable")
+    return _structure_from_text(name, text, required_heading)
+
+
+@dataclass(frozen=True)
+class IndexIdentity:
+    """How a repository index declares its own scope."""
+
+    kind: str
+    repository_id: str | None = None
+    detail: str = ""
+
+
+def resolve_index_identity(markdown_text: str, supplied_id: str | None) -> IndexIdentity:
+    """Read index identity from generated `## Scope` metadata.
+
+    A single `Repository ID`, with or without `Index: single-repository`,
+    is a single-repository index. `Index: multi-repository` with no
+    repository ID is an engagement index. Omitted arguments and the number
+    of authorized roots are not used. A supplied ID must match the document.
+    """
+    block = parse_generated_block(markdown_text)
+    if block.status != "ok":
+        return IndexIdentity("unresolved", detail=f"generated block status: {block.status}")
+    section = _section_lines(block.text, "## Scope")
+    if section is None:
+        return IndexIdentity("unresolved", detail="missing ## Scope inside the generated block")
+    fields = parse_labeled_fields(section)
+    if fields.status != "ok":
+        return IndexIdentity("unresolved", detail=fields.detail)
+
+    index_kind = fields.values.get("Index")
+    repository_id = fields.values.get("Repository ID") or None
+    if index_kind not in (None, "single-repository", "multi-repository"):
+        return IndexIdentity("unresolved", detail=f"Index value {index_kind!r} is not recognized")
+    if index_kind == "multi-repository":
+        if repository_id is not None:
+            return IndexIdentity(
+                "conflict",
+                detail="multi-repository index also declares a Repository ID",
+            )
+        if supplied_id is not None:
+            return IndexIdentity(
+                "conflict",
+                detail=(
+                    f"supplied index repository {supplied_id!r} conflicts with "
+                    "declared multi-repository index"
+                ),
+            )
+        return IndexIdentity("multi", detail="declared multi-repository engagement index")
+    if not repository_id:
+        return IndexIdentity(
+            "unresolved",
+            detail="single-repository index is missing Repository ID",
+        )
+    if supplied_id is not None and supplied_id != repository_id:
+        return IndexIdentity(
+            "conflict",
+            repository_id=repository_id,
+            detail=f"supplied index repository {supplied_id!r} != declared {repository_id!r}",
+        )
+    return IndexIdentity("single", repository_id=repository_id, detail="declared single-repository index")
+
+
+def _resolved_inside(root: Path, relative_path: str) -> Path | None:
+    candidate = (root.resolve() / relative_path).resolve()
     try:
-        scope.relative_to(root_resolved)
+        candidate.relative_to(root.resolve())
     except ValueError:
-        return ValidationCheck(name, "unresolved", "declared source path escapes its repository root")
+        return None
+    return candidate
+
+
+def _is_evidence_path(value: str) -> bool:
+    if "/" in value:
+        return True
+    return value.endswith(PATH_EXTENSIONS)
+
+
+def _evidence_items(section: list[str]) -> list[tuple[str, str]]:
+    """Return parseable evidence references, skipping symbol names and prose."""
+    items: list[tuple[str, str]] = []
+    for line in section:
+        stripped = line.strip()
+        link = EVIDENCE_LINK_PATTERN.match(stripped)
+        if link:
+            items.append(("link", link.group(1)))
+            continue
+        path = EVIDENCE_PATH_PATTERN.match(stripped)
+        if path is None:
+            continue
+        value = path.group(1).strip()
+        cross = CROSS_REPO_PATH_PATTERN.fullmatch(value)
+        if cross and _is_evidence_path(cross.group(2)):
+            items.append(("cross", value))
+        elif _is_evidence_path(value):
+            items.append(("repo-path", value))
+    return items
+
+
+def _compare_fingerprint(name: str, recorded: str, scope: Path) -> ValidationCheck:
     try:
         current, _ = content_fingerprint(scope)
     except OSError as error:
         return ValidationCheck(name, "unresolved", str(error))
-    if current == fingerprint_field.value:
+    if current == recorded:
         return ValidationCheck(name, "passed", "fingerprint matches declared source")
-    return ValidationCheck(name, "failed", f"recorded {fingerprint_field.value!r} != current {current!r}")
+    return ValidationCheck(name, "failed", f"recorded {recorded!r} != current {current!r}")
+
+
+def _module_document_checks(
+    label: str,
+    module_path: Path,
+    repository_id: str | None,
+    module_id: str | None,
+    source_path: str | None,
+    authorized_roots: dict[str, Path],
+    module_budget: int,
+) -> list[ValidationCheck]:
+    """Budget, structure, identity, freshness, and evidence for one module document."""
+    checks: list[ValidationCheck] = []
+    checks.append(_budget_check(f"modules:budget:{label}", module_path, module_budget))
+    checks.append(_structure_check(f"modules:structure:{label}", module_path, "## Identity and scope"))
+
+    text, error = read_text_document(module_path)
+    identity_name = f"modules:identity:{label}"
+    fingerprint_name = f"modules:fingerprint:{label}"
+    if error or text is None:
+        detail = error or f"{module_path} is not readable"
+        status = "failed" if error and "not a regular file" in error else "unresolved"
+        checks.append(ValidationCheck(identity_name, status, detail))
+        checks.append(ValidationCheck(fingerprint_name, "unresolved", detail))
+        return checks
+
+    block = parse_generated_block(text)
+    section = _section_lines(block.text, "## Identity and scope") if block.status == "ok" else None
+    fields = parse_labeled_fields(section) if section is not None else None
+    if block.status != "ok" or section is None or fields is None or fields.status != "ok":
+        detail = "module metadata is missing or ambiguous"
+        if fields is not None and fields.status != "ok":
+            detail = fields.detail
+        elif block.status != "ok":
+            detail = f"generated block status: {block.status}"
+        checks.append(ValidationCheck(identity_name, "unresolved", detail))
+        checks.append(ValidationCheck(fingerprint_name, "unresolved", detail))
+    else:
+        declared_repo = fields.values.get("Repository ID") or ""
+        declared_module = fields.values.get("Module ID") or ""
+        declared_source = fields.values.get("Source") or ""
+        conflicts: list[str] = []
+        blocked: list[str] = []
+        if not repository_id:
+            blocked.append("index row has no repository identity")
+        elif declared_repo != repository_id:
+            conflicts.append(f"Repository ID {declared_repo!r} != index {repository_id!r}")
+        if not module_id:
+            blocked.append("index row has no module ID")
+        elif declared_module != module_id:
+            conflicts.append(f"Module ID {declared_module!r} != index {module_id!r}")
+        if not source_path or not declared_source:
+            blocked.append("source scope is missing from the index row or the module document")
+        root = authorized_roots.get(repository_id) if repository_id else None
+        agreed_scope: Path | None = None
+        if source_path and declared_source:
+            if root is None:
+                blocked.append(f"repository {repository_id!r} is not in authorized_roots")
+            elif not Path(root).resolve().is_dir():
+                blocked.append(f"repository {repository_id!r} root is not accessible")
+            else:
+                index_scope = _resolved_inside(Path(root), source_path)
+                document_scope = _resolved_inside(Path(root), declared_source)
+                if index_scope is None or document_scope is None:
+                    conflicts.append("declared source path escapes its repository root")
+                elif index_scope != document_scope:
+                    conflicts.append(f"Source {declared_source!r} != index {source_path!r}")
+                else:
+                    agreed_scope = index_scope
+        if conflicts:
+            checks.append(ValidationCheck(identity_name, "failed", "; ".join(conflicts)))
+            checks.append(
+                ValidationCheck(
+                    fingerprint_name,
+                    "unresolved",
+                    "freshness is compared only after repository, module, and source agree",
+                )
+            )
+        elif blocked:
+            checks.append(ValidationCheck(identity_name, "unresolved", "; ".join(blocked)))
+            checks.append(
+                ValidationCheck(
+                    fingerprint_name,
+                    "unresolved",
+                    "freshness is compared only after repository, module, and source agree",
+                )
+            )
+        else:
+            checks.append(ValidationCheck(identity_name, "passed", "repository, module, and source agree"))
+            fingerprint_field = parse_recorded_fingerprint(text)
+            if fingerprint_field.status != "ok" or fingerprint_field.value is None or agreed_scope is None:
+                checks.append(
+                    ValidationCheck(
+                        fingerprint_name,
+                        "unresolved",
+                        f"fingerprint field status: {fingerprint_field.status}",
+                    )
+                )
+            else:
+                checks.append(_compare_fingerprint(fingerprint_name, fingerprint_field.value, agreed_scope))
+
+    evidence_name = f"modules:evidence:{label}"
+    if text is None or block.status != "ok":
+        checks.append(ValidationCheck(evidence_name, "unresolved", "module document has no generated block"))
+        return checks
+    evidence_section = _section_lines(block.text, "## Evidence and existing docs")
+    if evidence_section is None:
+        checks.append(ValidationCheck(evidence_name, "not_applicable", "no evidence section was declared"))
+        return checks
+    items = _evidence_items(evidence_section)
+    if not items:
+        checks.append(ValidationCheck(evidence_name, "passed", "no path references declared"))
+        return checks
+    if not repository_id:
+        checks.append(
+            ValidationCheck(
+                evidence_name,
+                "unresolved",
+                "evidence paths need the row repository identity and it is not established",
+            )
+        )
+        return checks
+    for kind, value in items:
+        if kind == "link":
+            status = classify_markdown_target(module_path, value, authorized_roots)
+            checks.append(_reference_check(f"{evidence_name}:{value}", status, "evidence link resolves"))
+        elif kind == "cross":
+            repo_id, _, relative = value.partition(":")
+            status = resolve_source_path(repo_id, relative, authorized_roots)
+            checks.append(_reference_check(f"{evidence_name}:{value}", status, "evidence path exists"))
+        else:
+            status = resolve_source_path(repository_id, value, authorized_roots)
+            checks.append(_reference_check(f"{evidence_name}:{value}", status, "evidence path exists"))
+    return checks
 
 
 def validate_generated_context(
@@ -687,42 +1095,35 @@ def validate_generated_context(
 
     This function is read-only: it never writes, moves, or deletes a
     document. `authorized_roots` maps each repository ID this validation run
-    is allowed to touch to that repository's root path; it must be explicit
-    workspace configuration supplied by the caller, never guessed from the
-    filesystem. `index_repository_id` is the repository ID this index's own
-    `## Scope` section declares; leave it `None` only for a true
-    multi-repository engagement index that declares repository identity per
-    row in the Modules table instead.
+    is allowed to touch to that repository's root path. It is explicit
+    workspace configuration, never guessed from the filesystem, and the
+    number of roots does not decide whether the index is multi-repository.
+
+    Index identity comes from canonical `## Scope` metadata inside the one
+    generated block. A supplied `index_repository_id` must match that
+    metadata. Only `Index: multi-repository` may omit a repository-wide
+    fingerprint. Module freshness is still checked in that mode.
 
     A passing result never proves an Unknown is accurate, that a described
-    dependency is correct, or that a claim is well-supported; those
-    judgments belong to independent review (`context-reviewer`), not to
-    this function.
+    dependency is correct, or that a claim is well-supported. Those
+    judgments belong to independent review (`context-reviewer`).
     """
-    checks: list[ValidationCheck] = []
-
     if not index_path.exists():
         return [ValidationCheck("index:exists", "unresolved", f"{index_path} does not exist")]
+    text, error = read_text_document(index_path)
+    if error or text is None:
+        status = "failed" if error and "not a regular file" in error else "unresolved"
+        return [ValidationCheck("index:readable", status, error or f"{index_path} is not readable")]
 
-    checks.append(_budget_check("index:budget", index_path, index_budget))
-    checks.append(_structure_check("index:structure", index_path, "## Scope"))
-
-    if index_repository_id is None:
-        # A true multi-repository engagement index has no single owning
-        # repository, so it has no one-repository fingerprint to compare.
-        # This is expected shape, not a problem, so it is not_applicable
-        # rather than unresolved.
-        checks.append(
-            ValidationCheck(
-                "index:fingerprint",
-                "not_applicable",
-                "no index_repository_id; a multi-repository engagement index "
-                "has no single-repository fingerprint to compare",
-            )
-        )
-    else:
-        fingerprint_field = parse_recorded_fingerprint(index_path.read_text(encoding="utf-8"))
-        if fingerprint_field.status != "ok":
+    checks: list[ValidationCheck] = [
+        _budget_from_text("index:budget", text, index_budget),
+        _structure_from_text("index:structure", text, "## Scope"),
+    ]
+    identity = resolve_index_identity(text, index_repository_id)
+    if identity.kind == "single":
+        checks.append(ValidationCheck("index:identity", "passed", identity.detail))
+        fingerprint_field = parse_recorded_fingerprint(text)
+        if fingerprint_field.status != "ok" or fingerprint_field.value is None:
             checks.append(
                 ValidationCheck(
                     "index:fingerprint",
@@ -731,37 +1132,62 @@ def validate_generated_context(
                 )
             )
         else:
-            root = authorized_roots.get(index_repository_id)
+            root = authorized_roots.get(identity.repository_id or "")
             if root is None:
                 checks.append(
                     ValidationCheck(
                         "index:fingerprint",
                         "unresolved",
-                        f"repository {index_repository_id!r} is not in authorized_roots",
+                        f"repository {identity.repository_id!r} is not in authorized_roots",
+                    )
+                )
+            elif not Path(root).resolve().is_dir():
+                checks.append(
+                    ValidationCheck(
+                        "index:fingerprint",
+                        "unresolved",
+                        f"repository {identity.repository_id!r} root is not accessible",
                     )
                 )
             else:
-                try:
-                    current, _ = content_fingerprint(root)
-                except OSError as error:
-                    checks.append(ValidationCheck("index:fingerprint", "unresolved", str(error)))
-                else:
-                    if current == fingerprint_field.value:
-                        checks.append(ValidationCheck("index:fingerprint", "passed", "fingerprint matches"))
-                    else:
-                        checks.append(
-                            ValidationCheck(
-                                "index:fingerprint",
-                                "failed",
-                                f"recorded {fingerprint_field.value!r} != current {current!r}",
-                            )
-                        )
+                checks.append(
+                    _compare_fingerprint("index:fingerprint", fingerprint_field.value, Path(root))
+                )
+    elif identity.kind == "multi":
+        checks.append(ValidationCheck("index:identity", "passed", identity.detail))
+        checks.append(
+            ValidationCheck(
+                "index:fingerprint",
+                "not_applicable",
+                "a declared multi-repository engagement index has no single-repository fingerprint",
+            )
+        )
+    elif identity.kind == "conflict":
+        checks.append(ValidationCheck("index:identity", "failed", identity.detail))
+        checks.append(
+            ValidationCheck("index:fingerprint", "unresolved", "index identity conflicts; freshness was not compared")
+        )
+    else:
+        checks.append(ValidationCheck("index:identity", "unresolved", identity.detail))
+        checks.append(
+            ValidationCheck(
+                "index:fingerprint",
+                "unresolved",
+                "index identity is unresolved, so freshness was not compared",
+            )
+        )
 
-    text = index_path.read_text(encoding="utf-8")
-    module_ids = extract_table_column(text, "## Modules", "Module")
-    sources = extract_table_column(text, "## Modules", "Source")
-    contexts = extract_table_column(text, "## Modules", "Context")
-    repositories = extract_table_column(text, "## Modules", "Repository")
+    block = parse_generated_block(text)
+    if block.status != "ok":
+        checks.append(
+            ValidationCheck("modules:table", "unresolved", f"generated block status: {block.status}")
+        )
+        return checks
+    generated = block.text
+    module_ids = extract_table_column(generated, "## Modules", "Module")
+    sources = extract_table_column(generated, "## Modules", "Source")
+    contexts = extract_table_column(generated, "## Modules", "Context")
+    repositories = extract_table_column(generated, "## Modules", "Repository")
 
     if module_ids.status != "ok":
         checks.append(
@@ -770,28 +1196,65 @@ def validate_generated_context(
         return checks
     checks.append(ValidationCheck("modules:table", "passed", f"{len(module_ids.values)} module rows"))
 
-    if len(authorized_roots) > 1 and repositories.status != "ok":
+    row_repository_ids: list[str] | None
+    if repositories.status == "ok":
+        row_repository_ids = list(repositories.values)
+        if identity.kind == "single":
+            mismatches = [value for value in row_repository_ids if value != identity.repository_id]
+            if mismatches:
+                checks.append(
+                    ValidationCheck(
+                        "modules:repository-identity",
+                        "failed",
+                        f"Repository column conflicts with declared repository {identity.repository_id!r}",
+                    )
+                )
+            else:
+                checks.append(
+                    ValidationCheck(
+                        "modules:repository-identity",
+                        "passed",
+                        "Repository column matches the declared repository",
+                    )
+                )
+        elif identity.kind == "multi":
+            checks.append(
+                ValidationCheck("modules:repository-identity", "passed", "repository identity is declared per row")
+            )
+        else:
+            checks.append(
+                ValidationCheck(
+                    "modules:repository-identity",
+                    "unresolved",
+                    "Repository column is present, but the index identity is not established",
+                )
+            )
+    elif identity.kind == "single" and identity.repository_id:
+        row_repository_ids = [identity.repository_id] * len(module_ids.values)
+        checks.append(
+            ValidationCheck(
+                "modules:repository-identity",
+                "passed",
+                "single-repository identity applies to every row",
+            )
+        )
+    elif identity.kind == "multi":
+        row_repository_ids = None
         checks.append(
             ValidationCheck(
                 "modules:repository-identity",
                 "unresolved",
-                "multi-repository scope but the Modules table has no readable "
-                "Repository column; repository identity cannot be assigned "
-                "without guessing",
+                "multi-repository index has no readable Repository column; "
+                "repository identity cannot be assigned without guessing",
             )
         )
-        row_repository_ids: list[str] | None = None
-    elif repositories.status == "ok":
-        row_repository_ids = list(repositories.values)
-    elif index_repository_id is not None:
-        row_repository_ids = [index_repository_id] * len(module_ids.values)
     else:
         row_repository_ids = None
         checks.append(
             ValidationCheck(
                 "modules:repository-identity",
                 "unresolved",
-                "no Repository column and no index_repository_id was supplied",
+                "no Repository column and no unambiguous repository identity",
             )
         )
 
@@ -806,9 +1269,7 @@ def validate_generated_context(
                 )
             )
         else:
-            checks.append(
-                ValidationCheck("modules:duplicate-identity", "passed", "no duplicate identities")
-            )
+            checks.append(ValidationCheck("modules:duplicate-identity", "passed", "no duplicate identities"))
 
     if contexts.status == "ok":
         duplicate_targets = find_duplicate_context_targets(list(contexts.values), index_path)
@@ -824,34 +1285,29 @@ def validate_generated_context(
             checks.append(
                 ValidationCheck("modules:duplicate-context-target", "passed", "no duplicate targets")
             )
-
-        link_statuses = resolve_markdown_links(index_path, authorized_roots)
         for row_index, target in enumerate(contexts.values):
             resolved_target = _link_target(target)
-            status = link_statuses.get(resolved_target, "unresolved")
+            status = classify_markdown_target(
+                index_path, resolved_target, authorized_roots, require_file=True
+            )
             check_name = f"modules:link:{resolved_target}"
-            if status == "ok":
-                checks.append(ValidationCheck(check_name, "passed", "link resolves"))
-                module_path = (index_path.parent / resolved_target.split("#", 1)[0]).resolve()
-                checks.append(_budget_check(f"modules:budget:{resolved_target}", module_path, module_budget))
-                checks.append(
-                    _structure_check(
-                        f"modules:structure:{resolved_target}", module_path, "## Identity and scope"
-                    )
+            checks.append(_reference_check(check_name, status, "link resolves"))
+            if status != "ok":
+                continue
+            module_path = (index_path.parent / resolved_target.split("#", 1)[0]).resolve()
+            repository_id = row_repository_ids[row_index] if row_repository_ids else None
+            source_path = sources.values[row_index] if sources.status == "ok" else None
+            checks.extend(
+                _module_document_checks(
+                    resolved_target,
+                    module_path,
+                    repository_id,
+                    module_ids.values[row_index],
+                    source_path,
+                    authorized_roots,
+                    module_budget,
                 )
-                checks.append(
-                    _module_fingerprint_check(
-                        resolved_target,
-                        module_path,
-                        row_repository_ids[row_index] if row_repository_ids else None,
-                        sources.values[row_index] if sources.status == "ok" else None,
-                        authorized_roots,
-                    )
-                )
-            elif status == "external":
-                checks.append(ValidationCheck(check_name, "not_applicable", "external or anchor link"))
-            else:
-                checks.append(ValidationCheck(check_name, "failed", f"link status: {status}"))
+            )
     else:
         checks.append(
             ValidationCheck("modules:context-column", "unresolved", f"Context column status: {contexts.status}")
@@ -862,17 +1318,14 @@ def validate_generated_context(
         problems = find_stale_source_paths(entries, authorized_roots)
         for entry in entries:
             check_name = f"modules:source:{entry[0]}:{entry[1]}"
-            if entry in problems:
-                checks.append(ValidationCheck(check_name, "failed", f"source path status: {problems[entry]}"))
-            else:
-                checks.append(ValidationCheck(check_name, "passed", "source path exists"))
+            status = problems.get(entry, "ok")
+            checks.append(_reference_check(check_name, status, "source path exists"))
     elif sources.status != "ok":
         checks.append(
             ValidationCheck("modules:source-column", "unresolved", f"Source column status: {sources.status}")
         )
 
     return checks
-
 
 def cli_validate(argv: list[str]) -> int:
     """Command-line entry point: `context_tools.py validate ...`.
@@ -882,6 +1335,12 @@ def cli_validate(argv: list[str]) -> int:
     --root <repo-id>=<repo-root> [--root ...] [--index-repository-id <id>]`.
     Do not assume this script lives in the target repository's current
     working directory; it lives inside the installed plugin.
+
+    Exit code 1 means at least one check failed. That takes precedence when
+    failed and unresolved checks are both present. Exit code 2 means no
+    check failed, but at least one is unresolved, or the arguments are
+    invalid. Exit code 0 means every check passed or was not applicable.
+    An incomplete run never returns 0.
     """
     parser = argparse.ArgumentParser(prog="context_tools.py validate")
     parser.add_argument("index_path", type=Path)

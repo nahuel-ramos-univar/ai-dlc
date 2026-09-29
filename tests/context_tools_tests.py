@@ -702,6 +702,8 @@ def _write_valid_index(index_path: Path, repo_root: Path) -> None:
                 "",
                 "## Scope",
                 "",
+                "- Index: `single-repository`",
+                "- Repository ID: `web`",
                 f"- Fingerprint: `{index_fingerprint}`",
                 "",
                 "## Modules",
@@ -792,6 +794,8 @@ def test_validate_generated_context_multi_repo_requires_repository_column() -> N
                     "",
                     "## Scope",
                     "",
+                    "- Index: `multi-repository`",
+                    "",
                     "## Modules",
                     "",
                     "| Module | Source | Context | Status |",
@@ -829,6 +833,8 @@ def test_validate_generated_context_true_multi_repo_engagement_passes() -> None:
                     "<!-- AI-DLC:generated:start -->",
                     "",
                     "## Scope",
+                    "",
+                    "- Index: `multi-repository`",
                     "",
                     "## Modules",
                     "",
@@ -868,6 +874,8 @@ def test_cli_validate_exit_codes() -> None:
                     "",
                     "## Scope",
                     "",
+                    "- Index: `single-repository`",
+                    "- Repository ID: `web`",
                     f"- Fingerprint: `{index_fingerprint}`",
                     "",
                     "## Modules",
@@ -888,6 +896,364 @@ def test_cli_validate_exit_codes() -> None:
 
         bad_arg_code = cli_validate([str(index), "--root", "not-a-pair"])
         assert bad_arg_code == 2
+
+
+def test_extract_table_column_ignores_fenced_heading_before_real_section() -> None:
+    text = "\n".join(
+        [
+            "```markdown",
+            "## Modules",
+            "",
+            "| Module | Source |",
+            "| --- | --- |",
+            "| `fake` | `apps/fake` |",
+            "```",
+            "",
+            "## Modules",
+            "",
+            "| Module | Source |",
+            "| --- | --- |",
+            "| `real` | `apps/real` |",
+        ]
+    )
+    result = extract_table_column(text, "## Modules", "Module")
+    assert result.status == "ok"
+    assert result.values == ("real",)
+
+
+def test_extract_table_column_ignores_tilde_fenced_heading() -> None:
+    text = "\n".join(
+        [
+            "~~~",
+            "## Modules",
+            "",
+            "| Module | Source |",
+            "| --- | --- |",
+            "| `fake` | `apps/fake` |",
+            "~~~",
+            "",
+            "## Modules",
+            "",
+            "| Module | Source |",
+            "| --- | --- |",
+            "| `real` | `apps/real` |",
+        ]
+    )
+    result = extract_table_column(text, "## Modules", "Module")
+    assert result.status == "ok"
+    assert result.values == ("real",)
+
+
+def test_structure_heading_outside_generated_block_fails() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        index = Path(temp) / "repository-context.md"
+        index.write_text(
+            "\n".join(
+                [
+                    "## Scope",
+                    "",
+                    "<!-- AI-DLC:generated:start -->",
+                    "<!-- AI-DLC:generated:end -->",
+                ]
+            )
+        )
+        checks = validate_generated_context(index, {})
+        structure = next(check for check in checks if check.name == "index:structure")
+        assert structure.status == "failed"
+
+
+def test_parse_recorded_fingerprint_rejects_duplicate_equal_values() -> None:
+    doc = "\n".join(
+        [
+            "<!-- AI-DLC:generated:start -->",
+            "",
+            "## Scope",
+            "",
+            "- Fingerprint: `1111111111111111`",
+            "- Fingerprint: `1111111111111111`",
+            "",
+            "<!-- AI-DLC:generated:end -->",
+        ]
+    )
+    assert parse_recorded_fingerprint(doc).status == "ambiguous"
+
+
+def test_parse_recorded_fingerprint_rejects_multiple_or_malformed_blocks() -> None:
+    repeated = "\n".join(
+        [
+            "<!-- AI-DLC:generated:start -->",
+            "## Scope",
+            "- Fingerprint: `1111111111111111`",
+            "<!-- AI-DLC:generated:end -->",
+            "<!-- AI-DLC:generated:start -->",
+            "## Scope",
+            "- Fingerprint: `1111111111111111`",
+            "<!-- AI-DLC:generated:end -->",
+        ]
+    )
+    assert parse_recorded_fingerprint(repeated).status == "ambiguous"
+    unclosed = "<!-- AI-DLC:generated:start -->\n## Scope\n- Fingerprint: `1111111111111111`\n"
+    assert parse_recorded_fingerprint(unclosed).status == "malformed"
+    outside = "## Scope\n\n- Fingerprint: `1111111111111111`\n"
+    assert parse_recorded_fingerprint(outside).status == "missing"
+
+
+def test_parse_recorded_fingerprint_ignores_fingerprinted_prose() -> None:
+    doc = "\n".join(
+        [
+            "<!-- AI-DLC:generated:start -->",
+            "",
+            "## Scope",
+            "",
+            "- Fingerprint: `2222222222222222`",
+            "- Examined: fingerprinted paths were not all inspected",
+            "",
+            "<!-- AI-DLC:generated:end -->",
+        ]
+    )
+    field = parse_recorded_fingerprint(doc)
+    assert field.status == "ok"
+    assert field.value == "2222222222222222"
+
+
+def _single_repo_fixture(temp: str) -> tuple[Path, Path, Path]:
+    web = Path(temp) / "web"
+    module = web / "apps" / "storefront"
+    module.mkdir(parents=True)
+    (module / "index.ts").write_text("export const x = 1;\n")
+    _write_valid_module(module, "web", "storefront", "apps/storefront")
+    (web / "aidlc-docs").mkdir()
+    index = web / "aidlc-docs" / "repository-context.md"
+    _write_valid_index(index, web)
+    return web, index, module / "AIDLC_CONTEXT.md"
+
+
+def test_omitted_index_repository_id_still_detects_stale_context() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web, index, _module_doc = _single_repo_fixture(temp)
+        (web / "notes.ts").write_text("export const note = 1;\n")
+        checks = validate_generated_context(index, {"web": web, "payments": web.parent / "payments"})
+        fingerprint = next(check for check in checks if check.name == "index:fingerprint")
+        assert fingerprint.status == "failed"
+        code = cli_validate([str(index), "--root", f"web={web}"])
+        assert code == 1
+
+
+def test_extra_authorized_root_does_not_skip_single_repo_checks() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web, index, _module_doc = _single_repo_fixture(temp)
+        payments = Path(temp) / "payments"
+        payments.mkdir()
+        checks = validate_generated_context(index, {"web": web, "payments": payments})
+        statuses = {check.name: check.status for check in checks}
+        assert statuses["modules:repository-identity"] == "passed"
+        assert statuses["modules:duplicate-identity"] == "passed"
+        assert statuses["modules:source:web:apps/storefront"] == "passed"
+        assert statuses["index:fingerprint"] == "passed"
+
+
+def test_conflicting_supplied_repository_id_fails() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web, index, _module_doc = _single_repo_fixture(temp)
+        checks = validate_generated_context(index, {"web": web}, index_repository_id="payments")
+        identity = next(check for check in checks if check.name == "index:identity")
+        assert identity.status == "failed"
+        assert cli_validate(
+            [str(index), "--root", f"web={web}", "--index-repository-id", "payments"]
+        ) == 1
+
+
+def test_missing_index_identity_is_unresolved_not_success() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web, index, _module_doc = _single_repo_fixture(temp)
+        text = index.read_text().replace("- Index: `single-repository`\n", "").replace(
+            "- Repository ID: `web`\n", ""
+        )
+        index.write_text(text)
+        checks = validate_generated_context(index, {"web": web})
+        identity = next(check for check in checks if check.name == "index:identity")
+        fingerprint = next(check for check in checks if check.name == "index:fingerprint")
+        assert identity.status == "unresolved"
+        assert fingerprint.status == "unresolved"
+        assert cli_validate([str(index), "--root", f"web={web}"]) == 2
+
+
+def test_module_metadata_must_match_the_index_row() -> None:
+    replacements = {
+        "repository": ("- Repository ID: `web`", "- Repository ID: `other`"),
+        "module": ("- Module ID: `storefront`", "- Module ID: `checkout`"),
+        "source": ("- Source: `apps/storefront`", "- Source: `apps/missing`"),
+    }
+    for label, (old, new) in replacements.items():
+        with tempfile.TemporaryDirectory() as temp:
+            web, index, module_doc = _single_repo_fixture(temp)
+            module_doc.write_text(module_doc.read_text().replace(old, new, 1))
+            checks = validate_generated_context(index, {"web": web}, index_repository_id="web")
+            identity = next(
+                check for check in checks if check.name.endswith("AIDLC_CONTEXT.md") and "identity" in check.name
+            )
+            assert identity.status == "failed", label
+            fingerprint = next(
+                check
+                for check in checks
+                if check.name.endswith("AIDLC_CONTEXT.md") and "fingerprint" in check.name
+            )
+            assert fingerprint.status != "passed", label
+
+
+def test_missing_evidence_file_fails_without_treating_symbols_as_paths() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web, index, module_doc = _single_repo_fixture(temp)
+        module_doc.write_text(
+            module_doc.read_text().replace(
+                "<!-- AI-DLC:generated:end -->",
+                "\n".join(
+                    [
+                        "## Evidence and existing docs",
+                        "",
+                        "- `OrderPlacedEvent`",
+                        "- `apps/storefront/deleted.ts`",
+                        "",
+                        "<!-- AI-DLC:generated:end -->",
+                    ]
+                ),
+            )
+        )
+        checks = validate_generated_context(index, {"web": web}, index_repository_id="web")
+        evidence = [check for check in checks if "evidence" in check.name]
+        assert any(check.status == "failed" and "deleted.ts" in check.name for check in evidence)
+        assert not any("OrderPlacedEvent" in check.name for check in checks)
+        assert cli_validate([str(index), "--root", f"web={web}", "--index-repository-id", "web"]) == 1
+
+
+def test_directory_context_target_is_a_structured_failure() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web, index, _module_doc = _single_repo_fixture(temp)
+        index.write_text(
+            index.read_text().replace(
+                "../apps/storefront/AIDLC_CONTEXT.md",
+                "../apps/storefront",
+            )
+        )
+        checks = validate_generated_context(index, {"web": web}, index_repository_id="web")
+        link = next(check for check in checks if check.name == "modules:link:../apps/storefront")
+        assert link.status == "failed"
+        assert cli_validate([str(index), "--root", f"web={web}", "--index-repository-id", "web"]) == 1
+
+
+def test_failed_check_takes_exit_precedence_over_unresolved() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web = Path(temp) / "web"
+        web.mkdir()
+        index = web / "repository-context.md"
+        lines = ["# Repository context", "", "<!-- AI-DLC:generated:start -->", "", "## Scope", ""]
+        lines += [f"padding line {i}" for i in range(200)]
+        lines += ["", "<!-- AI-DLC:generated:end -->", ""]
+        index.write_text("\n".join(lines))
+        code = cli_validate([str(index), "--root", f"web={web}", "--index-budget", "150"])
+        assert code == 1
+
+
+def test_unavailable_repository_is_unresolved_not_failed() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        base = Path(temp)
+        web = base / "web"
+        engagement = base / "engagement"
+        (web / "apps" / "api").mkdir(parents=True)
+        (engagement / "aidlc-docs").mkdir(parents=True)
+        (web / "apps" / "api" / "index.ts").write_text("export const x = 1;\n")
+        _write_valid_module(web / "apps" / "api", "reporting", "api", "services/api")
+        index = engagement / "aidlc-docs" / "repository-context.md"
+        index.write_text(
+            "\n".join(
+                [
+                    "<!-- AI-DLC:generated:start -->",
+                    "",
+                    "## Scope",
+                    "",
+                    "- Index: `multi-repository`",
+                    "",
+                    "## Modules",
+                    "",
+                    "| Module | Repository | Source | Context | Status |",
+                    "| --- | --- | --- | --- | --- |",
+                    "| `api` | `reporting` | `services/api` | [x](../../web/apps/api/AIDLC_CONTEXT.md) | current |",
+                    "",
+                    "<!-- AI-DLC:generated:end -->",
+                ]
+            )
+        )
+        roots = {"web": web, "reporting": base / "reporting"}
+        checks = validate_generated_context(index, roots)
+        source = next(check for check in checks if check.name == "modules:source:reporting:services/api")
+        assert source.status == "unresolved"
+        assert all(check.status != "failed" for check in checks)
+        assert cli_validate(
+            [str(index), "--root", f"web={web}", "--root", f"reporting={base / 'reporting'}"]
+        ) == 2
+
+
+def test_artifact_home_fallback_document_is_not_required_inside_source() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web = Path(temp) / "web"
+        source = web / "apps" / "storefront"
+        source.mkdir(parents=True)
+        (source / "index.ts").write_text("export const x = 1;\n")
+        fallback_dir = web / "aidlc-docs" / "context" / "web"
+        fallback_dir.mkdir(parents=True)
+        fingerprint, _ = content_fingerprint(source)
+        fallback = fallback_dir / "storefront.md"
+        fallback.write_text(
+            "\n".join(
+                [
+                    "# AIDLC context — storefront",
+                    "",
+                    "The colocated file was not writable. Source root: `apps/storefront`.",
+                    "",
+                    "<!-- AI-DLC:generated:start -->",
+                    "",
+                    "## Identity and scope",
+                    "",
+                    "- Repository ID: `web`",
+                    "- Module ID: `storefront`",
+                    "- Source: `apps/storefront`",
+                    f"- Baseline and fingerprint: `deadbeefdeadbeefdeadbeefdeadbeefdeadbeef` / `{fingerprint}`",
+                    "",
+                    "<!-- AI-DLC:generated:end -->",
+                    "",
+                ]
+            )
+        )
+        index = web / "aidlc-docs" / "repository-context.md"
+        index_fingerprint, _ = content_fingerprint(web)
+        index.write_text(
+            "\n".join(
+                [
+                    "<!-- AI-DLC:generated:start -->",
+                    "",
+                    "## Scope",
+                    "",
+                    "- Index: `single-repository`",
+                    "- Repository ID: `web`",
+                    f"- Fingerprint: `{index_fingerprint}`",
+                    "",
+                    "## Modules",
+                    "",
+                    "| Module | Source | Context | Status |",
+                    "| --- | --- | --- | --- |",
+                    "| `storefront` | `apps/storefront` | [x](context/web/storefront.md) | current |",
+                    "",
+                    "<!-- AI-DLC:generated:end -->",
+                ]
+            )
+        )
+        before = {path: path.read_text() for path in (index, fallback)}
+        checks = validate_generated_context(index, {"web": web}, index_repository_id="web")
+        assert {path: path.read_text() for path in (index, fallback)} == before
+        statuses = {check.name: check.status for check in checks}
+        assert statuses["modules:fingerprint:context/web/storefront.md"] == "passed"
+        assert statuses["modules:identity:context/web/storefront.md"] == "passed"
+        assert not fallback.is_relative_to(source)
 
 
 if __name__ == "__main__":
@@ -933,6 +1299,22 @@ if __name__ == "__main__":
         test_validate_generated_context_multi_repo_requires_repository_column,
         test_validate_generated_context_true_multi_repo_engagement_passes,
         test_cli_validate_exit_codes,
+        test_extract_table_column_ignores_fenced_heading_before_real_section,
+        test_extract_table_column_ignores_tilde_fenced_heading,
+        test_structure_heading_outside_generated_block_fails,
+        test_parse_recorded_fingerprint_rejects_duplicate_equal_values,
+        test_parse_recorded_fingerprint_rejects_multiple_or_malformed_blocks,
+        test_parse_recorded_fingerprint_ignores_fingerprinted_prose,
+        test_omitted_index_repository_id_still_detects_stale_context,
+        test_extra_authorized_root_does_not_skip_single_repo_checks,
+        test_conflicting_supplied_repository_id_fails,
+        test_missing_index_identity_is_unresolved_not_success,
+        test_module_metadata_must_match_the_index_row,
+        test_missing_evidence_file_fails_without_treating_symbols_as_paths,
+        test_directory_context_target_is_a_structured_failure,
+        test_failed_check_takes_exit_precedence_over_unresolved,
+        test_unavailable_repository_is_unresolved_not_failed,
+        test_artifact_home_fallback_document_is_not_required_inside_source,
     ]
     for test in tests:
         test()

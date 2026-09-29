@@ -33,10 +33,14 @@ Invoke the included skills directly:
 /refine-story PAY-123 combined
 /implement-change PAY-123
 /validate-change PAY-123
-/deliver-change
+/create-e2e-tests PAY-123 guest checkout journey
 ```
 
-The skills are deliberately dry-run for Jira, Git, pull-request, merge, and deployment actions until the user approves an exact external change set. `plan-work` separates **ready for review** from **approved for publication**. It requests independent product review before publication, but records review as pending or unavailable when the host cannot delegate it. `/review-bugbot` remains a separate interactive Cursor command; `validate-change` coordinates its status but cannot run it itself.
+`create-e2e-tests` is optional. `validate-change` may run end-to-end tests that already exist. It does not run `create-e2e-tests`.
+
+The skills are deliberately dry-run for Jira writes until the user approves an exact external change set. `plan-work` separates **ready for review** from **approved for publication**. It requests independent product review before publication, but records review as pending or unavailable when the host cannot delegate it. `/review-bugbot` remains a separate interactive Cursor command; `validate-change` records its status but cannot run it itself.
+
+Delivery stays a developer step, not a skill. After validation says the change is ready, the developer commits, pushes, opens the pull request, obtains approvals, and merges with normal Git and pull-request tools. This plugin does not commit, push, open a pull request, or merge.
 
 ## Host prerequisites and fallbacks
 
@@ -53,8 +57,8 @@ The skills are deliberately dry-run for Jira, Git, pull-request, merge, and depl
   duplicate entries) and requests an independent `context-reviewer`
   assessment for initial generation or a material change; it states plainly
   when that review was skipped or unavailable.
-- **Git:** Local Git supports repository inspection, branch, diff, commit, and push only. Each workflow resolves the actual Git root and preserves unrelated work.
-- **Provider operations:** Pull requests, remote checks, approvals, and provider merge need a verified provider integration. GitHub can use an already installed and authenticated `gh` CLI. Without it, the plugin completes only supported local actions and provides a manual handoff.
+- **Git and delivery:** Skills may inspect the local Git root, branch, and diff. They do not commit, push, open a pull request, or merge. The developer does that delivery with normal tools after validation.
+- **Provider checks:** Remote checks and approvals are observed only when a verified provider integration shows them. `validate-change` records that evidence. It does not merge.
 - **Agents:** The plugin defines reviewer prompts, but does not expose a dispatch API. The main chat uses host-supported independent delegation when available. A host general-purpose subagent may receive a bounded reviewer prompt when named plugin-agent dispatch is unavailable; that is reported as general-purpose review, not native agent dispatch. Otherwise review remains visibly pending or requires a named human review or policy-permitted exception.
 - **Canvas and Bugbot:** Canvas has structured-chat fallback. Bugbot requires user invocation through `/review-bugbot`; its presence in chat does not prove it ran.
 

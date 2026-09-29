@@ -26,8 +26,18 @@ Require approved scope and acceptance criteria. Run repository preflight, then r
 8. Treat public contracts, migrations, infrastructure, and E2E support as explicit scope. Do not add them by implication.
 9. Give the user a `/validate-change` handoff with changed paths, commands, baseline, reviewer findings, and known gaps. Do not claim the slash command ran automatically.
 
+## Defect mode
+Use this mode for a bug report, a supplied reproduction, or an existing ticket. Stay inside the authorized repository and a non-production environment.
+
+1. Try to reproduce the reported behavior. Say what you reproduced and what is still a hypothesis. Do not invent a confirmed root cause or a successful reproduction.
+2. Separate a defect from intended behavior, a configuration problem, and a new feature request. Return a feature request to `/plan-work`.
+3. State the expected outcome. Ask when that outcome is still unclear.
+4. Make a scoped fix and add a regression test that fails before the fix and passes after it, when the project can run that test.
+5. Hand off to `/validate-change` with the reproduction, the fix, and the test result. Do not claim that command ran.
+6. Do not create or update a Jira record unless the user authorizes that write.
+
 ## Boundaries
-Infrastructure, IAM, security, data migration, and production-affecting changes require explicit review and scoped approval before state-changing operations. Dedicated governance integration and defect investigation are deferred. Use local Git for read-only baseline inspection. Do not commit, push, open a PR, or deploy.
+Infrastructure, IAM, security, data migration, and production-affecting changes require explicit review and scoped approval before state-changing operations. Dedicated governance integration is deferred. Use local Git for read-only baseline inspection. Do not commit, push, open a PR, or deploy.
 
 ## Output
 Return changed behavior, files, baseline, tests added or updated, known risks, and validation handoff.

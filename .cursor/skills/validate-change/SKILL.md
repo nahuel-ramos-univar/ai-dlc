@@ -17,17 +17,17 @@ Start when the user runs `/validate-change` with the changed paths, baseline, ac
 
 ## Workflow
 1. Capture the branch, revision, working-tree state, changed paths, and acceptance criteria under review.
-2. Map every acceptance criterion to a code inspection and the narrowest applicable unit, integration, E2E, manual, or unavailable check.
+2. Map every acceptance criterion to a code inspection and the narrowest applicable unit, integration, end-to-end, manual, or unavailable check. Run an end-to-end test only when one already exists and is relevant. Do not claim `create-e2e-tests` ran.
 3. Run only relevant checks. Report command, revision, result, duration when known, and reason for skipped or unavailable checks.
 4. Inspect dependency manifests, public contracts, migrations, and security-sensitive code when changed.
 5. The main chat may request an independent `validator` or `implementation-reviewer` assessment for standard or deep-risk changes when a second review reduces uncertainty. Scope frontend/accessibility, backend/data integrity, infrastructure/permissions, contracts/integrations, QA/E2E, or architecture review only when relevant.
 6. Coordinate Bugbot status as part of this workflow. Record it as passed, failed, blocked, not run, or not applicable with its reviewed code state.
 7. Invalidate affected evidence if material code or configuration changes after a check.
 8. For high-risk changes or materially stale review rules, identify the required review and approval. Dedicated governance integration is deferred.
-9. Return **ready to deliver** only when policy-required evidence is passed or an approved exception is recorded. Otherwise provide a targeted implementation handoff and identify the verification scope that must rerun.
+9. Return **ready for the developer to deliver** only when policy-required evidence is passed or an approved exception is recorded. Delivery means the developer commits, pushes, opens the pull request, obtains approvals, and merges with normal Git and pull-request tools. This skill does not commit, push, open a pull request, or merge. Otherwise provide a targeted implementation handoff and identify the verification scope that must rerun.
 
 ## Bugbot
-This plugin does not programmatically invoke Bugbot. When Bugbot is required or requested, ask the developer to run `/review-bugbot`, mark it pending user invocation, and never claim it ran or substitute another review engine. Observe remote Bugbot only when it appears in actual configured checks; do not assume it is configured. `deliver-change` inspects checks but does not coordinate Bugbot.
+This plugin does not programmatically invoke Bugbot. When Bugbot is required or requested, ask the developer to run `/review-bugbot`, mark it pending user invocation, and never claim it ran or substitute another review engine. Observe remote Bugbot only when it appears in actual configured checks; do not assume it is configured. This skill records Bugbot status. It does not merge, and it does not treat a pending Bugbot review as passed.
 
 ## Output
 Return a concise acceptance-evidence matrix, reviewed Git state, failures, skipped checks, remaining risks, and explicit Bugbot status.

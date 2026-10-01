@@ -58,7 +58,7 @@ deliberate decision, not a side effect of enabling `sync-context`.
 
 The skills are deliberately dry-run for Jira writes until the user approves an exact external change set. `plan-work` separates **ready for review** from **approved for publication**. It requests independent product review before publication, but records review as pending or unavailable when the host cannot delegate it. `/review-bugbot` remains a separate interactive Cursor command; `validate-change` records its status but cannot run it itself.
 
-Delivery stays a developer step, not a skill. After validation says the change is ready, the developer commits, pushes, opens the pull request, obtains approvals, and merges with normal Git and pull-request tools. This plugin does not commit, push, open a pull request, or merge.
+Delivery stays a developer step, not a skill. After validation says the change is ready, the developer commits, pushes, opens the pull request, obtains approvals, and merges with normal Git and pull-request tools. This plugin does not commit, push, open a pull request, or merge. When opening a pull request for this repository, read `.github/pull_request_template.md` and fill it in from the actual diff and verification results; never invent a Jira issue or claim tests ran when they did not.
 
 ## Host prerequisites and fallbacks
 

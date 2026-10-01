@@ -54,6 +54,28 @@ content.
   - Source: `services/payments`
 ```
 
+An optional `## Project references` section may follow `## Context identities`.
+It is not part of identity. Omit the whole section when nothing is confirmed.
+The field names and the example values below are illustrations, not defaults.
+`parse_project_references` reads this section and ignores `## Context identities`.
+Parsing of `## Context identities` stops at this heading, so these lines never
+become identity fields.
+
+```markdown
+## Project references
+- Jira site: `example.atlassian.net`
+- Jira project: `PROJ`
+- Jira board: `https://example.atlassian.net/jira/software/c/projects/PROJ/boards/1`
+- Figma reference: `https://www.figma.com/design/EXAMPLE/file`
+- Figma role: `design-system`
+```
+
+Supported fields are `Jira site` (host only), `Jira project` (project key),
+optional `Jira board` (URL), optional `Figma reference` (URL), and optional
+`Figma role` (`approved-design`, `design-system`, or `inspiration`). Write
+only confirmed values, through the approved config change. See
+[project-onboarding.md](../../../../references/project-onboarding.md).
+
 Do not create `.ai-dlc-config.md` in every source repository to record a
 Bugbot decision. Store decisions under the configured artifact home, keyed by
 the stable repository ID.

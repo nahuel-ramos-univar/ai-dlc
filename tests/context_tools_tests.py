@@ -32,6 +32,7 @@ from context_tools import (  # noqa: E402
     is_declared_submodule,
     module_context_destination,
     normalize_remote,
+    parse_project_references,
     proposal_is_current,
     resolve_placement,
     context_sync_outcome,
@@ -2447,6 +2448,34 @@ def test_context_sync_outcome_full_no_op_when_nothing_is_actionable() -> None:
     assert context_sync_outcome("unavailable", False, False, False) == "relevant_updates_found"
 
 
+def test_context_sync_outcome_is_reachable_for_a_configuration_only_change() -> None:
+    # A pending `## Project references` update (for example: switch Jira
+    # boards) must stay reachable even though the source fingerprint is
+    # unchanged. Before this fix, an unchanged fingerprint always produced
+    # "no_relevant_changes" here, making a confirmed, user-requested
+    # configuration change unreachable.
+    outcome = context_sync_outcome(
+        "unchanged", False, False, False, project_reference_pending=True
+    )
+    assert outcome == "relevant_updates_found"
+
+    # A declined/absent configuration change (the default) must not change
+    # the pre-existing no-op outcome.
+    assert context_sync_outcome("unchanged", False, False, False) == "no_relevant_changes"
+    assert (
+        context_sync_outcome("unchanged", False, False, False, project_reference_pending=False)
+        == "no_relevant_changes"
+    )
+
+    # A pending configuration change alongside other pending work is still
+    # "relevant updates found", not the migration-pending outcome, since
+    # set A itself now has actionable work.
+    assert (
+        context_sync_outcome("unchanged", True, False, False, project_reference_pending=True)
+        == "relevant_updates_found"
+    )
+
+
 def test_duplicate_managed_configuration_heading_is_ambiguous() -> None:
     config = """
 ## Context identities
@@ -2462,6 +2491,359 @@ def test_duplicate_managed_configuration_heading_is_ambiguous() -> None:
     decisions = find_live_section(config, "## Bugbot decisions")
     assert identities.status == "ambiguous"
     assert decisions.status == "ok"
+
+
+def test_context_identities_stop_at_project_references() -> None:
+    config = """
+## Context identities
+- Repository: `payments-api`
+  - Canonical remote: `github.com/example/payments-api`
+
+## Project references
+- Jira site: `example.atlassian.net`
+- Jira project: `PROJ`
+- Jira board: `https://example.atlassian.net/jira/software/c/projects/PROJ/boards/1`
+"""
+    identities = find_live_section(config, "## Context identities")
+    assert identities.status == "ok"
+    identity_text = "\n".join(identities.lines)
+    assert "Repository: `payments-api`" in identity_text
+    assert "Jira site" not in identity_text
+    assert "Project references" not in identity_text
+
+    references = parse_project_references(config)
+    assert references.status == "ok"
+    assert references.values == {
+        "Jira site": "example.atlassian.net",
+        "Jira project": "PROJ",
+        "Jira board": "https://example.atlassian.net/jira/software/c/projects/PROJ/boards/1",
+    }
+
+
+def test_missing_project_references_do_not_invalidate_identities() -> None:
+    config = """
+## Context identities
+- Repository: `payments-api`
+"""
+    identities = find_live_section(config, "## Context identities")
+    assert identities.status == "ok"
+    assert "Repository: `payments-api`" in "\n".join(identities.lines)
+    assert parse_project_references(config).status == "missing"
+
+
+def test_duplicate_project_reference_sections_are_ambiguous() -> None:
+    config = """
+## Project references
+- Jira project: `PROJ`
+
+## Project references
+- Jira project: `OTHER`
+"""
+    references = parse_project_references(config)
+    assert references.status == "ambiguous"
+    assert references.values == {}
+
+
+def test_project_references_reject_a_site_url_and_an_unknown_figma_role() -> None:
+    site = parse_project_references(
+        "## Project references\n- Jira site: `https://example.atlassian.net/wiki`\n"
+    )
+    assert site.status == "invalid"
+    assert "host only" in site.detail
+
+    role = parse_project_references(
+        "\n".join(
+            [
+                "## Project references",
+                "- Figma reference: `https://www.figma.com/design/EXAMPLE/file`",
+                "- Figma role: `inspiration-maybe`",
+            ]
+        )
+    )
+    assert role.status == "invalid"
+    assert "not recognized" in role.detail
+
+    role_without_url = parse_project_references(
+        "## Project references\n- Figma role: `inspiration`\n"
+    )
+    assert role_without_url.status == "invalid"
+    assert "without a Figma reference" in role_without_url.detail
+
+
+def test_project_references_keep_a_board_without_treating_it_as_the_project() -> None:
+    references = parse_project_references(
+        "\n".join(
+            [
+                "## Project references",
+                "- Jira board: `https://example.atlassian.net/jira/software/c/projects/PROJ/boards/1`",
+                "- Figma reference: `https://www.figma.com/design/EXAMPLE/file`",
+                "- Figma role: `approved-design`",
+            ]
+        )
+    )
+    assert references.status == "ok"
+    assert "Jira project" not in references.values
+    assert references.values["Figma role"] == "approved-design"
+
+
+def test_project_references_flag_a_recognized_field_without_backticks() -> None:
+    # A recognized field name written without the canonical backtick value
+    # format must be flagged as invalid, not silently skipped. Before this
+    # fix, `parse_labeled_fields`'s strict regex made the whole line
+    # invisible, and the field was dropped from `values` with no error.
+    references = parse_project_references(
+        "## Project references\n"
+        "- Jira site: example.atlassian.net\n"
+        "- Jira project: PROJ\n"
+    )
+    assert references.status == "invalid"
+    assert "Jira site" in references.detail
+    assert "Jira project" in references.detail
+    # A rejected field must never be mistaken for a confirmed one.
+    assert references.values == {}
+
+
+def test_project_references_detect_a_mixed_quoted_and_unquoted_duplicate() -> None:
+    # A recognized field repeated with one canonical and one malformed
+    # occurrence must be "ambiguous", not silently resolved to the first
+    # (canonical) value. Before this fix, the malformed occurrence was
+    # invisible to duplicate detection because it never matched the strict
+    # labeled-field pattern.
+    references = parse_project_references(
+        "## Project references\n"
+        "- Jira project: `PROJ`\n"
+        "- Jira project: OTHER\n"
+    )
+    assert references.status == "ambiguous"
+    assert "Jira project" in references.detail
+    assert references.values == {}
+
+    # Two canonical occurrences of the same field remain ambiguous too.
+    both_canonical = parse_project_references(
+        "## Project references\n"
+        "- Jira project: `PROJ`\n"
+        "- Jira project: `OTHER`\n"
+    )
+    assert both_canonical.status == "ambiguous"
+
+
+def test_project_references_reject_syntax_errors_with_urllib_parsing() -> None:
+    # A Jira site that merely lacks "://" and "/" and "@" is not
+    # automatically a valid host: whitespace, control characters, and a
+    # malformed port must also be rejected using real URL/host parsing
+    # rather than substring checks.
+    whitespace_site = parse_project_references(
+        "## Project references\n- Jira site: `not a host`\n"
+    )
+    assert whitespace_site.status == "invalid"
+
+    bad_port_site = parse_project_references(
+        "## Project references\n- Jira site: `example.atlassian.net:notaport`\n"
+    )
+    assert bad_port_site.status == "invalid"
+
+    # A self-hosted Jira host with an explicit port is a valid bare host.
+    self_hosted = parse_project_references(
+        "## Project references\n- Jira site: `jira.internal.example.com:8443`\n"
+    )
+    assert self_hosted.status == "ok"
+    assert self_hosted.values["Jira site"] == "jira.internal.example.com:8443"
+
+    # A board/Figma URL with no scheme, the wrong scheme, no host, or
+    # embedded credentials is invalid syntax, not just "missing ://".
+    no_scheme_board = parse_project_references(
+        "## Project references\n- Jira board: `https://`\n"
+    )
+    assert no_scheme_board.status == "invalid"
+
+    wrong_scheme_figma = parse_project_references(
+        "## Project references\n- Figma reference: `file:///etc/passwd`\n"
+    )
+    assert wrong_scheme_figma.status == "invalid"
+
+    credentials_in_board = parse_project_references(
+        "## Project references\n"
+        "- Jira board: `https://user:pass@example.atlassian.net/boards/1`\n"
+    )
+    assert credentials_in_board.status == "invalid"
+    assert "credentials" in credentials_in_board.detail
+
+    # A syntactically valid absolute https URL with a normal path is still
+    # accepted; this checks syntax, not reachability or permission.
+    valid_board = parse_project_references(
+        "## Project references\n"
+        "- Jira board: `https://example.atlassian.net/jira/software/projects/PROJ/boards/1`\n"
+    )
+    assert valid_board.status == "ok"
+
+
+def test_project_references_reject_malformed_hostnames() -> None:
+    # urlsplit accepts an empty interior DNS label and a backslash in the
+    # authority. Both must be invalid. This is syntax only.
+    empty_label = parse_project_references(
+        "## Project references\n- Jira site: `jira..example.com`\n"
+    )
+    assert empty_label.status == "invalid"
+    assert empty_label.values == {}
+
+    backslash_board = parse_project_references(
+        "## Project references\n"
+        "- Jira board: `https://jira.example.com\\other/boards/1`\n"
+    )
+    assert backslash_board.status == "invalid"
+    assert backslash_board.values == {}
+
+    empty_userinfo = parse_project_references(
+        "## Project references\n"
+        "- Jira board: `https://@jira.example.com/boards/1`\n"
+    )
+    assert empty_userinfo.status == "invalid"
+    assert "credentials" in empty_userinfo.detail
+    assert empty_userinfo.values == {}
+
+    leading_dot = parse_project_references(
+        "## Project references\n- Jira site: `.jira.example.com`\n"
+    )
+    assert leading_dot.status == "invalid"
+
+    # A trailing DNS dot, a single-label internal host, IPv4, an explicit
+    # port, a bracketed IPv6 URL, and a Figma frame link stay valid.
+    trailing_dot = parse_project_references(
+        "## Project references\n- Jira site: `jira.example.com.`\n"
+    )
+    assert trailing_dot.status == "ok"
+    assert trailing_dot.values["Jira site"] == "jira.example.com."
+
+    single_label = parse_project_references(
+        "## Project references\n- Jira site: `jira`\n"
+    )
+    assert single_label.status == "ok"
+
+    ipv4_site = parse_project_references(
+        "## Project references\n- Jira site: `192.168.1.10`\n"
+    )
+    assert ipv4_site.status == "ok"
+
+    ipv4_board = parse_project_references(
+        "## Project references\n"
+        "- Jira board: `https://192.168.1.10:8443/boards/1?selectedIssue=PROJ-1#frag`\n"
+    )
+    assert ipv4_board.status == "ok"
+
+    ipv6_board = parse_project_references(
+        "## Project references\n"
+        "- Jira board: `https://[2001:db8::1]:8443/boards/1`\n"
+    )
+    assert ipv6_board.status == "ok"
+
+    figma_frame = parse_project_references(
+        "## Project references\n"
+        "- Figma reference: `https://www.figma.com/design/ABC/file?node-id=1-2`\n"
+        "- Figma role: `approved-design`\n"
+    )
+    assert figma_frame.status == "ok"
+    assert "node-id=1-2" in figma_frame.values["Figma reference"]
+
+
+def test_project_references_reject_explicitly_empty_recognized_fields() -> None:
+    # A recognized field that is written with an empty or whitespace-only
+    # value is invalid. Omitting the line is how an optional field stays
+    # absent. Invalid results expose no reusable values.
+    empty = parse_project_references("## Project references\n- Jira project: ``\n")
+    assert empty.status == "invalid"
+    assert empty.values == {}
+    assert "Jira project" in empty.detail
+
+    whitespace = parse_project_references(
+        "## Project references\n- Jira site: `   `\n"
+    )
+    assert whitespace.status == "invalid"
+    assert whitespace.values == {}
+
+    # An absent optional field is still valid.
+    absent = parse_project_references(
+        "## Project references\n- Jira project: `PROJ`\n"
+    )
+    assert absent.status == "ok"
+    assert absent.values == {"Jira project": "PROJ"}
+
+    # A duplicate is ambiguous even when one of the values is empty. Do not
+    # pick the non-empty one.
+    duplicate = parse_project_references(
+        "## Project references\n- Jira project: ``\n- Jira project: `PROJ`\n"
+    )
+    assert duplicate.status == "ambiguous"
+    assert duplicate.values == {}
+
+
+def test_project_references_empty_live_section_is_reported_as_missing() -> None:
+    # A live `## Project references` heading with no recognized fields —
+    # empty, or holding only unrelated notes — must not be reported as
+    # "ok". project-onboarding.md says a confirmed section is never written
+    # empty, so this state means nothing was actually confirmed; treating
+    # it as "ok" would make `sync-context`/`scaffold-project` skip
+    # onboarding forever, since both only reopen it on "missing",
+    # "ambiguous", or "invalid".
+    heading_only = parse_project_references("## Project references\n")
+    assert heading_only.status == "missing"
+    assert heading_only.values == {}
+
+    notes_only = parse_project_references(
+        "## Project references\n- Owner: Platform team\n"
+    )
+    assert notes_only.status == "missing"
+    assert notes_only.values == {}
+
+    # One recognized, valid field is enough to make the section "ok", even
+    # alongside the same kind of unrelated note.
+    one_field = parse_project_references(
+        "## Project references\n- Owner: Platform team\n- Jira project: `PROJ`\n"
+    )
+    assert one_field.status == "ok"
+    assert one_field.values == {"Jira project": "PROJ"}
+
+
+def test_project_references_preserve_fences_and_unrelated_lines() -> None:
+    # A fenced code example showing the section's own syntax must not be
+    # read as a second live heading, and an unrelated human-authored bullet
+    # in the same section must not be flagged.
+    config = "\n".join(
+        [
+            "## Project references",
+            "- Jira site: `example.atlassian.net`",
+            "- Owner: Platform team",
+            "",
+            "```markdown",
+            "## Project references",
+            "- Jira project: `OTHER`",
+            "```",
+        ]
+    )
+    references = parse_project_references(config)
+    assert references.status == "ok"
+    assert "Jira project" not in references.values
+    assert references.values["Jira site"] == "example.atlassian.net"
+
+
+def test_project_references_invalid_status_never_populates_values() -> None:
+    # A rejected `## Project references` section must report an empty
+    # `values`, the same as "missing" and "ambiguous", so a later refresh
+    # can never treat a bad host or an unknown role as confirmed
+    # configuration. This also closes the adjacent Bugbot finding on
+    # SKILL.md's `invalid`-status reopen-onboarding behavior.
+    bad_site = parse_project_references(
+        "## Project references\n- Jira site: `https://example.atlassian.net/wiki`\n"
+    )
+    assert bad_site.status == "invalid"
+    assert bad_site.values == {}
+
+    unknown_role = parse_project_references(
+        "## Project references\n"
+        "- Figma reference: `https://www.figma.com/design/EXAMPLE/file`\n"
+        "- Figma role: `inspiration-maybe`\n"
+    )
+    assert unknown_role.status == "invalid"
+    assert unknown_role.values == {}
 
 
 if __name__ == "__main__":
@@ -2579,6 +2961,20 @@ if __name__ == "__main__":
         test_context_sync_outcome_unchanged_with_pending_legacy_cleanup,
         test_context_sync_outcome_full_no_op_when_nothing_is_actionable,
         test_duplicate_managed_configuration_heading_is_ambiguous,
+        test_context_identities_stop_at_project_references,
+        test_missing_project_references_do_not_invalidate_identities,
+        test_duplicate_project_reference_sections_are_ambiguous,
+        test_context_sync_outcome_is_reachable_for_a_configuration_only_change,
+        test_project_references_reject_a_site_url_and_an_unknown_figma_role,
+        test_project_references_keep_a_board_without_treating_it_as_the_project,
+        test_project_references_flag_a_recognized_field_without_backticks,
+        test_project_references_detect_a_mixed_quoted_and_unquoted_duplicate,
+        test_project_references_reject_syntax_errors_with_urllib_parsing,
+        test_project_references_reject_malformed_hostnames,
+        test_project_references_reject_explicitly_empty_recognized_fields,
+        test_project_references_empty_live_section_is_reported_as_missing,
+        test_project_references_preserve_fences_and_unrelated_lines,
+        test_project_references_invalid_status_never_populates_values,
     ]
     for test in tests:
         test()

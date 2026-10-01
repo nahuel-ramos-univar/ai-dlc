@@ -55,6 +55,21 @@ repositories are available in this window and which are not; an unavailable
 related repository is a fact to report, not a reason to invent a competing
 context home.
 
+Read [project onboarding](../../../references/project-onboarding.md) only
+when project references are missing, ambiguous, or explicitly being
+reconsidered. This is an instruction for the current run, not a conditional
+loader. `parse_project_references`'s `"invalid"` status is also a gap, not
+a confirmed value: `values` is empty for every status except `"ok"`, so
+treat `"invalid"` the same as missing or ambiguous — never reuse a
+rejected host, URL, or role as if it were confirmed. `"ok"` means the
+fields that are present passed parsing and syntax checks. It does not mean
+every input the current operation needs is present, and it does not prove
+confirmation, authenticated access, or that the resource exists. Before an
+operation, check that operation's required inputs. Do not reopen onboarding
+only because an optional board or Figma reference is absent. Do not read
+onboarding on an ordinary refresh that already has an `"ok"` configuration.
+Onboarding does not choose a different artifact home.
+
 Inspect the revision, branch, upstream, staged, unstaged, and relevant
 untracked (not ignored) modifications. Skip vendor, build, cache, generated,
 and inaccessible sibling directories, and do not read secrets or ignored
@@ -76,22 +91,28 @@ modules; expand analysis to an affected downstream consumer only when
 evidence supports it. See [incremental-refresh.md](references/incremental-refresh.md).
 
 **If every affected scope classifies `unchanged` and there is no unresolved
-evidence gap, change set A (context documents) needs no rewrite.** Do not
-rewrite any document, do not create a Canvas or report file for set A, and
-do not update a timestamp merely to show activity. This does not by itself
-end the run: still check whether change set B (a Bugbot or project-rule
-proposal, [bugbot-configuration.md](references/bugbot-configuration.md),
+evidence gap, the source-document part of change set A needs no rewrite.**
+Do not rewrite any document, do not create a Canvas or report file for that
+part, and do not update a timestamp merely to show activity. An unchanged
+source fingerprint is not the whole of change set A, though: a pending,
+user-requested `## Project references` update (switching the configured
+Jira board, for example) is also part of set A, and it stays reachable even
+when the fingerprint is `unchanged` — pass it to `context_sync_outcome` as
+`project_reference_pending`. This does not by itself end the run: still
+check whether change set B (a Bugbot or project-rule proposal,
+[bugbot-configuration.md](references/bugbot-configuration.md),
 [project-rules.md](references/project-rules.md)) or change set C (legacy
 migration cleanup, [legacy-migration.md](references/legacy-migration.md))
 has pending or newly relevant work. `context_sync_outcome` in
-`scripts/context_tools.py` combines the three sets into the reachable
-outcome. A full no-op — no write, no new proposal, no approval question —
-requires that sets B and C also have nothing actionable, not only that set A
-is unchanged. **"Context current;
-migration cleanup pending" is a valid, reachable outcome**: report it
-explicitly instead of silently closing out set C because set A had nothing
-to do. Only when A, B, and C all have nothing actionable does the run end
-with the short **no relevant changes** result.
+`scripts/context_tools.py` combines all of this into the reachable outcome.
+A full no-op — no write, no new proposal, no approval question — requires
+that no project-reference update is pending and that sets B and C also have
+nothing actionable, not only that the source fingerprint is unchanged.
+**"Context current; migration cleanup pending" is a valid, reachable
+outcome**: report it explicitly instead of silently closing out set C
+because the source had nothing to do. Only when the source, any pending
+project-reference update, B, and C all have nothing actionable does the run
+end with the short **no relevant changes** result.
 
 Otherwise continue to Stage 3 for whichever sets have actionable work, with
 one of: **relevant updates found**, **partial verification** (a related

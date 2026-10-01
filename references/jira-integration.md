@@ -4,6 +4,8 @@ Use the Atlassian MCP supplied by the host Cursor session. Do not hardcode an MC
 
 At the start of a Jira operation, discover which Jira tools are available. Resolve the site and project from the user-provided URL, key, or approved project context. Verify access plus the required issue types and fields before preparing a write.
 
+A board URL identifies a planning board. It does not by itself identify the project that will receive new issues, because one board can show issues from several projects. When a skill needs a stable site, project, or optional board reference, follow [project-onboarding.md](project-onboarding.md). That reference does not authorize creating or editing Jira records.
+
 Classify Jira results precisely:
 
 - **Disconnected:** the MCP server cannot be reached.

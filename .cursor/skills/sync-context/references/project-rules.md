@@ -1,5 +1,10 @@
 # Project-specific Cursor rules
 
+Questions about missing project references or conventions belong in
+[project-onboarding.md](../../../../references/project-onboarding.md). This
+file stays the contract for writing a rule. Onboarding may propose a rule
+only through the flow below.
+
 This is change set B, alongside Bugbot configuration. A context document
 records an **observed fact** ("this service uses PostgreSQL"). A scoped rule
 records a **team policy** ("schema changes must use the approved migration

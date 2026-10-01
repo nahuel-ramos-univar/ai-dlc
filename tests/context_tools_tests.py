@@ -2677,16 +2677,139 @@ def test_project_references_reject_syntax_errors_with_urllib_parsing() -> None:
     assert valid_board.status == "ok"
 
 
+def test_project_references_reject_malformed_hostnames() -> None:
+    # urlsplit accepts an empty interior DNS label and a backslash in the
+    # authority. Both must be invalid. This is syntax only.
+    empty_label = parse_project_references(
+        "## Project references\n- Jira site: `jira..example.com`\n"
+    )
+    assert empty_label.status == "invalid"
+    assert empty_label.values == {}
+
+    backslash_board = parse_project_references(
+        "## Project references\n"
+        "- Jira board: `https://jira.example.com\\other/boards/1`\n"
+    )
+    assert backslash_board.status == "invalid"
+    assert backslash_board.values == {}
+
+    empty_userinfo = parse_project_references(
+        "## Project references\n"
+        "- Jira board: `https://@jira.example.com/boards/1`\n"
+    )
+    assert empty_userinfo.status == "invalid"
+    assert "credentials" in empty_userinfo.detail
+    assert empty_userinfo.values == {}
+
+    leading_dot = parse_project_references(
+        "## Project references\n- Jira site: `.jira.example.com`\n"
+    )
+    assert leading_dot.status == "invalid"
+
+    # A trailing DNS dot, a single-label internal host, IPv4, an explicit
+    # port, a bracketed IPv6 URL, and a Figma frame link stay valid.
+    trailing_dot = parse_project_references(
+        "## Project references\n- Jira site: `jira.example.com.`\n"
+    )
+    assert trailing_dot.status == "ok"
+    assert trailing_dot.values["Jira site"] == "jira.example.com."
+
+    single_label = parse_project_references(
+        "## Project references\n- Jira site: `jira`\n"
+    )
+    assert single_label.status == "ok"
+
+    ipv4_site = parse_project_references(
+        "## Project references\n- Jira site: `192.168.1.10`\n"
+    )
+    assert ipv4_site.status == "ok"
+
+    ipv4_board = parse_project_references(
+        "## Project references\n"
+        "- Jira board: `https://192.168.1.10:8443/boards/1?selectedIssue=PROJ-1#frag`\n"
+    )
+    assert ipv4_board.status == "ok"
+
+    ipv6_board = parse_project_references(
+        "## Project references\n"
+        "- Jira board: `https://[2001:db8::1]:8443/boards/1`\n"
+    )
+    assert ipv6_board.status == "ok"
+
+    figma_frame = parse_project_references(
+        "## Project references\n"
+        "- Figma reference: `https://www.figma.com/design/ABC/file?node-id=1-2`\n"
+        "- Figma role: `approved-design`\n"
+    )
+    assert figma_frame.status == "ok"
+    assert "node-id=1-2" in figma_frame.values["Figma reference"]
+
+
+def test_project_references_reject_explicitly_empty_recognized_fields() -> None:
+    # A recognized field that is written with an empty or whitespace-only
+    # value is invalid. Omitting the line is how an optional field stays
+    # absent. Invalid results expose no reusable values.
+    empty = parse_project_references("## Project references\n- Jira project: ``\n")
+    assert empty.status == "invalid"
+    assert empty.values == {}
+    assert "Jira project" in empty.detail
+
+    whitespace = parse_project_references(
+        "## Project references\n- Jira site: `   `\n"
+    )
+    assert whitespace.status == "invalid"
+    assert whitespace.values == {}
+
+    # An absent optional field is still valid.
+    absent = parse_project_references(
+        "## Project references\n- Jira project: `PROJ`\n"
+    )
+    assert absent.status == "ok"
+    assert absent.values == {"Jira project": "PROJ"}
+
+    # A duplicate is ambiguous even when one of the values is empty. Do not
+    # pick the non-empty one.
+    duplicate = parse_project_references(
+        "## Project references\n- Jira project: ``\n- Jira project: `PROJ`\n"
+    )
+    assert duplicate.status == "ambiguous"
+    assert duplicate.values == {}
+
+
+def test_project_references_empty_live_section_is_reported_as_missing() -> None:
+    # A live `## Project references` heading with no recognized fields —
+    # empty, or holding only unrelated notes — must not be reported as
+    # "ok". project-onboarding.md says a confirmed section is never written
+    # empty, so this state means nothing was actually confirmed; treating
+    # it as "ok" would make `sync-context`/`scaffold-project` skip
+    # onboarding forever, since both only reopen it on "missing",
+    # "ambiguous", or "invalid".
+    heading_only = parse_project_references("## Project references\n")
+    assert heading_only.status == "missing"
+    assert heading_only.values == {}
+
+    notes_only = parse_project_references(
+        "## Project references\n- Owner: Platform team\n"
+    )
+    assert notes_only.status == "missing"
+    assert notes_only.values == {}
+
+    # One recognized, valid field is enough to make the section "ok", even
+    # alongside the same kind of unrelated note.
+    one_field = parse_project_references(
+        "## Project references\n- Owner: Platform team\n- Jira project: `PROJ`\n"
+    )
+    assert one_field.status == "ok"
+    assert one_field.values == {"Jira project": "PROJ"}
+
+
 def test_project_references_preserve_fences_and_unrelated_lines() -> None:
-    # An empty canonical value is omitted, same as before this fix, not
-    # treated as malformed: it followed the documented format, it is just
-    # absent. A fenced code example showing the section's own syntax must
-    # not be read as a second live heading, and an unrelated human-authored
-    # bullet in the same section must not be flagged or dropped.
+    # A fenced code example showing the section's own syntax must not be
+    # read as a second live heading, and an unrelated human-authored bullet
+    # in the same section must not be flagged.
     config = "\n".join(
         [
             "## Project references",
-            "- Jira project: ``",
             "- Jira site: `example.atlassian.net`",
             "- Owner: Platform team",
             "",
@@ -2847,6 +2970,9 @@ if __name__ == "__main__":
         test_project_references_flag_a_recognized_field_without_backticks,
         test_project_references_detect_a_mixed_quoted_and_unquoted_duplicate,
         test_project_references_reject_syntax_errors_with_urllib_parsing,
+        test_project_references_reject_malformed_hostnames,
+        test_project_references_reject_explicitly_empty_recognized_fields,
+        test_project_references_empty_live_section_is_reported_as_missing,
         test_project_references_preserve_fences_and_unrelated_lines,
         test_project_references_invalid_status_never_populates_values,
     ]

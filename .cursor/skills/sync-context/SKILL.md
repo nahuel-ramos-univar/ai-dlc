@@ -61,8 +61,13 @@ reconsidered. This is an instruction for the current run, not a conditional
 loader. `parse_project_references`'s `"invalid"` status is also a gap, not
 a confirmed value: `values` is empty for every status except `"ok"`, so
 treat `"invalid"` the same as missing or ambiguous — never reuse a
-rejected host, URL, or role as if it were confirmed. Do not read onboarding
-on an ordinary refresh that already has a confirmed (`"ok"`) configuration.
+rejected host, URL, or role as if it were confirmed. `"ok"` means the
+fields that are present passed parsing and syntax checks. It does not mean
+every input the current operation needs is present, and it does not prove
+confirmation, authenticated access, or that the resource exists. Before an
+operation, check that operation's required inputs. Do not reopen onboarding
+only because an optional board or Figma reference is absent. Do not read
+onboarding on an ordinary refresh that already has an `"ok"` configuration.
 Onboarding does not choose a different artifact home.
 
 Inspect the revision, branch, upstream, staged, unstaged, and relevant

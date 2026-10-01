@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import ipaddress
 import os
 import re
 import subprocess
@@ -1242,10 +1243,44 @@ def _recognized_project_reference_occurrences(lines: list[str]) -> dict[str, lis
     return occurrences
 
 
+def _hostname_syntax_problem(hostname: str) -> str | None:
+    """Return why `hostname` is not a usable host, or None.
+
+    `urlsplit` separates the host from the rest of a URL, but it still
+    accepts an empty DNS label (`jira..example.com`) and a backslash in the
+    host. This check is syntax only: it does not look up DNS, contact the
+    host, or decide whether anyone can read it.
+
+    A single trailing DNS dot is kept (it names the DNS root). A
+    single-label internal name, an IPv4 address, and an IPv6 address are
+    accepted. `urlsplit` already removes the brackets from an IPv6 host.
+    """
+    if "\\" in hostname:
+        return "must not contain a backslash"
+    if ":" in hostname:
+        try:
+            ipaddress.IPv6Address(hostname)
+        except ValueError:
+            return "is not a valid hostname"
+        return None
+    try:
+        ipaddress.IPv4Address(hostname)
+    except ValueError:
+        pass
+    else:
+        return None
+    bare = hostname[:-1] if hostname.endswith(".") else hostname
+    if not bare or bare.startswith(".") or bare.endswith(".") or ".." in hostname:
+        return "has an empty DNS label"
+    return None
+
+
 def _hostname_only_problem(value: str) -> str | None:
     """Return why `value` is not a bare hostname (optionally with a port), or None."""
     if not value or any(char.isspace() or ord(char) < 0x20 for char in value):
         return "must be a host only, with no whitespace or control characters"
+    if "\\" in value:
+        return "must be a host only, with no backslash"
     if "://" in value:
         return "must be a host only, with no scheme"
     if "@" in value:
@@ -1264,16 +1299,19 @@ def _hostname_only_problem(value: str) -> str | None:
         return "must be a host only, and this has a malformed port"
     if parsed.netloc != value:
         return "must be a host only, optionally with a port"
+    problem = _hostname_syntax_problem(parsed.hostname)
+    if problem:
+        return f"must be a host only, and this {problem}"
     return None
 
 
 def _absolute_http_url_problem(value: str) -> str | None:
     """Return why `value` is not a safe absolute http(s) URL, or None.
 
-    This validates syntax only: scheme, credentials, and hostname shape. It
-    never performs a network call, and a syntactically valid result here
-    does not mean the host is reachable, the resource exists, or the user
-    has permission to read it.
+    This validates syntax only: scheme, credentials, authority, and hostname
+    shape. It never performs a network call, and a syntactically valid
+    result here does not mean the host is reachable, the resource exists,
+    or the user has permission to read it.
     """
     if not value or any(char.isspace() or ord(char) < 0x20 for char in value):
         return "must not be empty or contain whitespace or control characters"
@@ -1283,7 +1321,11 @@ def _absolute_http_url_problem(value: str) -> str | None:
         return f"could not be parsed as a URL: {error}"
     if parsed.scheme not in ("http", "https"):
         return "must be an absolute http or https URL"
-    if parsed.username or parsed.password:
+    if "\\" in parsed.netloc:
+        return "must not contain a backslash in the URL authority"
+    # `username` is `""` for `https://@host/...`, not None. Any userinfo,
+    # including an empty one, is rejected.
+    if parsed.username is not None or parsed.password is not None:
         return "must not include embedded credentials"
     if not parsed.hostname:
         return "must include a host"
@@ -1291,6 +1333,9 @@ def _absolute_http_url_problem(value: str) -> str | None:
         parsed.port
     except ValueError:
         return "has a malformed port"
+    problem = _hostname_syntax_problem(parsed.hostname)
+    if problem:
+        return f"host {problem}"
     return None
 
 
@@ -1332,15 +1377,25 @@ def _project_reference_syntax_problems(values: dict[str, str]) -> list[str]:
 def parse_project_references(markdown_text: str) -> ProjectReferences:
     """Read `## Project references` without touching `## Context identities`.
 
-    A missing section is "missing", not an error. Two live copies of the
-    heading are "ambiguous". A recognized field name repeated — even with a
+    A missing section is "missing", not an error. A live heading with zero
+    recognized fields — empty, or holding only unrelated notes — is also
+    "missing": nothing was confirmed in it, so it must not be mistaken for
+    completed onboarding. Two live copies of the heading are "ambiguous".
+    A recognized field name repeated — even with a
     mix of canonical and malformed values — is "ambiguous": callers must
-    not pick one. A recognized field name whose value is not in the
+    not pick one.     A recognized field name whose value is not in the
     canonical backtick format is "invalid", not silently ignored: a
-    malformed value must never be mistaken for an absent one. An
+    malformed value must never be mistaken for an absent one. A recognized
+    field that is present with an empty or whitespace-only value is also
+    "invalid"; omit the line instead of writing an empty value. An
     unrecognized Figma role, a Jira site that is not a bare host, an
     unsafe or non-http(s) board/Figma URL, or a role without a reference is
     also "invalid".
+
+    `"ok"` means each field that is present passed parsing and syntax
+    checks. It does not mean every field an operation might need is
+    present, and it does not prove the user confirmed access, that a host
+    integration is authenticated, or that the resource exists.
 
     `values` is populated only when `status` is "ok". Every other status —
     including "invalid" — reports an empty `values`, the same as "missing"
@@ -1353,6 +1408,16 @@ def parse_project_references(markdown_text: str) -> ProjectReferences:
         return ProjectReferences(section.status, {})
 
     occurrences = _recognized_project_reference_occurrences(list(section.lines))
+    if not occurrences:
+        # A live heading with zero recognized fields (empty, or only
+        # unrelated notes) has nothing confirmed in it. Report it the same
+        # as an absent section ("missing") rather than "ok": per
+        # project-onboarding.md, a confirmed section is never written
+        # empty, so this state means onboarding has not actually happened,
+        # and callers that skip onboarding only on "ok" must still ask.
+        return ProjectReferences(
+            "missing", {}, "the live section has no recognized project reference fields"
+        )
     duplicates = sorted(name for name, raw in occurrences.items() if len(raw) > 1)
     if duplicates:
         return ProjectReferences(
@@ -1368,8 +1433,10 @@ def parse_project_references(markdown_text: str) -> ProjectReferences:
             malformed.append(f"{name} is not in the canonical `` `value` `` format")
             continue
         value = canonical.group(1).strip()
-        if value:
-            values[name] = value
+        if not value:
+            malformed.append(f"{name} is present but empty")
+            continue
+        values[name] = value
     if malformed:
         return ProjectReferences("invalid", {}, "; ".join(malformed))
 

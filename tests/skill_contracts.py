@@ -375,6 +375,31 @@ def test_context_review_fixture_documents_expected_findings() -> None:
     )
 
 
+def test_project_onboarding_is_conditionally_referenced() -> None:
+    onboarding = (ROOT / "references" / "project-onboarding.md").read_text(encoding="utf-8")
+    assert "## Project references" in onboarding
+    assert "project-rules.md" in onboarding
+    assert "do not create or modify Jira" in onboarding
+    assert "normalize_remote" in onboarding
+    instruction = (
+        "only when project references are missing, ambiguous, or explicitly being reconsidered"
+    )
+    for skill_name in ("sync-context", "scaffold-project"):
+        skill = " ".join(
+            (ROOT / ".cursor" / "skills" / skill_name / "SKILL.md")
+            .read_text(encoding="utf-8")
+            .split()
+        )
+        assert "../../../references/project-onboarding.md" in skill
+        assert instruction in skill
+        assert "not a conditional loader" in skill
+    for skill_name in EXPECTED_SKILLS - {"sync-context", "scaffold-project"}:
+        skill = (ROOT / ".cursor" / "skills" / skill_name / "SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        assert "project-onboarding.md" not in skill
+
+
 def test_manual_evaluation_and_shared_contracts_exist() -> None:
     assert (ROOT / "MANUAL_EVALUATION.md").is_file()
     for filename in (
@@ -383,6 +408,7 @@ def test_manual_evaluation_and_shared_contracts_exist() -> None:
         "skill-composition.md",
         "response-style.md",
         "context-retrieval.md",
+        "project-onboarding.md",
     ):
         assert (ROOT / "references" / filename).is_file()
 
@@ -403,6 +429,7 @@ if __name__ == "__main__":
         test_context_review_contract_has_required_language,
         test_context_review_fixture_documents_expected_findings,
         test_release_workflow_files_exist,
+        test_project_onboarding_is_conditionally_referenced,
         test_manual_evaluation_and_shared_contracts_exist,
     ]
     for test in tests:

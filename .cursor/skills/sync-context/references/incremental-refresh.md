@@ -75,20 +75,37 @@ evidence is not a successful no-op.
 
 - `"unavailable"` — no usable prior fingerprint. This is first-time
   generation or an incompatible baseline, not "no relevant changes."
-- `"unchanged"` — change set A needs no rewrite, no Canvas, and no approval.
-  Still evaluate pending work in set B (Bugbot and project rules) and set C
-  (legacy cleanup). Respect a declined decision, and do not re-prompt an
-  unchanged deferred proposal in the same run. Existing approval covers only
-  its recorded scope and content.
+- `"unchanged"` — the source documents in change set A need no rewrite, no
+  Canvas, and no approval. This covers only `content_fingerprint`'s source
+  inputs; it says nothing about a pending `## Project references` update,
+  which is also part of change set A but never enters that fingerprint
+  (see below). Still evaluate pending work in set B (Bugbot and project
+  rules) and set C (legacy cleanup). Respect a declined decision, and do
+  not re-prompt an unchanged deferred proposal in the same run. Existing
+  approval covers only its recorded scope and content.
 - `"changed"` — set A needs a proposal.
 
+A confirmed, user-requested `## Project references` change (switching the
+configured Jira board or Figma reference, for example) is part of change
+set A, but `classify_fingerprint_change` cannot see it: `content_fingerprint`
+only hashes source paths, and generated configuration never enters that
+hash on purpose, so refreshing context never invalidates itself. Treating an
+`"unchanged"` source fingerprint as "all of set A needs no update" would
+make that pending configuration change unreachable. Pass it explicitly as
+`project_reference_pending` to `context_sync_outcome` instead.
+
 `context_sync_outcome(context_change, bugbot_pending, project_rule_pending,
-legacy_cleanup_pending)` returns `"no_relevant_changes"` only when set A is
-`"unchanged"` and sets B and C have no actionable work. That is the only
-full no-op: no writes and no new approval question. It returns
-`"context_current_migration_pending"` when set A is unchanged but B or C
-still has work, and `"relevant_updates_found"` otherwise. An unchanged
-context fingerprint must not end the run while B or C still has work.
+legacy_cleanup_pending, project_reference_pending=False)` returns
+`"no_relevant_changes"` only when the source fingerprint is `"unchanged"`,
+no project-reference update is pending, and sets B and C have no actionable
+work. That is the only full no-op: no writes and no new approval question.
+It returns `"context_current_migration_pending"` when the source is
+unchanged and nothing is pending for `## Project references`, but B or C
+still has work. It returns `"relevant_updates_found"` for every other
+combination — including a pending project-reference update on its own, with
+an otherwise-unchanged source fingerprint. An unchanged source fingerprint
+must not end the run while a project-reference update, B, or C still has
+work.
 
 ## Submodules and unavailable related repositories
 

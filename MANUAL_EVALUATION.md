@@ -52,3 +52,14 @@
 - [ ] Change code after validation. Confirm only affected checks are rerun against the new code state.
 - [ ] In a clean Cursor consumer, run `/sync-context`, then `/plan-work` for one module. Confirm plan-work reads only the selected index/module context and current source.
 - [ ] In a clean Cursor consumer, run a cross-module change. Confirm retrieval expands to the relevant adjacent context and contract only.
+
+Project onboarding (instruction behavior; not proved by the Python tests):
+
+- [ ] Config already has a confirmed `## Project references` section. Confirm `sync-context` does not ask the onboarding questions again.
+- [ ] Supply one Jira board URL. Confirm the skill resolves that board and does not ask the user to pick from every board.
+- [ ] Use a board whose issue-creation project is still ambiguous. Confirm it asks one question and does not treat the board as the project.
+- [ ] Disconnect Jira MCP. Confirm a user-confirmed site and project can be saved as confirmed, not verified, and local discovery continues.
+- [ ] Run against a backend project with no UI. Confirm it does not ask for Figma.
+- [ ] Run against a repository that already has a Git remote. Confirm it does not ask for a GitHub URL.
+- [ ] Scaffold a small foundation with an optional confirmed convention. Confirm the proposal includes it, a rule approval does not install dependencies or change CI, and a later `sync-context` does not repeat onboarding or duplicate `## Project references`.
+- [ ] Open a repository with current context and a confirmed `## Project references` section (so every source fingerprint is `unchanged`). Ask `sync-context` to switch to a different Jira board. Confirm it shows a config-only diff limited to `## Project references`, does not propose any rewrite of `aidlc-docs/` or `AIDLC_CONTEXT.md`, and reaches the proposal step instead of reporting "no relevant changes." Approve the change, confirm only that field is updated, and re-run `sync-context` immediately after: confirm it reports a true no-op this time, with no repeated write and no repeated question. (Unexecuted unless actually performed in Cursor; `context_sync_outcome`'s `project_reference_pending` behavior is covered by `tests/context_tools_tests.py`, but reaching the proposal step through the live skill flow is not.)

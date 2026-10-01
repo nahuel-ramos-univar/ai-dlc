@@ -15,6 +15,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 
 EXCLUDED_PARTS = {
     ".git",
@@ -31,6 +32,22 @@ GENERATED_FILENAMES = {"aidlc_context.md", ".ai-dlc-config.md"}
 SECRET_FILENAMES = {".env", "id_rsa", "id_ed25519"}
 ENV_TEMPLATE_FILENAMES = {".env.example", ".env.sample", ".env.template", ".env.dist"}
 REPOSITORY_ID_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+PROJECT_REFERENCE_HEADING = "## Project references"
+PROJECT_REFERENCE_FIELDS = (
+    "Jira site",
+    "Jira project",
+    "Jira board",
+    "Figma reference",
+    "Figma role",
+)
+FIGMA_ROLES = frozenset({"approved-design", "design-system", "inspiration"})
+# Looser than LABELED_FIELD_PATTERN on purpose: it matches a recognized field
+# name whether or not its value is in the canonical backtick format, so a
+# malformed or duplicated occurrence of a *recognized* field is never
+# invisible to duplicate/malformed detection the way it would be if only
+# the canonical pattern were used to find candidates.
+PROJECT_REFERENCE_LINE_PATTERN = re.compile(r"^-\s+([^:`]+):\s*(.*)$")
+CANONICAL_VALUE_PATTERN = re.compile(r"^`([^`]*)`$")
 
 
 @dataclass(frozen=True)
@@ -615,29 +632,47 @@ def context_sync_outcome(
     bugbot_pending: bool,
     project_rule_pending: bool,
     legacy_cleanup_pending: bool,
+    project_reference_pending: bool = False,
 ) -> str:
     """Combine the three change sets into Stage 2's reachable outcome.
 
-    `context_change` is `classify_fingerprint_change`'s result for change
-    set A (context documents). `bugbot_pending`, `project_rule_pending`, and
-    `legacy_cleanup_pending` report whether change sets B and C each still
-    have actionable, not-already-declined work; callers derive these from
-    `bugbot_reprompt_allowed` and the recorded Bugbot/project-rule/legacy
-    decisions, not from re-scanning the repository.
+    `context_change` is `classify_fingerprint_change`'s result for the
+    source-document part of change set A: it compares the content
+    fingerprint of examined source paths, and generated configuration (for
+    example `## Project references`) never enters that fingerprint. An
+    unchanged source fingerprint is not the same thing as "all of change
+    set A is unchanged" — a pending, user-requested `## Project references`
+    update (a different Jira board, a different Figma reference) is also
+    part of set A, and it does not require regenerating module context,
+    rewriting repository prose, or touching a timestamp. Pass that pending
+    state explicitly as `project_reference_pending`; callers derive it from
+    comparing the current confirmed configuration against what the user is
+    now requesting, not from `classify_fingerprint_change`.
 
-    Returns `"no_relevant_changes"` only when set A is `"unchanged"` and no
-    other set has pending work: a full no-op, with no write and no new
-    approval question. Returns `"context_current_migration_pending"` when
-    set A is `"unchanged"` but set B or C still has pending work: an
-    unchanged context must never make that pending work unreachable.
-    Returns `"relevant_updates_found"` for every other combination,
-    including an `"unavailable"` or `"changed"` set A.
+    `bugbot_pending`, `project_rule_pending`, and `legacy_cleanup_pending`
+    report whether change sets B and C each still have actionable,
+    not-already-declined work; callers derive these from
+    `bugbot_reprompt_allowed` and the recorded Bugbot/project-rule/legacy
+    decisions, not from re-scanning the repository. A declined or
+    already-applied proposal is not pending work in any of these inputs.
+
+    Returns `"no_relevant_changes"` only when the source fingerprint is
+    `"unchanged"`, no project-reference update is pending, and no other set
+    has pending work: a full no-op, with no write and no new approval
+    question. Returns `"context_current_migration_pending"` when the source
+    fingerprint is `"unchanged"`, no project-reference update is pending,
+    but set B or C still has pending work: an unchanged source must never
+    make that pending work unreachable. Returns `"relevant_updates_found"`
+    for every other combination, including an `"unavailable"` or `"changed"`
+    source fingerprint, or a pending project-reference update on its own —
+    a configuration-only proposal is reachable even when the source
+    fingerprint is `"unchanged"`.
     """
-    set_a_unchanged = context_change == "unchanged"
+    source_unchanged = context_change == "unchanged" and not project_reference_pending
     other_sets_pending = bugbot_pending or project_rule_pending or legacy_cleanup_pending
-    if set_a_unchanged and not other_sets_pending:
+    if source_unchanged and not other_sets_pending:
         return "no_relevant_changes"
-    if set_a_unchanged and other_sets_pending:
+    if source_unchanged and other_sets_pending:
         return "context_current_migration_pending"
     return "relevant_updates_found"
 
@@ -1168,6 +1203,180 @@ class LabeledFields:
     status: str
     values: dict[str, str]
     detail: str = ""
+
+
+@dataclass(frozen=True)
+class ProjectReferences:
+    """Confirmed project references, or why they cannot be read.
+
+    `status` is "ok", "missing", "ambiguous", or "invalid". "missing" means
+    the section is absent, which is valid. "ok" holds only the supported
+    fields that have a value. This result does not say whether a host
+    integration verified the link.
+    """
+
+    status: str
+    values: dict[str, str]
+    detail: str = ""
+
+
+def _recognized_project_reference_occurrences(lines: list[str]) -> dict[str, list[str]]:
+    """Group each recognized field name's raw, unparsed value by occurrence.
+
+    This looks past the canonical backtick format on purpose. A recognized
+    field name written without backticks, or repeated with a mix of
+    canonical and malformed values, must still be visible here so duplicate
+    and malformed detection can see it. An unrecognized field name (not in
+    `PROJECT_REFERENCE_FIELDS`) is ignored, so unrelated human-authored
+    lines in the same section are preserved and never flagged.
+    """
+    occurrences: dict[str, list[str]] = {}
+    for line in lines:
+        match = PROJECT_REFERENCE_LINE_PATTERN.match(line.strip())
+        if match is None:
+            continue
+        name = match.group(1).strip()
+        if name not in PROJECT_REFERENCE_FIELDS:
+            continue
+        occurrences.setdefault(name, []).append(match.group(2).strip())
+    return occurrences
+
+
+def _hostname_only_problem(value: str) -> str | None:
+    """Return why `value` is not a bare hostname (optionally with a port), or None."""
+    if not value or any(char.isspace() or ord(char) < 0x20 for char in value):
+        return "must be a host only, with no whitespace or control characters"
+    if "://" in value:
+        return "must be a host only, with no scheme"
+    if "@" in value:
+        return "must be a host only, with no embedded credentials"
+    if "/" in value or "?" in value or "#" in value:
+        return "must be a host only, with no path, query, or fragment"
+    try:
+        parsed = urlsplit(f"//{value}")
+    except ValueError as error:
+        return f"could not be parsed as a host: {error}"
+    if not parsed.hostname:
+        return "must be a host only, and this is not a valid hostname"
+    try:
+        parsed.port
+    except ValueError:
+        return "must be a host only, and this has a malformed port"
+    if parsed.netloc != value:
+        return "must be a host only, optionally with a port"
+    return None
+
+
+def _absolute_http_url_problem(value: str) -> str | None:
+    """Return why `value` is not a safe absolute http(s) URL, or None.
+
+    This validates syntax only: scheme, credentials, and hostname shape. It
+    never performs a network call, and a syntactically valid result here
+    does not mean the host is reachable, the resource exists, or the user
+    has permission to read it.
+    """
+    if not value or any(char.isspace() or ord(char) < 0x20 for char in value):
+        return "must not be empty or contain whitespace or control characters"
+    try:
+        parsed = urlsplit(value)
+    except ValueError as error:
+        return f"could not be parsed as a URL: {error}"
+    if parsed.scheme not in ("http", "https"):
+        return "must be an absolute http or https URL"
+    if parsed.username or parsed.password:
+        return "must not include embedded credentials"
+    if not parsed.hostname:
+        return "must include a host"
+    try:
+        parsed.port
+    except ValueError:
+        return "has a malformed port"
+    return None
+
+
+def _project_reference_syntax_problems(values: dict[str, str]) -> list[str]:
+    """Validate recognized, canonically-formatted field values.
+
+    Called only after duplicate and malformed-format detection has already
+    passed, so each field here has exactly one canonical occurrence.
+    """
+    problems: list[str] = []
+    site = values.get("Jira site")
+    if site is not None:
+        problem = _hostname_only_problem(site)
+        if problem:
+            problems.append(f"Jira site {problem}")
+    project = values.get("Jira project")
+    if project is not None and (
+        "://" in project or "/" in project or any(char.isspace() for char in project)
+    ):
+        problems.append("Jira project must be a project key")
+    board = values.get("Jira board")
+    if board is not None:
+        problem = _absolute_http_url_problem(board)
+        if problem:
+            problems.append(f"Jira board {problem}")
+    figma_reference = values.get("Figma reference")
+    if figma_reference is not None:
+        problem = _absolute_http_url_problem(figma_reference)
+        if problem:
+            problems.append(f"Figma reference {problem}")
+    role = values.get("Figma role")
+    if role is not None and role not in FIGMA_ROLES:
+        problems.append("Figma role is not recognized")
+    if role is not None and "Figma reference" not in values:
+        problems.append("Figma role is set without a Figma reference")
+    return problems
+
+
+def parse_project_references(markdown_text: str) -> ProjectReferences:
+    """Read `## Project references` without touching `## Context identities`.
+
+    A missing section is "missing", not an error. Two live copies of the
+    heading are "ambiguous". A recognized field name repeated — even with a
+    mix of canonical and malformed values — is "ambiguous": callers must
+    not pick one. A recognized field name whose value is not in the
+    canonical backtick format is "invalid", not silently ignored: a
+    malformed value must never be mistaken for an absent one. An
+    unrecognized Figma role, a Jira site that is not a bare host, an
+    unsafe or non-http(s) board/Figma URL, or a role without a reference is
+    also "invalid".
+
+    `values` is populated only when `status` is "ok". Every other status —
+    including "invalid" — reports an empty `values`, the same as "missing"
+    and "ambiguous": a rejected field must never be mistaken for a
+    confirmed one by a caller that only checks whether a key is present.
+    Read `detail` to see which field, and why, when `status` is "invalid".
+    """
+    section = find_live_section(markdown_text, PROJECT_REFERENCE_HEADING)
+    if section.status != "ok":
+        return ProjectReferences(section.status, {})
+
+    occurrences = _recognized_project_reference_occurrences(list(section.lines))
+    duplicates = sorted(name for name, raw in occurrences.items() if len(raw) > 1)
+    if duplicates:
+        return ProjectReferences(
+            "ambiguous", {}, f"duplicate project reference fields: {duplicates}"
+        )
+
+    values: dict[str, str] = {}
+    malformed: list[str] = []
+    for name, raw_values in occurrences.items():
+        raw = raw_values[0]
+        canonical = CANONICAL_VALUE_PATTERN.match(raw)
+        if canonical is None:
+            malformed.append(f"{name} is not in the canonical `` `value` `` format")
+            continue
+        value = canonical.group(1).strip()
+        if value:
+            values[name] = value
+    if malformed:
+        return ProjectReferences("invalid", {}, "; ".join(malformed))
+
+    problems = _project_reference_syntax_problems(values)
+    if problems:
+        return ProjectReferences("invalid", {}, "; ".join(problems))
+    return ProjectReferences("ok", values)
 
 
 def parse_labeled_fields(section: list[str]) -> LabeledFields:

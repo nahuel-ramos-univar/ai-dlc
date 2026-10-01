@@ -5,7 +5,10 @@ the artifact home, source repository root, requested module scope, and approved
 module roots before writing. Write only under:
 
 - `<artifact-home>/aidlc-docs/` (change set A)
-- `<artifact-home>/.ai-dlc-config.md` (change set A, and the decisions for B)
+- `<artifact-home>/.ai-dlc-config.md` (change set A, and the decisions for B).
+  An approved `## Project references` update belongs in this same file, after
+  `## Context identities`. It is not a separate config file. A missing or
+  present project-references section does not change identity parsing.
 - `<approved-module-root>/AIDLC_CONTEXT.md` (change set A)
 - after the per-repository Bugbot approval in
   [bugbot-configuration.md](bugbot-configuration.md) (change set B):

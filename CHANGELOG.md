@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.4.0 — 2026-10-01
+
+Bump: `minor`
+Compare: [v0.3.0...v0.4.0](https://github.com/nahuel-ramos-univar/ai-dlc/compare/v0.3.0...v0.4.0)
+
+### Added
+
+- feat: harden sync-context fingerprinting and candidate validation ([`b0da18f`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/b0da18fc1952685172b112a9d61800d96f4ac06d))
+
+### Fixed
+
+- fix: raise GitDiscoveryError when staged-diff comparison fails ([`6c9ae2b`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/6c9ae2b59405a058cab53c31114dcb88e1a1c5cc))
+
+### Other
+
+- Merge pull request #5 from nahuel-ramos-univar/CTY-321 ([`8405dc9`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/8405dc9242160f08bc8b139fb5f57437480eda62))
+
 ## 0.3.0 — 2026-09-29
 
 Bump: `minor`

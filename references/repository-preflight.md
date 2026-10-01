@@ -42,10 +42,15 @@ For each repository in a multi-repository request, run this preflight separately
 
 Context-discovery writes are limited to the configured artifact home's
 `.ai-dlc-config.md` and `aidlc-docs/`, an approved module root's
-`AIDLC_CONTEXT.md`, and after per-repository Bugbot approval,
+`AIDLC_CONTEXT.md`, and, after their own per-repository approval,
 `<source-root>/.cursor/BUGBOT.md` plus a nested
-`<approved-boundary-root>/.cursor/BUGBOT.md`. Do not use those exceptions to
-create arbitrary Markdown in source trees.
+`<approved-boundary-root>/.cursor/BUGBOT.md`, or one
+`<source-root>/.cursor/rules/<slug>.mdc` per confirmed project policy (see
+`sync-context`'s [bugbot-configuration.md](../.cursor/skills/sync-context/references/bugbot-configuration.md)
+and [project-rules.md](../.cursor/skills/sync-context/references/project-rules.md)).
+Do not use those exceptions to create arbitrary Markdown in source trees, and
+never use them to copy this plugin's own skills, agents, or shared
+references into a consumer repository.
 
 Scaffold-project writes follow the approved proposal and authorized destination.
 That approved scope may include source files, project configuration, and

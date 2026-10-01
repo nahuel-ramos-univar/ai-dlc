@@ -69,6 +69,8 @@ Use `approved`, `declined`, or `deferred`. Do not ask again after `declined` unl
 
 If BUGBOT files already exist, preserve them. Propose a narrow patch separately only when current evidence makes a rule stale, duplicated, contradictory, or tied to a missing path. Do not restate generic style guidance, invent company policy, duplicate unseen team rules, or claim that BUGBOT enables or invokes Bugbot.
 
+Do not assume Bugbot can read context, contracts, or `AIDLC_CONTEXT.md` stored only in a sibling repository. Write each `BUGBOT.md` so its review instructions are self-contained for the repository it lives in — point to a path inside that same repository, not to a document in another repository the review run may not be able to open.
+
 Example root proposal:
 
 ```markdown

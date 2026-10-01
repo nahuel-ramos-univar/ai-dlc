@@ -13,8 +13,13 @@ ROOT = Path(__file__).parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from context_tools import (  # noqa: E402
+    bugbot_reprompt_allowed,
     check_document_budget,
+    classify_fingerprint_change,
+    classify_markdown_target,
     classify_repository_scope,
+    diff_module_sources,
+    find_live_section,
     cli_validate,
     content_fingerprint,
     detect_repository_id_collision,
@@ -23,7 +28,16 @@ from context_tools import (  # noqa: E402
     find_duplicate_identities,
     find_duplicate_values,
     find_stale_source_paths,
+    GitDiscoveryError,
+    is_declared_submodule,
+    module_context_destination,
     normalize_remote,
+    proposal_is_current,
+    resolve_placement,
+    context_sync_outcome,
+    scope_verification_status,
+    staged_working_tree_divergence,
+    unrelated_rules_preserved,
     parse_recorded_fingerprint,
     resolve_markdown_links,
     resolve_source_path,
@@ -249,6 +263,301 @@ def test_fingerprint_rejects_unavailable_scope() -> None:
                 raise AssertionError("unreadable scope must not fingerprint")
         finally:
             os.chmod(inner, 0o755)
+
+
+# --- Git-aware fingerprint discovery (finding 1) ---------------------------
+
+
+def test_git_aware_fingerprint_excludes_ignored_untracked_file() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp) / "repo"
+        root.mkdir()
+        init_repo(root)
+        (root / "tracked.ts").write_text("export const a = 1;\n")
+        (root / ".gitignore").write_text("ignored.log\n")
+        run(root, "git", "add", ".")
+        run(root, "git", "commit", "-qm", "feat: initial, ignore log files")
+
+        (root / "ignored.log").write_text("noisy debug output\n")
+        (root / "kept.ts").write_text("export const b = 2;\n")
+
+        fingerprint, paths = content_fingerprint(root)
+        assert "ignored.log" not in paths
+        assert "kept.ts" in paths
+        assert "tracked.ts" in paths
+        assert ".gitignore" in paths
+
+        (root / "ignored.log").unlink()
+        after_removing_ignored, after_paths = content_fingerprint(root)
+        assert after_removing_ignored == fingerprint
+        assert after_paths == paths
+
+
+def test_git_aware_fingerprint_keeps_tracked_file_matching_a_later_ignore_pattern() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp) / "repo"
+        root.mkdir()
+        init_repo(root)
+        (root / "legacy.log").write_text("tracked before the ignore rule existed\n")
+        run(root, "git", "add", ".")
+        run(root, "git", "commit", "-qm", "feat: initial, before ignoring logs")
+
+        before, paths_before = content_fingerprint(root)
+        assert "legacy.log" in paths_before
+
+        (root / ".gitignore").write_text("*.log\n")
+        run(root, "git", "add", ".gitignore")
+        run(root, "git", "commit", "-qm", "chore: ignore future log files")
+
+        after, paths_after = content_fingerprint(root)
+        # Already-tracked legacy.log stays included even though it now
+        # matches an ignore pattern; only an untracked-and-ignored file is
+        # excluded.
+        assert "legacy.log" in paths_after
+        assert after != before  # .gitignore itself is a new tracked file
+
+
+def test_git_aware_fingerprint_respects_nested_gitignore_for_a_module_scope() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp) / "repo"
+        module = root / "services" / "billing"
+        module.mkdir(parents=True)
+        init_repo(root)
+        (module / "handler.ts").write_text("export const handler = 1;\n")
+        (module / ".gitignore").write_text("*.local.ts\n")
+        run(root, "git", "add", ".")
+        run(root, "git", "commit", "-qm", "feat: billing service")
+
+        (module / "secrets.local.ts").write_text("export const leaked = 1;\n")
+        fingerprint, paths = content_fingerprint(module)
+        assert "secrets.local.ts" not in paths
+        assert "handler.ts" in paths
+        assert ".gitignore" in paths
+
+
+def test_git_aware_fingerprint_detects_additions_deletions_and_renames() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp) / "repo"
+        root.mkdir()
+        init_repo(root)
+        (root / "a.ts").write_text("export const a = 1;\n")
+        run(root, "git", "add", ".")
+        run(root, "git", "commit", "-qm", "feat: initial")
+
+        initial, paths = content_fingerprint(root)
+        assert paths == ("a.ts",)
+
+        (root / "b.ts").write_text("export const b = 2;\n")  # untracked addition
+        added, paths = content_fingerprint(root)
+        assert added != initial and paths == ("a.ts", "b.ts")
+
+        os.remove(root / "a.ts")
+        removed, paths = content_fingerprint(root)
+        assert removed != added and paths == ("b.ts",)
+
+        os.rename(root / "b.ts", root / "c.ts")
+        renamed, paths = content_fingerprint(root)
+        assert renamed != removed and paths == ("c.ts",)
+
+
+def test_git_aware_fingerprint_excludes_generated_context() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp) / "repo"
+        root.mkdir()
+        init_repo(root)
+        (root / "src").mkdir()
+        (root / "src" / "app.ts").write_text("export const app = 1;\n")
+        run(root, "git", "add", ".")
+        run(root, "git", "commit", "-qm", "feat: initial")
+        initial, paths = content_fingerprint(root)
+        assert paths == ("src/app.ts",)
+
+        # Untracked, generated: must never enter the source fingerprint.
+        (root / "AIDLC_CONTEXT.md").write_text("fingerprint: deadbeef\n")
+        after, after_paths = content_fingerprint(root)
+        assert after == initial
+        assert after_paths == ("src/app.ts",)
+
+
+def test_git_discovery_failure_raises_instead_of_falling_back_to_the_walk() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp) / "repo"
+        root.mkdir()
+        init_repo(root)
+        (root / "a.ts").write_text("export const a = 1;\n")
+        run(root, "git", "add", ".")
+        run(root, "git", "commit", "-qm", "feat: initial")
+
+        # Corrupt the Git index so `git rev-parse --show-toplevel` still
+        # succeeds (it does not need the index) but `git ls-files` fails.
+        (root / ".git" / "index").write_bytes(b"not a real git index")
+
+        try:
+            content_fingerprint(root)
+        except RuntimeError as error:
+            assert "ls-files" in str(error)
+        else:
+            raise AssertionError(
+                "a Git query failure for a Git-backed scope must raise, "
+                "never silently fall back to the filesystem walk"
+            )
+
+
+# --- Working-tree-only fingerprint semantics (finding 5) --------------------
+
+
+def test_fingerprint_reflects_working_tree_not_the_staged_git_index() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp) / "repo"
+        root.mkdir()
+        init_repo(root)
+        target = root / "service.py"
+        target.write_text("version = 1\n")
+        run(root, "git", "add", ".")
+        run(root, "git", "commit", "-qm", "feat: v1")
+
+        v1_fingerprint, _ = content_fingerprint(root)
+        assert staged_working_tree_divergence(root) == ()
+
+        # Stage v2 in the index, but do not commit it.
+        target.write_text("version = 2\n")
+        run(root, "git", "add", "service.py")
+
+        staged_v2_fingerprint, _ = content_fingerprint(root)
+        assert staged_v2_fingerprint != v1_fingerprint
+        assert staged_working_tree_divergence(root) == ()  # working tree matches the index here
+
+        # Restore the working tree to v1 while v2 remains staged in the index.
+        target.write_text("version = 1\n")
+
+        restored_fingerprint, _ = content_fingerprint(root)
+        assert restored_fingerprint == v1_fingerprint, (
+            "content_fingerprint is a working-tree snapshot: staging v2 and "
+            "then restoring the working tree to v1 must reproduce the "
+            "original v1 fingerprint, not the staged v2 value"
+        )
+
+        divergence = staged_working_tree_divergence(root)
+        assert divergence == ("service.py",), (
+            "staged (v2) and working-tree (v1) content differ here and must "
+            "be reported separately from the fingerprint, never folded into it"
+        )
+
+
+def test_git_fingerprint_skips_a_tracked_file_behind_an_external_directory_symlink() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp) / "repo"
+        outside = Path(temp) / "outside"
+        (root / "src").mkdir(parents=True)
+        outside.mkdir()
+        (root / "keep.txt").write_text("kept\n")
+        (root / "src" / "data.txt").write_text("original\n")
+        init_repo(root)
+        run(root, "git", "add", ".")
+        run(root, "git", "commit", "-qm", "feat: initial")
+
+        shutil.rmtree(root / "src")
+        external = outside / "data.txt"
+        external.write_text("external secret\n")
+        os.chmod(external, 0)
+        (root / "src").symlink_to(outside)
+        try:
+            _fingerprint, paths = content_fingerprint(root)
+        finally:
+            os.chmod(external, 0o644)
+        assert "src/data.txt" not in paths
+        assert "keep.txt" in paths
+        assert external.read_text(encoding="utf-8") == "external secret\n"
+
+
+def test_git_fingerprint_skips_a_directory_symlink_that_points_inside_the_repository() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp) / "repo"
+        (root / "nested").mkdir(parents=True)
+        (root / "nested" / "data.txt").write_text("tracked\n")
+        (root / "plain.txt").write_text("plain\n")
+        init_repo(root)
+        run(root, "git", "add", ".")
+        run(root, "git", "commit", "-qm", "feat: initial")
+
+        shutil.rmtree(root / "nested")
+        real = root / "real"
+        real.mkdir()
+        (real / "data.txt").write_text("inside\n")
+        (root / "nested").symlink_to(real)
+        _fingerprint, paths = content_fingerprint(root)
+        assert "nested/data.txt" not in paths
+        assert "plain.txt" in paths
+
+
+def test_git_fingerprint_accepts_a_symlink_scope_root() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp) / "repo"
+        (root / "src").mkdir(parents=True)
+        (root / "src" / "a.ts").write_text("export const a = 1;\n")
+        init_repo(root)
+        run(root, "git", "add", ".")
+        run(root, "git", "commit", "-qm", "feat: initial")
+        link = Path(temp) / "link"
+        link.symlink_to(root)
+        direct, paths = content_fingerprint(root)
+        via_link, link_paths = content_fingerprint(link)
+        assert direct == via_link
+        assert paths == link_paths == ("src/a.ts",)
+
+
+def test_broken_git_metadata_is_not_fingerprinted_as_an_unversioned_tree() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp) / "repo"
+        module = root / "services" / "billing"
+        private = module / "private"
+        private.mkdir(parents=True)
+        (root / ".gitignore").write_text("private/\n")
+        key = private / "key.json"
+        key.write_text('{"token":"fake-test-token"}\n')
+        (module / "handler.ts").write_text("export const handler = 1;\n")
+        os.chmod(key, 0)
+        (root / ".git").write_text(f"gitdir: {Path(temp) / 'missing-gitdir'}\n")
+        try:
+            try:
+                content_fingerprint(root)
+            except GitDiscoveryError as error:
+                assert "fake-test-token" not in str(error)
+            else:
+                raise AssertionError("a broken .git pointer must not be scanned as unversioned")
+            try:
+                content_fingerprint(module)
+            except GitDiscoveryError as error:
+                assert "fake-test-token" not in str(error)
+            else:
+                raise AssertionError("a nested module of a broken checkout must not be scanned")
+        finally:
+            os.chmod(key, 0o644)
+
+
+def test_valid_git_worktree_fingerprint_includes_tracked_files() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp) / "repo"
+        root.mkdir()
+        (root / "a.ts").write_text("export const a = 1;\n")
+        init_repo(root)
+        run(root, "git", "add", ".")
+        run(root, "git", "commit", "-qm", "feat: initial")
+        worktree = Path(temp) / "worktree"
+        run(root, "git", "worktree", "add", "-q", str(worktree), "HEAD")
+        assert (worktree / ".git").is_file()
+        _fingerprint, paths = content_fingerprint(worktree)
+        assert paths == ("a.ts",)
+
+
+def test_unversioned_tree_still_uses_the_filesystem_walk() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp) / "plain"
+        root.mkdir()
+        (root / ".gitignore").write_text("a.ts\n")
+        (root / "a.ts").write_text("export const a = 1;\n")
+        _fingerprint, paths = content_fingerprint(root)
+        assert "a.ts" in paths
 
 
 def test_identity_normalization_and_persistence() -> None:
@@ -741,6 +1050,467 @@ def test_validate_generated_context_passes_for_a_well_formed_document_set() -> N
         assert statuses["modules:duplicate-identity"] == "passed"
         assert statuses["modules:duplicate-context-target"] == "passed"
         assert all(check.status in ("passed", "not_applicable") for check in checks)
+
+
+# --- Candidate-content validation before a canonical write (finding 2) ----
+
+
+def test_candidate_content_validates_first_time_generation_without_canonical_docs() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web = Path(temp) / "web"
+        module_dir = web / "apps" / "storefront"
+        module_dir.mkdir(parents=True)
+        (module_dir / "index.ts").write_text("export const x = 1;\n")
+
+        module_fingerprint, _ = content_fingerprint(module_dir)
+        index_fingerprint, _ = content_fingerprint(web)
+
+        index_path = (web / "aidlc-docs" / "repository-context.md").resolve()
+        module_path = (module_dir / "AIDLC_CONTEXT.md").resolve()
+        assert not index_path.exists()
+        assert not module_path.exists()
+
+        index_text = "\n".join(
+            [
+                "# Repository context",
+                "",
+                "<!-- AI-DLC:generated:start -->",
+                "",
+                "## Scope",
+                "",
+                "- Index: `single-repository`",
+                "- Repository ID: `web`",
+                f"- Fingerprint: `{index_fingerprint}`",
+                "",
+                "## Modules",
+                "",
+                "| Module | Source | Context | Status |",
+                "| --- | --- | --- | --- |",
+                "| `storefront` | `apps/storefront` | [x](../apps/storefront/AIDLC_CONTEXT.md) | current |",
+                "",
+                "<!-- AI-DLC:generated:end -->",
+                "",
+            ]
+        )
+        module_text = "\n".join(
+            [
+                "# AIDLC context — storefront",
+                "",
+                "<!-- AI-DLC:generated:start -->",
+                "",
+                "## Identity and scope",
+                "",
+                "- Repository ID: `web`",
+                "- Module ID: `storefront`",
+                "- Source: `apps/storefront`",
+                f"- Baseline and fingerprint: `deadbeefdeadbeefdeadbeefdeadbeefdeadbeef` / `{module_fingerprint}`",
+                "",
+                "<!-- AI-DLC:generated:end -->",
+                "",
+            ]
+        )
+
+        checks = validate_generated_context(
+            index_path,
+            {"web": web},
+            candidate_content={index_path: index_text, module_path: module_text},
+        )
+        by_name = {check.name: check.status for check in checks}
+        assert by_name["index:structure"] == "passed"
+        assert by_name["index:fingerprint"] == "passed"
+        assert by_name["modules:link:../apps/storefront/AIDLC_CONTEXT.md"] == "passed"
+        assert by_name["modules:structure:../apps/storefront/AIDLC_CONTEXT.md"] == "passed"
+        assert by_name["modules:fingerprint:../apps/storefront/AIDLC_CONTEXT.md"] == "passed"
+        # Validating a proposal never writes it.
+        assert not index_path.exists()
+        assert not module_path.exists()
+
+
+def test_classify_markdown_target_resolves_a_candidate_to_candidate_link() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        repo_root = Path(temp) / "web"
+        repo_root.mkdir()
+        index_path = repo_root / "aidlc-docs" / "repository-context.md"
+        candidate_module = (repo_root / "apps" / "storefront" / "AIDLC_CONTEXT.md").resolve()
+
+        without_candidate = classify_markdown_target(
+            index_path,
+            "../apps/storefront/AIDLC_CONTEXT.md",
+            {"web": repo_root},
+            require_file=True,
+        )
+        assert without_candidate == "missing"
+
+        with_candidate = classify_markdown_target(
+            index_path,
+            "../apps/storefront/AIDLC_CONTEXT.md",
+            {"web": repo_root},
+            require_file=True,
+            candidate_paths=frozenset({candidate_module}),
+        )
+        assert with_candidate == "ok"
+
+
+def test_candidate_content_fails_a_malformed_proposal_even_when_disk_copy_is_valid() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web = Path(temp) / "web"
+        module_dir = web / "apps" / "storefront"
+        module_dir.mkdir(parents=True)
+        (module_dir / "index.ts").write_text("export const x = 1;\n")
+        _write_valid_module(module_dir, "web", "storefront", "apps/storefront")
+        module_path = module_dir / "AIDLC_CONTEXT.md"
+        (web / "aidlc-docs").mkdir()
+        index_path = web / "aidlc-docs" / "repository-context.md"
+        _write_valid_index(index_path, web)
+
+        baseline = {
+            c.name: c.status
+            for c in validate_generated_context(index_path, {"web": web})
+        }
+        assert baseline["modules:structure:../apps/storefront/AIDLC_CONTEXT.md"] == "passed"
+
+        malformed_proposal = "\n".join(
+            [
+                "# AIDLC context — storefront",
+                "",
+                "<!-- AI-DLC:generated:start -->",
+                "",
+                "## Wrong heading",
+                "",
+                "<!-- AI-DLC:generated:end -->",
+                "",
+            ]
+        )
+        checks = {
+            c.name: c.status
+            for c in validate_generated_context(
+                index_path,
+                {"web": web},
+                candidate_content={module_path.resolve(): malformed_proposal},
+            )
+        }
+        assert checks["modules:structure:../apps/storefront/AIDLC_CONTEXT.md"] == "failed"
+        # The valid on-disk document is untouched by checking the proposal.
+        assert "## Identity and scope" in module_path.read_text(encoding="utf-8")
+
+
+def test_candidate_content_checks_the_proposal_instead_of_a_stale_on_disk_copy() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web = Path(temp) / "web"
+        module_dir = web / "apps" / "storefront"
+        module_dir.mkdir(parents=True)
+        (module_dir / "index.ts").write_text("export const x = 1;\n")
+        module_path = module_dir / "AIDLC_CONTEXT.md"
+        stale_text = "stale and malformed, no generated block\n"
+        module_path.write_text(stale_text)
+        (web / "aidlc-docs").mkdir()
+        index_path = web / "aidlc-docs" / "repository-context.md"
+        _write_valid_index(index_path, web)
+
+        baseline = {
+            c.name: c.status
+            for c in validate_generated_context(index_path, {"web": web})
+        }
+        assert baseline["modules:structure:../apps/storefront/AIDLC_CONTEXT.md"] == "failed"
+
+        module_fingerprint, _ = content_fingerprint(module_dir)
+        proposed_text = "\n".join(
+            [
+                "# AIDLC context — storefront",
+                "",
+                "<!-- AI-DLC:generated:start -->",
+                "",
+                "## Identity and scope",
+                "",
+                "- Repository ID: `web`",
+                "- Module ID: `storefront`",
+                "- Source: `apps/storefront`",
+                f"- Baseline and fingerprint: `deadbeefdeadbeefdeadbeefdeadbeefdeadbeef` / `{module_fingerprint}`",
+                "",
+                "<!-- AI-DLC:generated:end -->",
+                "",
+            ]
+        )
+        checks = {
+            c.name: c.status
+            for c in validate_generated_context(
+                index_path,
+                {"web": web},
+                candidate_content={module_path.resolve(): proposed_text},
+            )
+        }
+        assert checks["modules:structure:../apps/storefront/AIDLC_CONTEXT.md"] == "passed"
+        assert checks["modules:fingerprint:../apps/storefront/AIDLC_CONTEXT.md"] == "passed"
+        # The stale on-disk copy is still untouched.
+        assert module_path.read_text(encoding="utf-8") == stale_text
+
+
+def test_candidate_content_mapping_does_not_grant_an_authorized_root_escape() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        repo_root = Path(temp) / "web"
+        repo_root.mkdir()
+        index_path = repo_root / "aidlc-docs" / "repository-context.md"
+        outside_module = (Path(temp) / "elsewhere" / "AIDLC_CONTEXT.md").resolve()
+
+        status = classify_markdown_target(
+            index_path,
+            "../../elsewhere/AIDLC_CONTEXT.md",
+            {"web": repo_root},
+            require_file=True,
+            candidate_paths=frozenset({outside_module}),
+        )
+        assert status == "unresolvable", (
+            "a candidate-content mapping entry must never grant a traversal "
+            "escape outside every authorized root"
+        )
+
+
+def test_candidate_content_never_writes_to_the_real_index_file() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web = Path(temp) / "web"
+        web.mkdir()
+        (web / "aidlc-docs").mkdir()
+        index_path = web / "aidlc-docs" / "repository-context.md"
+        _write_valid_index(index_path, web)
+        original_text = index_path.read_text(encoding="utf-8")
+
+        validate_generated_context(
+            index_path,
+            {"web": web},
+            candidate_content={index_path.resolve(): "a deliberately different, malformed proposal\n"},
+        )
+        assert index_path.read_text(encoding="utf-8") == original_text, (
+            "validating a candidate must never overwrite the real file on disk"
+        )
+
+
+def test_validate_generated_context_without_candidates_still_works_after_a_candidate_run() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web = Path(temp) / "web"
+        module_dir = web / "apps" / "storefront"
+        module_dir.mkdir(parents=True)
+        (module_dir / "index.ts").write_text("export const x = 1;\n")
+        _write_valid_module(module_dir, "web", "storefront", "apps/storefront")
+        (web / "aidlc-docs").mkdir()
+        index_path = web / "aidlc-docs" / "repository-context.md"
+        _write_valid_index(index_path, web)
+
+        # A candidate-content run checking a proposal before applying it
+        # must not affect a later, ordinary on-disk validation run for the
+        # same final paths.
+        validate_generated_context(
+            index_path,
+            {"web": web},
+            candidate_content={index_path.resolve(): "unrelated candidate text\n"},
+        )
+
+        checks = {c.name: c.status for c in validate_generated_context(index_path, {"web": web})}
+        assert checks["index:structure"] == "passed"
+        assert checks["modules:structure:../apps/storefront/AIDLC_CONTEXT.md"] == "passed"
+
+
+def _assert_destination_rejected(checks: list) -> None:
+    assert checks, "validation must return a result"
+    assert any(check.status == "failed" for check in checks)
+    assert not all(check.status in {"passed", "not_applicable"} for check in checks)
+
+
+def test_index_candidate_outside_authorized_roots_fails() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web = Path(temp) / "web"
+        web.mkdir()
+        outside = Path(temp) / "elsewhere" / "repository-context.md"
+        checks = validate_generated_context(
+            outside, {"web": web}, candidate_content={outside: "# proposed\n"}
+        )
+        _assert_destination_rejected(checks)
+        assert not outside.exists()
+
+
+def test_index_candidate_whose_destination_is_a_directory_fails() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web = Path(temp) / "web"
+        destination = web / "aidlc-docs" / "repository-context.md"
+        destination.mkdir(parents=True)
+        checks = validate_generated_context(
+            destination, {"web": web}, candidate_content={destination: "# proposed\n"}
+        )
+        _assert_destination_rejected(checks)
+        assert destination.is_dir()
+
+
+def test_module_candidate_whose_destination_is_a_directory_fails() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web = Path(temp) / "web"
+        module_dir = web / "apps" / "storefront"
+        module_dir.mkdir(parents=True)
+        (module_dir / "index.ts").write_text("export const x = 1;\n")
+        module_path = module_dir / "AIDLC_CONTEXT.md"
+        module_path.mkdir()
+        (web / "aidlc-docs").mkdir()
+        index = web / "aidlc-docs" / "repository-context.md"
+        _write_valid_index(index, web)
+        before = index.read_text(encoding="utf-8")
+        checks = validate_generated_context(
+            index, {"web": web}, candidate_content={module_path: "# proposed\n"}
+        )
+        _assert_destination_rejected(checks)
+        assert module_path.is_dir()
+        assert index.read_text(encoding="utf-8") == before
+
+
+def test_candidate_fails_when_a_parent_path_is_a_file() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web = Path(temp) / "web"
+        web.mkdir()
+        parent = web / "aidlc-docs"
+        parent.write_text("not a directory\n")
+        destination = parent / "repository-context.md"
+        checks = validate_generated_context(
+            destination, {"web": web}, candidate_content={destination: "# proposed\n"}
+        )
+        _assert_destination_rejected(checks)
+        assert parent.read_text(encoding="utf-8") == "not a directory\n"
+        assert not destination.exists()
+
+
+def test_candidate_symlink_escape_fails_without_writing() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web = Path(temp) / "web"
+        web.mkdir()
+        outside = Path(temp) / "outside"
+        outside.mkdir()
+        (web / "escape").symlink_to(outside)
+        destination = web / "escape" / "repository-context.md"
+        checks = validate_generated_context(
+            destination, {"web": web}, candidate_content={destination: "# proposed\n"}
+        )
+        _assert_destination_rejected(checks)
+        assert not (outside / "repository-context.md").exists()
+
+
+def test_authorized_coordinator_candidate_passes_without_creating_files() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web = Path(temp) / "web"
+        module_dir = web / "apps" / "storefront"
+        module_dir.mkdir(parents=True)
+        (module_dir / "index.ts").write_text("export const x = 1;\n")
+        coordinator = Path(temp) / "payments-platform-aidlc"
+        coordinator.mkdir()
+        index_path = (coordinator / "aidlc-docs" / "repository-context.md").resolve()
+        module_path = (
+            coordinator / "aidlc-docs" / "context" / "web" / "storefront.md"
+        ).resolve()
+        index_fingerprint, _ = content_fingerprint(web)
+        module_fingerprint, _ = content_fingerprint(module_dir)
+        index_text = "\n".join(
+            [
+                "# Repository context",
+                "",
+                "<!-- AI-DLC:generated:start -->",
+                "",
+                "## Scope",
+                "",
+                "- Index: `single-repository`",
+                "- Repository ID: `web`",
+                f"- Fingerprint: `{index_fingerprint}`",
+                "",
+                "## Modules",
+                "",
+                "| Module | Source | Context | Status |",
+                "| --- | --- | --- | --- |",
+                "| `storefront` | `apps/storefront` | [x](context/web/storefront.md) | current |",
+                "",
+                "<!-- AI-DLC:generated:end -->",
+                "",
+            ]
+        )
+        module_text = "\n".join(
+            [
+                "# AIDLC context — storefront",
+                "",
+                "<!-- AI-DLC:generated:start -->",
+                "",
+                "## Identity and scope",
+                "",
+                "- Repository ID: `web`",
+                "- Module ID: `storefront`",
+                "- Source: `apps/storefront`",
+                f"- Baseline and fingerprint: `deadbeefdeadbeefdeadbeefdeadbeefdeadbeef` / `{module_fingerprint}`",
+                "",
+                "<!-- AI-DLC:generated:end -->",
+                "",
+            ]
+        )
+        roots = {"web": web, "payments-platform-aidlc": coordinator}
+        checks = validate_generated_context(
+            index_path,
+            roots,
+            candidate_content={index_path: index_text, module_path: module_text},
+        )
+        assert all(check.status in {"passed", "not_applicable"} for check in checks)
+        assert not index_path.exists()
+        assert not module_path.exists()
+
+        rejected = validate_generated_context(
+            index_path,
+            {"web": web},
+            candidate_content={index_path: index_text, module_path: module_text},
+        )
+        _assert_destination_rejected(rejected)
+
+
+def test_conflicting_candidate_paths_are_rejected() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web = Path(temp) / "web"
+        web.mkdir()
+        first = web / "aidlc-docs" / "repository-context.md"
+        second = web / "aidlc-docs" / "nested" / ".." / "repository-context.md"
+        checks = validate_generated_context(
+            first,
+            {"web": web},
+            candidate_content={first: "one\n", second: "two\n"},
+        )
+        _assert_destination_rejected(checks)
+        assert "same destination" in checks[0].detail
+        assert not first.exists()
+
+
+def test_cli_rejects_a_candidate_outside_authorized_roots() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web = Path(temp) / "web"
+        web.mkdir()
+        outside = Path(temp) / "elsewhere" / "repository-context.md"
+        staged = Path(temp) / "staged.md"
+        staged.write_text("# proposed\n")
+        code = cli_validate(
+            [
+                str(outside),
+                f"--root=web={web}",
+                f"--candidate={outside}={staged}",
+            ]
+        )
+        assert code == 1
+        assert not outside.exists()
+
+
+def test_git_discovery_failure_is_unresolved_validation_not_a_crash() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web = Path(temp) / "web"
+        module_dir = web / "apps" / "storefront"
+        module_dir.mkdir(parents=True)
+        (module_dir / "index.ts").write_text("export const x = 1;\n")
+        init_repo(web)
+        run(web, "git", "add", ".")
+        run(web, "git", "commit", "-qm", "feat: initial")
+        _write_valid_module(module_dir, "web", "storefront", "apps/storefront")
+        (web / "aidlc-docs").mkdir()
+        index = web / "aidlc-docs" / "repository-context.md"
+        _write_valid_index(index, web)
+        (web / ".git" / "index").write_bytes(b"not a real git index")
+        checks = validate_generated_context(index, {"web": web})
+        fingerprint = next(check for check in checks if check.name == "index:fingerprint")
+        assert fingerprint.status == "unresolved"
 
 
 def test_validate_generated_context_fails_on_missing_markers_and_headings() -> None:
@@ -1476,6 +2246,191 @@ def test_valid_single_and_multi_repository_documents_still_pass() -> None:
     test_validate_generated_context_true_multi_repo_engagement_passes()
 
 
+def test_classify_fingerprint_change_distinguishes_unavailable_unchanged_changed() -> None:
+    assert classify_fingerprint_change(None, "a1b2c3d4e5f6a1b2") == "unavailable"
+    assert classify_fingerprint_change("", "a1b2c3d4e5f6a1b2") == "unavailable"
+    assert classify_fingerprint_change("a1b2c3d4e5f6a1b2", "a1b2c3d4e5f6a1b2") == "unchanged"
+    assert classify_fingerprint_change("a1b2c3d4e5f6a1b2", "deadbeefdeadbeef") == "changed"
+
+
+def test_classify_fingerprint_change_drives_a_real_no_op_decision() -> None:
+    """The same scope hashed twice with no edits must report "unchanged"."""
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp) / "repo"
+        root.mkdir()
+        (root / "service.py").write_text("def handler():\n    return 1\n")
+        first, _ = content_fingerprint(root)
+        second, _ = content_fingerprint(root)
+        assert classify_fingerprint_change(first, second) == "unchanged"
+
+        (root / "service.py").write_text("def handler():\n    return 2\n")
+        third, _ = content_fingerprint(root)
+        assert classify_fingerprint_change(first, third) == "changed"
+
+
+def test_is_declared_submodule_distinguishes_real_submodule_from_nested_checkout() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp) / "coordinator"
+        root.mkdir()
+        init_repo(root)
+
+        declared = root / "vendor" / "shared-lib"
+        declared.mkdir(parents=True)
+        init_repo(declared)
+        (root / ".gitmodules").write_text(
+            '[submodule "shared-lib"]\n'
+            "\tpath = vendor/shared-lib\n"
+            "\turl = https://example.invalid/shared-lib.git\n"
+        )
+        assert is_declared_submodule(declared, root) is True
+
+        stray = root / "nested" / "unrelated-checkout"
+        stray.mkdir(parents=True)
+        init_repo(stray)
+        assert is_declared_submodule(stray, root) is False
+
+        # No .gitmodules at all: nothing nested is ever a declared submodule.
+        no_file_root = Path(temp) / "plain"
+        no_file_root.mkdir()
+        plain_nested = no_file_root / "nested"
+        plain_nested.mkdir()
+        assert is_declared_submodule(plain_nested, no_file_root) is False
+
+
+def test_bugbot_reprompt_allowed_respects_recorded_decisions() -> None:
+    # Declined is never re-proposed by this helper, in any run.
+    assert bugbot_reprompt_allowed("declined", same_run=True) is False
+    assert bugbot_reprompt_allowed("declined", same_run=False) is False
+
+    # Deferred is not re-proposed within the same run, but may be later.
+    assert bugbot_reprompt_allowed("deferred", same_run=True) is False
+    assert bugbot_reprompt_allowed("deferred", same_run=False) is True
+
+    # Approved needs no reprompt; the existing approval applies instead.
+    assert bugbot_reprompt_allowed("approved", same_run=True) is False
+    assert bugbot_reprompt_allowed("approved", same_run=False) is False
+
+    # No decision on record: a prompt is allowed.
+    assert bugbot_reprompt_allowed("", same_run=False) is True
+    assert bugbot_reprompt_allowed("unknown", same_run=False) is True
+
+
+def test_diff_module_sources_reports_added_and_removed_paths() -> None:
+    recorded = ["services/orders", "services/billing"]
+    current = ["./services/billing", "services/notifications"]
+    diff = diff_module_sources(recorded, current)
+    assert diff["added"] == ("services/notifications",)
+    assert diff["removed"] == ("services/orders",)
+    assert diff["unchanged"] == ("services/billing",)
+
+
+def test_scope_verification_status_is_partial_when_any_scope_is_unavailable() -> None:
+    assert scope_verification_status([True, True]) == "complete"
+    assert scope_verification_status([True, False]) == "partial"
+    assert scope_verification_status([False, False]) == "unavailable"
+    assert scope_verification_status([]) == "unavailable"
+
+
+def test_adopted_coordinator_destination_ignores_source_writability() -> None:
+    assert resolve_placement(None) == "distributed"
+    assert resolve_placement("distributed") == "distributed"
+    # A folder name is not an input. Missing config stays distributed.
+    assert module_context_destination("distributed", "payments-api", "checkout") == "AIDLC_CONTEXT.md"
+    coordinator_path = module_context_destination(
+        "adopted-coordinator", "payments-api", "checkout"
+    )
+    assert coordinator_path == "aidlc-docs/context/payments-api/checkout.md"
+    try:
+        resolve_placement("payments-api-aidlc")
+    except ValueError as error:
+        assert "conflicting placement" in str(error)
+    else:
+        raise AssertionError("a name-like placement value must not be accepted")
+
+
+def test_stale_proposal_does_not_match_a_newer_destination() -> None:
+    assert proposal_is_current("abc", "abc", "old text", "old text") is True
+    assert proposal_is_current("abc", "def", "old text", "old text") is False
+    assert proposal_is_current("abc", "abc", "old text", "user edit") is False
+    assert proposal_is_current("abc", "abc", None, "file appeared") is False
+
+
+def test_unrelated_rules_are_not_part_of_the_approved_write_set() -> None:
+    existing = [
+        ".cursor/rules/team-tests.mdc",
+        ".cursor/rules/migrations.mdc",
+    ]
+    approved = [".cursor/rules/migrations.mdc"]
+    assert unrelated_rules_preserved(existing, approved) == (".cursor/rules/team-tests.mdc",)
+
+
+# --- Stage 2 no-op must not hide pending set B/C work (finding 4) ---------
+#
+# These are unit tests of the deterministic decision helper
+# `context_sync_outcome`, not an end-to-end run of the `sync-context` skill
+# itself (the skill is Markdown instructions interpreted by an agent, not a
+# Python entry point). They prove the *combination rule* is reachable and
+# correct; they do not exercise Stage 1's discovery, Stage 3's proposal
+# drafting, or any other skill behavior.
+
+
+def test_context_sync_outcome_unchanged_with_first_time_missing_bugbot_config() -> None:
+    # Context unchanged (set A), but Bugbot (set B) has never been proposed
+    # for this repository: `bugbot_reprompt_allowed` on no recorded decision
+    # is True, so set B still has pending work.
+    bugbot_pending = bugbot_reprompt_allowed("", same_run=False)
+    assert bugbot_pending is True
+    outcome = context_sync_outcome("unchanged", bugbot_pending, False, False)
+    assert outcome == "context_current_migration_pending"
+
+
+def test_context_sync_outcome_unchanged_with_previously_declined_bugbot_proposal() -> None:
+    # Context unchanged (set A); Bugbot (set B) was explicitly declined, so
+    # it must not be re-proposed and must not count as pending work.
+    bugbot_pending = bugbot_reprompt_allowed("declined", same_run=False)
+    assert bugbot_pending is False
+    outcome = context_sync_outcome("unchanged", bugbot_pending, False, False)
+    assert outcome == "no_relevant_changes"
+
+
+def test_context_sync_outcome_unchanged_with_pending_legacy_cleanup() -> None:
+    # Context unchanged (set A); legacy migration cleanup (set C) still has
+    # an unresolved, named cleanup set waiting on approval.
+    outcome = context_sync_outcome("unchanged", False, False, True)
+    assert outcome == "context_current_migration_pending"
+
+
+def test_context_sync_outcome_full_no_op_when_nothing_is_actionable() -> None:
+    # No relevant changes anywhere and no pending work in any set: this is
+    # the only combination that reaches a full no-op (no write, no new
+    # approval question).
+    outcome = context_sync_outcome("unchanged", False, False, False)
+    assert outcome == "no_relevant_changes"
+
+    # A changed scope with no B/C work is "relevant updates found", not a
+    # no-op, and is never confused with the no-op outcome above.
+    assert context_sync_outcome("changed", False, False, False) == "relevant_updates_found"
+    # An unavailable prior baseline is first-time generation, not a no-op.
+    assert context_sync_outcome("unavailable", False, False, False) == "relevant_updates_found"
+
+
+def test_duplicate_managed_configuration_heading_is_ambiguous() -> None:
+    config = """
+## Context identities
+- Repository: `payments-api`
+
+## Bugbot decisions
+- Repository: `payments-api`
+
+## Context identities
+- Repository: `other`
+"""
+    identities = find_live_section(config, "## Context identities")
+    decisions = find_live_section(config, "## Bugbot decisions")
+    assert identities.status == "ambiguous"
+    assert decisions.status == "ok"
+
+
 if __name__ == "__main__":
     tests = [
         test_scope_classification_and_relocation,
@@ -1486,6 +2441,19 @@ if __name__ == "__main__":
         test_parent_fingerprint_skips_nested_git_repository,
         test_fingerprint_includes_symlink_scope_root,
         test_fingerprint_rejects_unavailable_scope,
+        test_git_aware_fingerprint_excludes_ignored_untracked_file,
+        test_git_aware_fingerprint_keeps_tracked_file_matching_a_later_ignore_pattern,
+        test_git_aware_fingerprint_respects_nested_gitignore_for_a_module_scope,
+        test_git_aware_fingerprint_detects_additions_deletions_and_renames,
+        test_git_aware_fingerprint_excludes_generated_context,
+        test_git_discovery_failure_raises_instead_of_falling_back_to_the_walk,
+        test_git_fingerprint_skips_a_tracked_file_behind_an_external_directory_symlink,
+        test_git_fingerprint_skips_a_directory_symlink_that_points_inside_the_repository,
+        test_git_fingerprint_accepts_a_symlink_scope_root,
+        test_broken_git_metadata_is_not_fingerprinted_as_an_unversioned_tree,
+        test_valid_git_worktree_fingerprint_includes_tracked_files,
+        test_unversioned_tree_still_uses_the_filesystem_walk,
+        test_fingerprint_reflects_working_tree_not_the_staged_git_index,
         test_identity_normalization_and_persistence,
         test_document_budget_flags_documents_over_the_limit,
         test_resolve_markdown_links_across_multiple_authorized_repositories,
@@ -1513,6 +2481,22 @@ if __name__ == "__main__":
         test_parse_recorded_fingerprint_reports_malformed_field,
         test_parse_recorded_fingerprint_reports_ambiguous_duplicate_fields,
         test_validate_generated_context_passes_for_a_well_formed_document_set,
+        test_candidate_content_validates_first_time_generation_without_canonical_docs,
+        test_classify_markdown_target_resolves_a_candidate_to_candidate_link,
+        test_candidate_content_fails_a_malformed_proposal_even_when_disk_copy_is_valid,
+        test_candidate_content_checks_the_proposal_instead_of_a_stale_on_disk_copy,
+        test_candidate_content_mapping_does_not_grant_an_authorized_root_escape,
+        test_candidate_content_never_writes_to_the_real_index_file,
+        test_validate_generated_context_without_candidates_still_works_after_a_candidate_run,
+        test_index_candidate_outside_authorized_roots_fails,
+        test_index_candidate_whose_destination_is_a_directory_fails,
+        test_module_candidate_whose_destination_is_a_directory_fails,
+        test_candidate_fails_when_a_parent_path_is_a_file,
+        test_candidate_symlink_escape_fails_without_writing,
+        test_authorized_coordinator_candidate_passes_without_creating_files,
+        test_conflicting_candidate_paths_are_rejected,
+        test_cli_rejects_a_candidate_outside_authorized_roots,
+        test_git_discovery_failure_is_unresolved_validation_not_a_crash,
         test_validate_generated_context_fails_on_missing_markers_and_headings,
         test_validate_generated_context_fails_when_over_budget,
         test_validate_generated_context_reports_unresolved_for_missing_index,
@@ -1547,6 +2531,20 @@ if __name__ == "__main__":
         test_tilde_fenced_canonical_headings_are_not_duplicate_sections,
         test_canonical_heading_outside_generated_block_is_not_a_duplicate,
         test_valid_single_and_multi_repository_documents_still_pass,
+        test_classify_fingerprint_change_distinguishes_unavailable_unchanged_changed,
+        test_classify_fingerprint_change_drives_a_real_no_op_decision,
+        test_is_declared_submodule_distinguishes_real_submodule_from_nested_checkout,
+        test_bugbot_reprompt_allowed_respects_recorded_decisions,
+        test_diff_module_sources_reports_added_and_removed_paths,
+        test_scope_verification_status_is_partial_when_any_scope_is_unavailable,
+        test_adopted_coordinator_destination_ignores_source_writability,
+        test_stale_proposal_does_not_match_a_newer_destination,
+        test_unrelated_rules_are_not_part_of_the_approved_write_set,
+        test_context_sync_outcome_unchanged_with_first_time_missing_bugbot_config,
+        test_context_sync_outcome_unchanged_with_previously_declined_bugbot_proposal,
+        test_context_sync_outcome_unchanged_with_pending_legacy_cleanup,
+        test_context_sync_outcome_full_no_op_when_nothing_is_actionable,
+        test_duplicate_managed_configuration_heading_is_ambiguous,
     ]
     for test in tests:
         test()

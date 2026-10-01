@@ -106,9 +106,10 @@ run. Do not write an absolute local path into `.ai-dlc-config.md`,
 ## Aggregate entry point
 
 `validate_generated_context(index_path, authorized_roots,
-index_repository_id=None, index_budget=150, module_budget=300)` runs every
-check above against one repository index and its linked module documents, and
-returns a list of `ValidationCheck(name, status, detail)`. `status` is one of:
+index_repository_id=None, index_budget=150, module_budget=300,
+candidate_content=None)` runs every check above against one repository index
+and its linked module documents, and returns a list of
+`ValidationCheck(name, status, detail)`. `status` is one of:
 
 - `"passed"` — the check ran and the property held.
 - `"failed"` — the check ran and the property did not hold.
@@ -158,6 +159,32 @@ Do not treat missing configuration, an inaccessible repository, or a parsing
 failure as passing or `not_applicable`. This function is read-only: it never
 writes, moves, or deletes a document.
 
+## Validating a proposal before it is written
+
+`candidate_content` is an optional, minimal mapping from a document's
+intended final absolute path to its proposed text:
+`{final_absolute_path: proposed_document_text}`. Before that text is
+accepted, each destination is checked. It must resolve inside an authorized
+root, which may be the source repository or an explicitly authorized
+coordinator. A missing file and missing parent directories inside that root
+are allowed. An existing destination must be a regular file: a directory, a
+symlink, a symlink escape, or a file sitting where a parent directory is
+required fails validation. Two entries that resolve to the same destination
+fail instead of one being chosen silently. The mapping does not add an
+authorized root and does not write anything.
+
+When a destination passes that check and `index_path` or a linked module's
+resolved path is a key, that text is validated as if it already existed at
+that path — including resolving links between two mapped candidates —
+without writing anything. An unmapped target still falls back to the real
+file on disk. A Git discovery failure while comparing a fingerprint is
+`unresolved`, not a crash and not a pass.
+
+This is not a general-purpose virtual filesystem: it only changes what text
+is read for the specific paths supplied. Presence in the mapping never
+authorizes writing it — that approval and the actual write happen later, in
+the `sync-context` workflow's Stage 5 and Stage 6.
+
 ## Running it
 
 Do not assume `scripts/context_tools.py` exists relative to the target
@@ -173,8 +200,17 @@ plugin root instead of a relative guess.
 ```bash
 python3 <resolved-path-to>/context_tools.py validate <index-path> \
   --root <repo-id>=<repo-root> [--root <repo-id>=<repo-root> ...] \
-  [--index-repository-id <repo-id>] [--index-budget 150] [--module-budget 300]
+  [--index-repository-id <repo-id>] [--index-budget 150] [--module-budget 300] \
+  [--candidate <final-absolute-path>=<staged-file> ...]
 ```
+
+To check a proposal before writing it, write each proposed document's text to
+a temporary staging file, then pass `--candidate
+<final-absolute-path>=<staged-file>` once per proposed document (repeatable).
+`<final-absolute-path>` is where the document would live once applied; it is
+read only to resolve links and compute identity, never written to.
+`<index-path>` itself may be a `--candidate` final path for a brand-new index
+that does not exist on disk yet.
 
 Exit code `1` means at least one check failed. That takes precedence when
 failed and unresolved checks are both present. Exit code `2` means no check

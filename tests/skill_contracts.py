@@ -24,6 +24,14 @@ EXPECTED_AGENTS = {
     "context-reviewer",
 }
 READONLY_AGENTS = EXPECTED_AGENTS - {"implementer"}
+# Skills whose `disable-model-invocation` is deliberately false/absent, so
+# Cursor's native "Agent Decides" selection may include them from a natural-
+# language request. Every other skill in EXPECTED_SKILLS must stay
+# slash-only: its blast radius (writing, deleting, or scaffolding) or its
+# dependency on an already-approved upstream state is higher than a
+# false-positive natural-language match should risk.
+NATURAL_LANGUAGE_SKILLS = {"sync-context"}
+EXPECTED_RULES = {"ai-dlc-context-and-evidence"}
 MARKDOWN_LINK = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
 
 
@@ -47,12 +55,32 @@ def assert_within_root(path: Path) -> None:
 def test_manifest_paths_and_plugin_identity() -> None:
     manifest = json.loads((ROOT / ".cursor-plugin" / "plugin.json").read_text())
     assert manifest["name"] == "simplified-ai-dlc-lifecycle"
-    for component in ("skills", "agents"):
+    for component in ("skills", "agents", "rules"):
         relative_path = Path(manifest[component])
         assert not relative_path.is_absolute()
         resolved = ROOT / relative_path
         assert resolved.is_dir()
         assert_within_root(resolved)
+
+
+def test_rule_frontmatter_is_agent_decides_not_always_or_routing() -> None:
+    rule_files = sorted((ROOT / "rules").glob("*.mdc"))
+    names = {path.stem for path in rule_files}
+    assert names == EXPECTED_RULES
+    for path in rule_files:
+        metadata = parse_frontmatter(path)
+        assert metadata["description"]
+        # Agent Decides, not Always: this rule must not load on every turn,
+        # and must not be the one-routing-rule-per-skill pattern it replaces.
+        assert metadata["alwaysApply"] is False
+        assert "globs" not in metadata
+        content = path.read_text(encoding="utf-8")
+        # Minimal, not a routing table: a one-rule-per-skill pattern or a
+        # full copy of the sync-context workflow would both show up as
+        # several "## Workflow"-shaped stage headings, which this file must
+        # not contain.
+        assert content.count("## ") <= 1
+        assert len(content.splitlines()) <= 40
 
 
 def test_team_marketplace_indexes_this_plugin() -> None:
@@ -71,12 +99,19 @@ def test_skill_frontmatter_and_unique_names() -> None:
     names = set()
     for path in skill_files:
         metadata = parse_frontmatter(path)
-        assert metadata["name"] == path.parent.name
+        name = metadata["name"]
+        assert name == path.parent.name
         assert metadata["description"]
-        assert metadata["disable-model-invocation"] is True
-        assert metadata["name"] not in names
-        names.add(metadata["name"])
+        if name in NATURAL_LANGUAGE_SKILLS:
+            # Enabled for native "Agent Decides" selection: either the key is
+            # absent, or explicitly false. Never true for this skill.
+            assert metadata.get("disable-model-invocation") is not True
+        else:
+            assert metadata["disable-model-invocation"] is True
+        assert name not in names
+        names.add(name)
     assert names == EXPECTED_SKILLS
+    assert NATURAL_LANGUAGE_SKILLS <= EXPECTED_SKILLS
 
 
 def test_removed_components_are_not_exposed_or_referenced() -> None:
@@ -111,7 +146,7 @@ def test_agent_frontmatter_and_readonly_boundaries() -> None:
 
 
 def test_local_markdown_references_resolve() -> None:
-    for path in ROOT.rglob("*.md"):
+    for path in (*ROOT.rglob("*.md"), *ROOT.rglob("*.mdc")):
         content = path.read_text(encoding="utf-8")
         for target in MARKDOWN_LINK.findall(content):
             if "://" in target or target.startswith("#"):
@@ -221,6 +256,8 @@ def test_context_artifact_contract_and_skill_budgets() -> None:
         "references/bugbot-configuration.md",
         "references/validation.md",
         "references/review-handoff.md",
+        "references/project-rules.md",
+        "references/legacy-migration.md",
     ):
         assert (sync_dir / relative).is_file()
     for skill in (ROOT / ".cursor" / "skills").glob("*/SKILL.md"):
@@ -353,6 +390,7 @@ def test_manual_evaluation_and_shared_contracts_exist() -> None:
 if __name__ == "__main__":
     tests = [
         test_manifest_paths_and_plugin_identity,
+        test_rule_frontmatter_is_agent_decides_not_always_or_routing,
         test_team_marketplace_indexes_this_plugin,
         test_skill_frontmatter_and_unique_names,
         test_removed_components_are_not_exposed_or_referenced,

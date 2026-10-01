@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.0 — 2026-10-01
+
+Bump: `minor`
+Compare: [v0.4.0...v0.5.0](https://github.com/nahuel-ramos-univar/ai-dlc/compare/v0.4.0...v0.5.0)
+
+### Added
+
+- feat: add shared project onboarding and harden project references ([`4ccd1f8`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/4ccd1f844c3ec1ddcc8146f7facad9ab252c0597))
+
+### Fixed
+
+- fix: reject malformed hostnames, empty fields, and empty sections ([`fc6aa94`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/fc6aa9495db5d6cf9491024b7e862736bf846c11))
+
+### Other
+
+- Merge pull request #6 from nahuel-ramos-univar/CTY-321-sync-onboarding ([`900ad4d`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/900ad4dc1fdfb36c41685ba5ff11b609c8e13b81))
+
 ## 0.4.0 — 2026-10-01
 
 Bump: `minor`

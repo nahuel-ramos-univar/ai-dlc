@@ -552,11 +552,12 @@ def staged_working_tree_divergence(scope_root: Path) -> tuple[str, ...]:
     visibility into the Git index. This helper reports, separately, which
     files currently staged for commit have working-tree content that
     differs from what is staged (`git diff --name-only`, scoped to
-    `scope_root`). Returns an empty tuple for an unversioned tree or when
-    there is no divergence. A recognizable checkout whose Git metadata cannot
-    be queried raises `GitDiscoveryError` rather than reporting an empty
-    difference. This is reporting only: it does not change the fingerprint
-    and must never be folded into it or its freshness comparison.
+    `scope_root`). An empty tuple means Git checked and found no divergence,
+    or the tree is unversioned. A recognizable checkout whose `git diff`
+    fails raises `GitDiscoveryError`: that comparison is unavailable, and
+    an empty tuple must not stand in for the failure. This is reporting
+    only: it does not change the fingerprint and must never be folded into
+    it or its freshness comparison.
     """
     scope = Path(scope_root)
     if not scope.exists() or not scope.is_dir():
@@ -573,7 +574,11 @@ def staged_working_tree_divergence(scope_root: Path) -> tuple[str, ...]:
         check=False,
     )
     if result.returncode != 0:
-        return ()
+        raise GitDiscoveryError(
+            "Git metadata is present, but `git diff --name-only` failed for "
+            f"{scope}. The staged-versus-working-tree comparison is "
+            "unavailable; this is not an empty difference list."
+        )
     prefix = f"{relative_scope}/" if relative_scope else ""
     paths: list[str] = []
     for line in result.stdout.decode("utf-8", "replace").splitlines():

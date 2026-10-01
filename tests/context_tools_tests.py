@@ -444,6 +444,39 @@ def test_fingerprint_reflects_working_tree_not_the_staged_git_index() -> None:
         )
 
 
+def test_corrupt_index_makes_staged_comparison_unavailable() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp) / "repo"
+        root.mkdir()
+        init_repo(root)
+        (root / "a.ts").write_text("export const a = 1;\n")
+        run(root, "git", "add", ".")
+        run(root, "git", "commit", "-qm", "feat: initial")
+
+        # rev-parse does not need the index. git diff does.
+        (root / ".git" / "index").write_bytes(b"not a real git index")
+        toplevel = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=root,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        assert toplevel.returncode == 0
+
+        try:
+            staged_working_tree_divergence(root)
+        except GitDiscoveryError as error:
+            message = str(error)
+            assert "diff" in message
+            assert "unavailable" in message
+        else:
+            raise AssertionError(
+                "a failed git diff must raise GitDiscoveryError, not return "
+                "the same empty tuple that means Git found no differences"
+            )
+
+
 def test_git_fingerprint_skips_a_tracked_file_behind_an_external_directory_symlink() -> None:
     with tempfile.TemporaryDirectory() as temp:
         root = Path(temp) / "repo"
@@ -2454,6 +2487,7 @@ if __name__ == "__main__":
         test_valid_git_worktree_fingerprint_includes_tracked_files,
         test_unversioned_tree_still_uses_the_filesystem_walk,
         test_fingerprint_reflects_working_tree_not_the_staged_git_index,
+        test_corrupt_index_makes_staged_comparison_unavailable,
         test_identity_normalization_and_persistence,
         test_document_budget_flags_documents_over_the_limit,
         test_resolve_markdown_links_across_multiple_authorized_repositories,

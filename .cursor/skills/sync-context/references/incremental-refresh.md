@@ -53,7 +53,10 @@ commit, so its staged content and its current on-disk content differ.
 Call `staged_working_tree_divergence(scope_root)` to list the
 repository-relative paths where this applies, and report them separately
 from the freshness fingerprint — never resolve the difference silently in
-either direction.
+either direction. An empty result means Git checked and found no
+difference. If the helper raises `GitDiscoveryError`, report the
+staged-versus-working-tree comparison as unavailable. Do not describe
+that failure as no difference.
 
 Compare the previous module source paths with the paths found now using
 `diff_module_sources`. Report added and removed paths explicitly. Do not

@@ -9,5 +9,6 @@
     "project-scaffolding"
   ],
   "skills": ".cursor/skills",
-  "agents": "agents"
+  "agents": "agents",
+  "rules": "rules"
 }

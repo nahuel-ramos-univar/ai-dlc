@@ -4,18 +4,40 @@ Read [artifact-home.md](artifact-home.md) before selecting output paths. Confirm
 the artifact home, source repository root, requested module scope, and approved
 module roots before writing. Write only under:
 
-- `<artifact-home>/aidlc-docs/`
-- `<artifact-home>/.ai-dlc-config.md`
-- `<approved-module-root>/AIDLC_CONTEXT.md`
-- after the per-repository Bugbot approval in `bugbot-configuration.md`:
+- `<artifact-home>/aidlc-docs/` (change set A)
+- `<artifact-home>/.ai-dlc-config.md` (change set A, and the decisions for B)
+- `<approved-module-root>/AIDLC_CONTEXT.md` (change set A)
+- after the per-repository Bugbot approval in
+  [bugbot-configuration.md](bugbot-configuration.md) (change set B):
   `<source-root>/.cursor/BUGBOT.md` and
   `<approved-boundary-root>/.cursor/BUGBOT.md`
+- after the per-policy approval in [project-rules.md](project-rules.md)
+  (change set B): `<source-root>/.cursor/rules/<slug>.mdc`, one file per
+  confirmed policy, never a copy of this plugin's own skills, agents, or
+  shared references
+
+Nothing here authorizes change set C (legacy migration cleanup); that
+remains its own approval per [legacy-migration.md](legacy-migration.md).
 
 A plugin source directory inside another Git repository is not automatically the
 consumer root. Do not write other Markdown in source trees. A nested tracked
 module uses its owning Git root for the baseline, but preserves the requested
 module as the analysis scope. An unversioned tree may be analyzed with baseline
 `unversioned`; save only when its artifact home and write scope are clear.
+
+## Proposal staleness before applying
+
+A proposal prepared in an earlier stage of the same run can go stale before
+it is applied: a user may edit a destination file, or source evidence may
+change mid-conversation. Immediately before writing, recompute
+`content_fingerprint` for the proposal's declared source scope and read the
+current content of each destination file. Call `proposal_is_current` with
+the fingerprint and destination text captured when the proposal was
+prepared, and with the values just read. If it returns false, stop writing
+that part of the proposal, recalculate the affected changes, preserve the
+intervening edit, and present the material difference for renewed approval
+before writing. Do not silently overwrite a destination
+file that moved since the proposal was prepared.
 
 Keep `.ai-dlc-config.md` minimal. Keep `aidlc-docs/repository-context.md` as a short workspace index. It lists each actual Git root, its repository ID, meaningful modules, source paths, freshness marker, and links to colocated context. It is not a codebase dump.
 
@@ -58,20 +80,33 @@ Never describe all tracked or fingerprinted files as examined, analyzed, or veri
 Freshness is a deterministic content fingerprint of the declared source scope
 and its examined paths. Use `scripts/context_tools.py`:
 
-1. Sort normalized repository-relative paths.
-2. Hash each file's path and SHA-256 content hash with NUL delimiters.
-3. Hash that sequence with SHA-256 and record the first 16 hexadecimal
+1. For a Git-backed scope, discover included files with Git: every tracked
+   path (`git ls-files`) plus every untracked path `.gitignore` does not
+   exclude (`git ls-files --others --exclude-standard`). A tracked file is
+   still included even if a later-added ignore pattern would exclude it if
+   it were untracked; only an untracked-and-ignored file is left out. For a
+   genuinely unversioned tree, walk the filesystem instead. A Git query
+   failure for a Git-backed scope raises; it is never silently replaced by
+   the filesystem walk.
+2. Sort normalized repository-relative paths.
+3. Hash each file's path and SHA-256 content hash with NUL delimiters.
+4. Hash that sequence with SHA-256 and record the first 16 hexadecimal
    characters.
-4. Include relevant staged, unstaged, and selected untracked source because the
-   helper reads the current working tree.
-5. Exclude generated context (`AIDLC_CONTEXT.md`, `.ai-dlc-config.md`,
+5. This is a working-tree snapshot: each included file's content hash comes
+   from the bytes currently on disk, not from the Git index. If a file's
+   staged content differs from its current working-tree content, this
+   fingerprint reflects only the working tree; call
+   `staged_working_tree_divergence` to report that difference separately —
+   never describe this fingerprint itself as covering staged content.
+6. Exclude generated context (`AIDLC_CONTEXT.md`, `.ai-dlc-config.md`,
    `aidlc-docs/`, and `.cursor/BUGBOT.md`), `.git`, nested Git checkouts,
    caches, build output, vendor directories, recognized secret files
    (`.env` and non-template `.env.*`, key/certificate files), and symlinks
    outside authorized roots. Include committed templates such as `.env.example`.
    Do not exclude product source under `.cursor/skills` or `.cursor/rules`.
-6. If the declared scope is missing, is not a directory, or the walk fails,
-   do not record a fingerprint. Treat freshness as unavailable.
+7. If the declared scope is missing, is not a directory, or the walk or Git
+   query fails for a reason other than "not a Git repository," do not
+   record a fingerprint. Treat freshness as unavailable.
 
 Record declared scope separately from examined files. The helper discovers
 additions, deletions, and renames inside scope through the current sorted file

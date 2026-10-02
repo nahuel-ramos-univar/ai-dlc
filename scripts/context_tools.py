@@ -11,6 +11,7 @@ import argparse
 import hashlib
 import ipaddress
 import os
+import posixpath
 import re
 import subprocess
 import sys
@@ -230,6 +231,379 @@ def module_context_destination(placement: str, repository_id: str, module_id: st
     if mode == "adopted-coordinator":
         return f"aidlc-docs/context/{repository_id}/{module_id}.md"
     return "AIDLC_CONTEXT.md"
+
+
+def migration_destination_placement(current_placement: str, migration_approved: bool) -> str:
+    """Return the placement to persist for a distributed-migration run.
+
+    Legacy coordinator configuration (`current_placement ==
+    "adopted-coordinator"`) is evidence for discovering the existing layout;
+    it must never silently become the permanent migration destination. The
+    current value is validated with `resolve_placement` first: an unknown
+    placement raises `ValueError` in either approval state, and is never
+    rewritten into `"distributed"`. Before approval
+    (`migration_approved=False`), this returns the validated current
+    placement unchanged — discovery and proposal preparation never switch
+    persisted placement on their own. Only an approved migration
+    (`migration_approved=True`) returns `"distributed"`, the only supported
+    migration target. A repository that is already `"distributed"` is
+    unaffected either way, so an ordinary refresh of an already-distributed
+    repository never changes behavior through this function.
+    """
+    mode = resolve_placement(current_placement)
+    if not migration_approved:
+        return mode
+    return "distributed"
+
+
+REPOSITORY_ROLE_PLUGIN_INSTALLATION = "plugin-installation"
+REPOSITORY_ROLE_PRODUCT_COORDINATION = "product-coordination-repository"
+REPOSITORY_ROLE_SHARED_METHODOLOGY = "shared-methodology-checkout"
+REPOSITORY_ROLE_PRODUCT_SOURCE = "product-source-repository"
+REPOSITORY_ROLE_UNRESOLVED = "unresolved"
+
+
+def repository_is_named_coordinator(
+    coordinator_name: str | None,
+    coordinator_root: str | None,
+    repository_id: str | None,
+    repository_root: str | None,
+) -> bool:
+    """True only when Coordinator metadata names this exact repository.
+
+    `Placement: adopted-coordinator` is an operating mode, not an identity,
+    and it is not an input here. The placement-mode strings
+    `"adopted-coordinator"` and `"distributed"` never match. A Coordinator
+    name matches only an exact non-empty repository id. A Coordinator root
+    matches only after POSIX normalization. When both fields are present,
+    each must name this repository; a conflict is not a match. Empty or
+    missing fields do not match.
+    """
+    name = _nonempty_identity(coordinator_name)
+    root = _nonempty_identity(coordinator_root)
+    repo_id = _nonempty_identity(repository_id)
+    repo_root = _nonempty_identity(repository_root)
+    if name in {"adopted-coordinator", "distributed"}:
+        return False
+    if name is None and root is None:
+        return False
+    if name is not None and name != repo_id:
+        return False
+    if root is not None and (
+        repo_root is None or posixpath.normpath(root) != posixpath.normpath(repo_root)
+    ):
+        return False
+    return True
+
+
+def _nonempty_identity(value: str | None) -> str | None:
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+def classify_repository_role(
+    has_plugin_manifest: bool,
+    has_shared_methodology_marker: bool,
+    name_matches_legacy_pattern: bool,
+    coordinator_name: str | None = None,
+    coordinator_root: str | None = None,
+    repository_id: str | None = None,
+    repository_root: str | None = None,
+) -> str:
+    """Classify a repository's role from evidence, never from its name alone.
+
+    Each argument must come from actually inspected content, not an assumption:
+
+    - `has_plugin_manifest` — a plugin manifest (for example
+      `.cursor-plugin/plugin.json`) was found in this repository.
+    - `coordinator_name` / `coordinator_root` — the configured `Coordinator`
+      or `Coordinator root` value, or the subject of an operating-model
+      record that explicitly assigns the coordinator role to one repository.
+      Pass this repository's id and comparable root alongside them.
+      `repository_is_named_coordinator` decides the match. `Placement:
+      adopted-coordinator` must not be passed as either coordinator field.
+    - `has_shared_methodology_marker` — this repository is a checkout of a
+      shared cross-engagement methodology (for example a framework
+      installer, a read-only-boundary rule naming an external checkout, or a
+      workspace reference to a sibling framework checkout), not a
+      product-specific one.
+    - `name_matches_legacy_pattern` — the repository's name merely looks like
+      a legacy artifact (for example it ends in a conventional suffix such
+      as `-aidlc`). A name match alone proves nothing.
+
+    Returns `"plugin-installation"`, `"product-coordination-repository"`,
+    `"shared-methodology-checkout"`, or `"product-source-repository"` only
+    when real evidence supports that role. When only the name matches a
+    legacy pattern and no other evidence was found, returns `"unresolved"`
+    instead of guessing — this is what keeps a retirement or deletion
+    decision from being made on naming alone.
+    """
+    if has_plugin_manifest:
+        return REPOSITORY_ROLE_PLUGIN_INSTALLATION
+    if repository_is_named_coordinator(
+        coordinator_name, coordinator_root, repository_id, repository_root
+    ):
+        return REPOSITORY_ROLE_PRODUCT_COORDINATION
+    if has_shared_methodology_marker:
+        return REPOSITORY_ROLE_SHARED_METHODOLOGY
+    if name_matches_legacy_pattern:
+        return REPOSITORY_ROLE_UNRESOLVED
+    return REPOSITORY_ROLE_PRODUCT_SOURCE
+
+
+def relocate_workspace_folder_path(
+    old_workspace_dir: str, folder_path: str, new_workspace_dir: str
+) -> str:
+    """Recompute a `.code-workspace` `folders[].path` for a new workspace location.
+
+    `.code-workspace` folder paths are relative to the directory containing
+    the workspace file, so moving that file changes what every relative path
+    must resolve to, even though the folders themselves did not move.
+    `old_workspace_dir` and `new_workspace_dir` must be expressed on the same
+    coordinate system (for example both relative to the same stable parent
+    directory, or both absolute on the same machine). An already-absolute
+    `folder_path` is used as-is and is not joined onto `old_workspace_dir`.
+    Relative and absolute inputs must not be mixed; that raises `ValueError`
+    instead of resolving a relative directory through the process working
+    directory. This is a pure path computation with no filesystem access, so
+    it never confirms either directory actually exists. The result is always
+    POSIX-style and relative, consistent with this plugin's rule against
+    writing absolute local checkout paths into a portable file.
+    """
+    if posixpath.isabs(folder_path):
+        target = posixpath.normpath(folder_path)
+    else:
+        target = posixpath.normpath(posixpath.join(old_workspace_dir, folder_path))
+    return _posix_relpath(target, posixpath.normpath(new_workspace_dir))
+
+
+def _posix_parts(path: str) -> tuple[bool, list[str]]:
+    normalized = posixpath.normpath(path)
+    absolute = normalized.startswith("/")
+    parts = [part for part in normalized.split("/") if part not in {"", "."}]
+    return absolute, parts
+
+
+def _posix_relpath(path: str, start: str) -> str:
+    """Return a POSIX relative path without consulting the process working directory."""
+    path_absolute, path_parts = _posix_parts(path)
+    start_absolute, start_parts = _posix_parts(start)
+    if path_absolute != start_absolute:
+        raise ValueError(
+            "workspace directories and folder path must use the same coordinate system"
+        )
+    common = 0
+    while (
+        common < len(path_parts)
+        and common < len(start_parts)
+        and path_parts[common] == start_parts[common]
+    ):
+        common += 1
+    relative_parts = [".."] * (len(start_parts) - common) + path_parts[common:]
+    if not relative_parts:
+        return "."
+    return "/".join(relative_parts)
+
+
+def checkout_deletion_readiness(
+    explicit_target: str | None,
+    approved_target: str | None,
+    migration_confirmed: bool,
+    has_uncommitted_changes: bool,
+    has_unestablished_recovery: bool,
+    retention_established: bool,
+    repository_role: str,
+    has_active_references: bool,
+) -> tuple[str, ...]:
+    """Return the reasons a local checkout deletion is blocked, or `()` when ready.
+
+    A non-empty result is the report a caller gives the user for "why
+    deletion remains pending"; an empty tuple means every precondition
+    passed and the previously-approved deletion may proceed. Nothing here
+    performs the deletion, and nothing here is itself an approval — approval
+    is a separate, explicit decision naming `approved_target`, checked here
+    only for consistency with the actual target under consideration.
+
+    - `explicit_target` must be one concrete checkout path. A missing
+      target, a wildcard or glob (`*`, `?`, or `[`), or a target that does
+      not exactly equal `approved_target` blocks deletion. A generic sync
+      approval, or an approval for a different path, never authorizes this
+      deletion.
+    - `repository_role` must be `product-coordination-repository`. A shared
+      methodology checkout, a plugin installation, a product source
+      repository, an unresolved role, or any other role is not eligible.
+    - `migration_confirmed` must be true: deletion before migration is
+      confirmed would risk deleting the only copy of unmigrated content.
+    - `has_uncommitted_changes` (staged, unstaged, or relevant untracked)
+      must be false.
+    - `has_unestablished_recovery` (local commits or branches whose recovery
+      from a remote or another checkout is not established) must be false.
+    - `retention_established` must be true: a recoverable retention or
+      backup approach exists outside the checkout being deleted. Placing the
+      only recovery copy inside the directory being deleted does not satisfy
+      this.
+    - `has_active_references` must be false. The caller sets it when any
+      inspected workspace file or repository reference still points at this
+      checkout.
+    """
+    reasons: list[str] = []
+    if not explicit_target:
+        reasons.append("no explicit deletion target was named")
+    elif _is_wildcard_deletion_target(explicit_target) or _is_wildcard_deletion_target(
+        approved_target
+    ):
+        reasons.append("deletion target must name one checkout, not a wildcard or pattern")
+    elif explicit_target != approved_target:
+        reasons.append("the recorded approval does not name this exact target")
+    if repository_role == REPOSITORY_ROLE_SHARED_METHODOLOGY:
+        reasons.append("a shared methodology checkout is not eligible for deletion")
+    elif repository_role != REPOSITORY_ROLE_PRODUCT_COORDINATION:
+        reasons.append("repository role is not eligible for checkout deletion")
+    if not migration_confirmed:
+        reasons.append("migration completeness is not confirmed for this target")
+    if has_uncommitted_changes:
+        reasons.append("staged, unstaged, or relevant untracked changes are present")
+    if has_unestablished_recovery:
+        reasons.append("local commits or branches have unestablished recovery")
+    if not retention_established:
+        reasons.append("no recoverable retention or backup approach is established")
+    if has_active_references:
+        reasons.append("active workspace or repository references still point at this checkout")
+    return tuple(reasons)
+
+
+def _is_wildcard_deletion_target(target: str | None) -> bool:
+    if not target:
+        return False
+    return any(character in target for character in "*?[]")
+
+
+def retirement_decision_pending(recorded_decision: str | None, same_run: bool) -> bool:
+    """Decide whether the mandatory coordinator-retirement question must be asked.
+
+    `recorded_decision` is one of the three options this plugin presents for
+    a legacy coordinator, or `None` for no decision yet:
+
+    - `"retire-and-delete"` (option A) — final; never re-asked.
+    - `"retire-and-retain-checkout"` (option B) — final; never re-asked.
+    - `"defer"` (option C) — pending work. Reportable on every later run
+      until the user picks A or B, but not re-asked twice inside the same
+      run, mirroring `bugbot_reprompt_allowed`'s same-run behavior.
+
+    `None` or any other value always needs asking: this mandatory decision
+    has no default and is never inferred from a generic approval.
+    """
+    if recorded_decision is None:
+        return True
+    if recorded_decision == "defer":
+        return not same_run
+    if recorded_decision in {"retire-and-delete", "retire-and-retain-checkout"}:
+        return False
+    return True
+
+
+REPOSITORY_MIGRATION_STATES = frozenset(
+    {
+        "distributed",
+        "retained-adopted-coordinator",
+        "unavailable",
+        "failed",
+    }
+)
+COORDINATOR_DISPOSITIONS = frozenset(
+    {
+        "completed",
+        "retained",
+        "deferred",
+        "blocked",
+        "unresolved",
+        "not-applicable",
+    }
+)
+RESOLVED_COORDINATOR_DISPOSITIONS = frozenset(
+    {
+        "completed",
+        "retained",
+        "not-applicable",
+    }
+)
+
+
+def migration_outcome(
+    repository_statuses: dict[str, str], coordinator_disposition: str
+) -> str:
+    """Combine repository results with coordinator retirement, without implying one transaction.
+
+    Each value in `repository_statuses` is one of:
+
+    - `"distributed"` — this repository's migration was applied and
+      validated.
+    - `"retained-adopted-coordinator"` — the user explicitly chose to keep
+      adopted-coordinator placement for this repository; not a failure.
+    - `"unavailable"` — this repository was not reachable this run.
+    - `"failed"` — a write or validation failed for this repository.
+
+    `coordinator_disposition` is one of:
+
+    - `"completed"` — retirement finished. Option A removed the local
+      checkout, or option B removed it from the workspace and kept the
+      checkout because that was the approved choice.
+    - `"retained"` — the user intentionally kept the coordinator and that
+      decision is resolved. This is not a deferral.
+    - `"deferred"` — option C. Cleanup remains open.
+    - `"blocked"` — retirement or deletion cannot proceed.
+    - `"unresolved"` — the mandatory retirement decision has not been made.
+    - `"not-applicable"` — this run has no legacy coordinator.
+
+    Any other repository state or disposition raises `ValueError`.
+
+    Returns `"complete"` only when every repository is `"distributed"` and
+    the disposition is resolved (`"completed"`, `"retained"`, or
+    `"not-applicable"`). A deferred, blocked, or unresolved coordinator is
+    never complete: deferred and unresolved return `"pending"`, and blocked
+    returns `"blocked"`. Returns `"retained"` when every repository kept
+    adopted-coordinator placement and the disposition is also resolved.
+    Returns `"partial"` when at least one repository is `"distributed"` and
+    at least one is not, even if the disposition is resolved. Returns
+    `"blocked"` when no repository reached `"distributed"` or
+    `"retained-adopted-coordinator"`, or when `repository_statuses` is
+    empty. A partial repository result is not rolled into a sibling
+    repository's success.
+    """
+    if coordinator_disposition not in COORDINATOR_DISPOSITIONS:
+        raise ValueError(
+            f"unknown coordinator disposition: {coordinator_disposition!r}"
+        )
+    unknown_states = sorted(
+        status
+        for status in set(repository_statuses.values())
+        if status not in REPOSITORY_MIGRATION_STATES
+    )
+    if unknown_states:
+        raise ValueError(
+            f"unknown repository migration state: {unknown_states[0]!r}"
+        )
+    if not repository_statuses:
+        return "blocked"
+    values = set(repository_statuses.values())
+    disposition_resolved = coordinator_disposition in RESOLVED_COORDINATOR_DISPOSITIONS
+    if values == {"retained-adopted-coordinator"}:
+        if coordinator_disposition == "blocked":
+            return "blocked"
+        if not disposition_resolved:
+            return "pending"
+        return "retained"
+    if values != {"distributed"}:
+        if "distributed" in values:
+            return "partial"
+        return "blocked"
+    if coordinator_disposition == "blocked":
+        return "blocked"
+    if not disposition_resolved:
+        return "pending"
+    return "complete"
 
 
 def proposal_is_current(

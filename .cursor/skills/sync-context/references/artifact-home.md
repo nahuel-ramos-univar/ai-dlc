@@ -161,3 +161,54 @@ not write a fallback copy under this repository's own `aidlc-docs/` as if it
 were canonical — propose it clearly as pending reconciliation with the
 coordinator instead, and ask whether to persist it as a temporary local note
 or hold it until the coordinator is reachable.
+
+## Migrating from adopted coordinator to distributed
+
+**Distributed is the only supported migration destination.** There is no
+"migrate to a different coordinator" path; a migration always ends with each
+product repository owning its own context, per the placement rule above.
+
+A repository's existing `adopted-coordinator` configuration, and the legacy
+coordinator repository it points to, are **evidence for discovering the
+current layout** — which repositories exist, what each one currently
+documents, and what still needs to be preserved. That evidence must never
+silently become the permanent destination of a new migration. Concretely,
+call `migration_destination_placement(current_placement, migration_approved)`
+in `scripts/context_tools.py`. It validates `current_placement` through
+`resolve_placement` before choosing a destination. An unknown value raises
+`ValueError` whether or not the migration is approved; it is never rewritten
+into `"distributed"`.
+
+- During discovery and proposal preparation (`migration_approved=False`),
+  it returns the validated current placement unchanged. Preparing a migration
+  proposal never flips persisted placement on its own.
+- Only an approved migration (`migration_approved=True`) returns
+  `"distributed"`, the value then persisted back into `## Context
+  identities`.
+- A repository that is already `distributed` is unaffected either way, so an
+  ordinary refresh of an already-distributed repository never changes
+  behavior through this function — it is only relevant once a migration from
+  `adopted-coordinator` is actually in play.
+
+`Placement: adopted-coordinator` records the operating mode of a repository
+that uses a coordinator. It does not identify the repository currently being
+read as that coordinator. Coordinator identity comes only from a `Coordinator`
+or `Coordinator root` value, or from operating-model metadata whose subject
+is that repository, checked with `repository_is_named_coordinator`. See
+[legacy-migration.md](legacy-migration.md).
+
+**If the persisted configuration already explicitly selects
+`adopted-coordinator`**, do not silently override it with the distributed
+default. Explain the difference between the current adopted-coordinator
+placement and the proposed distributed destination in plain terms (where
+context currently lives versus where it would move), and include the
+placement change explicitly as part of the proposal the user approves — the
+same approval gate as any other change set A content. If the user chooses to
+keep the adopted-coordinator architecture, honor that choice: leave
+`Placement: adopted-coordinator` unchanged, and report plainly that
+distributed migration was not completed, rather than reporting partial
+completion or asking again later in the same run.
+
+Preparing distributed outputs and the mandatory retirement decision for the
+legacy coordinator are both covered in
+[legacy-migration.md](legacy-migration.md).

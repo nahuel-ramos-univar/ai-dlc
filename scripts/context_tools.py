@@ -328,7 +328,8 @@ def classify_repository_role(
       shared cross-engagement methodology (for example a framework
       installer, a read-only-boundary rule naming an external checkout, or a
       workspace reference to a sibling framework checkout), not a
-      product-specific one.
+      product-specific one. This wins over a coordinator name match, so a
+      shared methodology checkout cannot become eligible for deletion.
     - `name_matches_legacy_pattern` — the repository's name merely looks like
       a legacy artifact (for example it ends in a conventional suffix such
       as `-aidlc`). A name match alone proves nothing.
@@ -342,12 +343,12 @@ def classify_repository_role(
     """
     if has_plugin_manifest:
         return REPOSITORY_ROLE_PLUGIN_INSTALLATION
+    if has_shared_methodology_marker:
+        return REPOSITORY_ROLE_SHARED_METHODOLOGY
     if repository_is_named_coordinator(
         coordinator_name, coordinator_root, repository_id, repository_root
     ):
         return REPOSITORY_ROLE_PRODUCT_COORDINATION
-    if has_shared_methodology_marker:
-        return REPOSITORY_ROLE_SHARED_METHODOLOGY
     if name_matches_legacy_pattern:
         return REPOSITORY_ROLE_UNRESOLVED
     return REPOSITORY_ROLE_PRODUCT_SOURCE
@@ -525,7 +526,6 @@ COORDINATOR_DISPOSITIONS = frozenset(
 RESOLVED_COORDINATOR_DISPOSITIONS = frozenset(
     {
         "completed",
-        "retained",
         "not-applicable",
     }
 )
@@ -549,9 +549,14 @@ def migration_outcome(
 
     - `"completed"` — retirement finished. Option A removed the local
       checkout, or option B removed it from the workspace and kept the
-      checkout because that was the approved choice.
-    - `"retained"` — the user intentionally kept the coordinator and that
-      decision is resolved. This is not a deferral.
+      checkout only as a historical copy. The checkout no longer acts as
+      the coordinator. This is the disposition for a finished distributed
+      migration, including one that keeps that copy.
+    - `"retained"` — the user intentionally kept the adopted-coordinator
+      architecture active. Valid only when every repository state is
+      `"retained-adopted-coordinator"`. Pairing it with `"distributed"`
+      raises `ValueError`; that situation is option B and uses
+      `"completed"` instead.
     - `"deferred"` — option C. Cleanup remains open.
     - `"blocked"` — retirement or deletion cannot proceed.
     - `"unresolved"` — the mandatory retirement decision has not been made.
@@ -560,11 +565,13 @@ def migration_outcome(
     Any other repository state or disposition raises `ValueError`.
 
     Returns `"complete"` only when every repository is `"distributed"` and
-    the disposition is resolved (`"completed"`, `"retained"`, or
-    `"not-applicable"`). A deferred, blocked, or unresolved coordinator is
-    never complete: deferred and unresolved return `"pending"`, and blocked
-    returns `"blocked"`. Returns `"retained"` when every repository kept
-    adopted-coordinator placement and the disposition is also resolved.
+    the disposition is `"completed"` or `"not-applicable"`. A deferred,
+    blocked, or unresolved coordinator is never complete: deferred and
+    unresolved return `"pending"`, and blocked returns `"blocked"`.
+    Returns `"retained"` when every repository kept adopted-coordinator
+    placement and the disposition is `"retained"`, `"completed"`, or
+    `"not-applicable"`. `"retained"` with any other repository mix raises
+    `ValueError`.
     Returns `"partial"` when at least one repository is `"distributed"` and
     at least one is not, even if the disposition is resolved. Returns
     `"blocked"` when no repository reached `"distributed"` or
@@ -585,16 +592,21 @@ def migration_outcome(
         raise ValueError(
             f"unknown repository migration state: {unknown_states[0]!r}"
         )
+    values = set(repository_statuses.values())
+    if coordinator_disposition == "retained" and values != {"retained-adopted-coordinator"}:
+        raise ValueError(
+            "coordinator disposition 'retained' is only valid when every "
+            "repository kept adopted-coordinator placement"
+        )
     if not repository_statuses:
         return "blocked"
-    values = set(repository_statuses.values())
     disposition_resolved = coordinator_disposition in RESOLVED_COORDINATOR_DISPOSITIONS
     if values == {"retained-adopted-coordinator"}:
         if coordinator_disposition == "blocked":
             return "blocked"
-        if not disposition_resolved:
-            return "pending"
-        return "retained"
+        if coordinator_disposition == "retained" or disposition_resolved:
+            return "retained"
+        return "pending"
     if values != {"distributed"}:
         if "distributed" in values:
             return "partial"

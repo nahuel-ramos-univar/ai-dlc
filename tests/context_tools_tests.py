@@ -2509,6 +2509,18 @@ def test_classify_repository_role_never_decides_from_name_alone() -> None:
         )
         == "shared-methodology-checkout"
     )
+    # Shared-methodology evidence wins over a coordinator name match, so the
+    # checkout stays ineligible for deletion.
+    assert (
+        classify_repository_role(
+            has_plugin_manifest=False,
+            has_shared_methodology_marker=True,
+            name_matches_legacy_pattern=False,
+            coordinator_name="legacy-aidlc",
+            repository_id="legacy-aidlc",
+        )
+        == "shared-methodology-checkout"
+    )
     assert (
         classify_repository_role(
             has_plugin_manifest=True,
@@ -2684,11 +2696,9 @@ def test_retirement_decision_pending_mirrors_bugbot_reprompt_semantics() -> None
 
 def test_migration_outcome_reports_partial_without_implying_atomicity() -> None:
     distributed = {"app": "distributed", "api": "distributed"}
-    # Distributed context plus a finished retirement is complete.
+    # Distributed context plus a finished retirement is complete. Option B
+    # (keep the checkout only as a historical copy) uses "completed".
     assert migration_outcome(distributed, "completed") == "complete"
-    # Intentionally keeping the coordinator is a resolved disposition, so
-    # the migration outcome is complete rather than still open.
-    assert migration_outcome(distributed, "retained") == "complete"
     # No coordinator in scope does not by itself block an all-distributed run.
     assert migration_outcome(distributed, "not-applicable") == "complete"
     # Deferred, blocked, or missing retirement is never complete.
@@ -2706,6 +2716,12 @@ def test_migration_outcome_reports_partial_without_implying_atomicity() -> None:
     # failure, once coordinator disposition is also resolved.
     assert (
         migration_outcome({"app": "retained-adopted-coordinator"}, "not-applicable")
+        == "retained"
+    )
+    # Keeping the adopted-coordinator architecture is "retained", not a
+    # finished distributed migration.
+    assert (
+        migration_outcome({"app": "retained-adopted-coordinator"}, "retained")
         == "retained"
     )
     # Nothing migrated and something failed or unavailable: blocked.
@@ -2726,6 +2742,23 @@ def test_migration_outcome_reports_partial_without_implying_atomicity() -> None:
         assert "typo-disposition" in str(error)
     else:
         raise AssertionError("an unknown coordinator disposition must fail")
+    # Distributed repositories plus an active adopted-coordinator choice is
+    # contradictory: option B after a distributed migration is "completed".
+    try:
+        migration_outcome(distributed, "retained")
+    except ValueError as error:
+        assert "retained" in str(error)
+    else:
+        raise AssertionError("distributed repositories cannot use disposition retained")
+    try:
+        migration_outcome(
+            {"app": "distributed", "api": "retained-adopted-coordinator"},
+            "retained",
+        )
+    except ValueError as error:
+        assert "retained" in str(error)
+    else:
+        raise AssertionError("a mixed repository set cannot use disposition retained")
 
 
 def test_stale_proposal_does_not_match_a_newer_destination() -> None:

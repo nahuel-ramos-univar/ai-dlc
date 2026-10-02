@@ -31,7 +31,13 @@ alone:
 1. `has_plugin_manifest` (a real `.cursor-plugin/plugin.json` for this
    plugin, or an equivalent installed-plugin marker) → **plugin
    installation**.
-2. Otherwise, this repository is the **product coordination repository**
+2. Otherwise `has_shared_methodology_marker` (this checkout is the shared
+   digital-ai-dlc methodology repository itself, not a product-specific
+   coordinator) → **shared methodology checkout**. This wins even when
+   `Coordinator` metadata also names this repository. A shared methodology
+   checkout must not become a product coordination repository, because that
+   role is the only one eligible for local checkout deletion.
+3. Otherwise, this repository is the **product coordination repository**
    only when `repository_is_named_coordinator(coordinator_name,
    coordinator_root, repository_id, repository_root)` is true. Pass the
    configured `Coordinator` name and `Coordinator root`, or the subject of
@@ -42,9 +48,6 @@ alone:
    repository being classified *is* the coordinator, and it must not be
    passed as `coordinator_name` or `coordinator_root`. The placement-mode
    strings themselves never match.
-3. Otherwise `has_shared_methodology_marker` (this checkout is the shared
-   digital-ai-dlc methodology repository itself, not a product-specific
-   coordinator) → **shared methodology checkout**.
 4. Otherwise, if only the repository's name matches a legacy-sounding
    pattern (for example anything containing `aidlc`) with none of the above
    evidence → **unresolved**, not a classification that authorizes anything.
@@ -393,11 +396,16 @@ dispositions raise `ValueError`; they are not treated as a partial success.
 `coordinator_disposition` is `"completed"`, `"retained"`, `"deferred"`,
 `"blocked"`, `"unresolved"`, or `"not-applicable"`.
 
-- Every repository is `"distributed"` and the disposition is resolved
-  (`"completed"`, `"retained"`, or `"not-applicable"`) → `"complete"`.
-  `"retained"` here means the user intentionally kept the coordinator and
-  that decision is finished. It is not a deferral. `"not-applicable"` means
-  this run has no legacy coordinator.
+- Every repository is `"distributed"` and the disposition is
+  `"completed"` or `"not-applicable"` → `"complete"`. `"completed"` covers
+  option A (checkout removed) and option B (checkout kept only as a
+  historical copy; it no longer acts as the coordinator).
+  `"not-applicable"` means this run has no legacy coordinator.
+- `"retained"` means the user kept the adopted-coordinator architecture
+  active. It is valid only when every repository is
+  `"retained-adopted-coordinator"`, and that pair returns `"retained"`,
+  not `"complete"`. Pairing `"retained"` with any `"distributed"`
+  repository raises `ValueError`.
 - Every repository is `"distributed"` and the disposition is `"deferred"`
   or `"unresolved"` → `"pending"`, not `"complete"`.
 - Every repository is `"distributed"`, or every repository is
@@ -406,8 +414,9 @@ dispositions raise `ValueError`; they are not treated as a partial success.
   `"complete"`.
 - Every repository explicitly `"retained-adopted-coordinator"` (the user
   chose to keep that architecture; see artifact-home.md) and the disposition
-  is resolved → `"retained"`. The same repository states with a deferred or
-  unresolved disposition → `"pending"`.
+  is `"completed"`, `"retained"`, or `"not-applicable"` → `"retained"`.
+  The same repository states with a deferred or unresolved disposition →
+  `"pending"`.
 - A mix that includes at least one `"distributed"` repository alongside
   others not yet migrated → `"partial"`, including when the disposition is
   blocked, deferred, or unresolved. This stays `"partial"` even when

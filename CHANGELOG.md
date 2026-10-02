@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.1 — 2026-10-02
+
+Bump: `patch`
+Compare: [v0.5.0...v0.5.1](https://github.com/nahuel-ramos-univar/ai-dlc/compare/v0.5.0...v0.5.1)
+
+### Fixed
+
+- fix: shared-methodology checkouts can't be classified as coordinator; reject distributed+retained ([`d4060c0`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/d4060c085499bf44cc608831fabe9ca7863c7672))
+- fix: close migration safety gaps in sync-context legacy migration ([`a8c82c9`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/a8c82c963411eabc788adbf17ef2308a74d3b3bf))
+
+### Other
+
+- Merge pull request #8 from nahuel-ramos-univar/CTY-311 ([`1bfaeef`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/1bfaeef4233761dd2f32a330360dea24a01be41b))
+- Merge pull request #7 from nahuel-ramos-univar/chore/pull-request-template ([`bcfc866`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/bcfc8662a3060bc338da60e0c4abfd499393765f))
+- docs: add a default pull request template ([`fdbe840`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/fdbe8407e80ce6e4865029dbbe2fc0b98d81fd91))
+
 ## 0.5.0 — 2026-10-01
 
 Bump: `minor`

@@ -15,8 +15,10 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from context_tools import (  # noqa: E402
     bugbot_reprompt_allowed,
     check_document_budget,
+    checkout_deletion_readiness,
     classify_fingerprint_change,
     classify_markdown_target,
+    classify_repository_role,
     classify_repository_scope,
     diff_module_sources,
     find_live_section,
@@ -30,11 +32,16 @@ from context_tools import (  # noqa: E402
     find_stale_source_paths,
     GitDiscoveryError,
     is_declared_submodule,
+    migration_destination_placement,
+    migration_outcome,
     module_context_destination,
+    repository_is_named_coordinator,
     normalize_remote,
     parse_project_references,
     proposal_is_current,
+    relocate_workspace_folder_path,
     resolve_placement,
+    retirement_decision_pending,
     context_sync_outcome,
     scope_verification_status,
     staged_working_tree_divergence,
@@ -2382,6 +2389,378 @@ def test_adopted_coordinator_destination_ignores_source_writability() -> None:
         raise AssertionError("a name-like placement value must not be accepted")
 
 
+def test_migration_destination_preserves_placement_until_approved() -> None:
+    # Discovery and proposal preparation never switch persisted placement.
+    assert (
+        migration_destination_placement("adopted-coordinator", migration_approved=False)
+        == "adopted-coordinator"
+    )
+    # Only an approved migration proposes the distributed destination.
+    assert (
+        migration_destination_placement("adopted-coordinator", migration_approved=True)
+        == "distributed"
+    )
+    # An ordinary refresh of an already-distributed repository is unaffected
+    # either way.
+    assert migration_destination_placement("distributed", migration_approved=False) == "distributed"
+    assert migration_destination_placement("distributed", migration_approved=True) == "distributed"
+    # An unknown placement is a conflict in either approval state. It must
+    # not be rewritten into "distributed".
+    for approved in (False, True):
+        try:
+            migration_destination_placement("corrupt-value", migration_approved=approved)
+        except ValueError as error:
+            assert "conflicting placement" in str(error)
+        else:
+            raise AssertionError("an invalid placement must fail fast")
+
+
+def test_repository_is_named_coordinator_ignores_placement_mode() -> None:
+    # Placement mode is not an identity. The literal mode string never
+    # proves this repository is the coordinator, even if it is also passed
+    # as the repository id.
+    assert (
+        repository_is_named_coordinator(
+            "adopted-coordinator", None, "product-app", None
+        )
+        is False
+    )
+    assert (
+        repository_is_named_coordinator(
+            "adopted-coordinator", None, "adopted-coordinator", None
+        )
+        is False
+    )
+    assert repository_is_named_coordinator(None, None, "legacy-aidlc", ".") is False
+    assert repository_is_named_coordinator("", "  ", "legacy-aidlc", ".") is False
+    # An explicit Coordinator name must equal this repository's id.
+    assert (
+        repository_is_named_coordinator(
+            "legacy-aidlc", None, "legacy-aidlc", None
+        )
+        is True
+    )
+    assert (
+        repository_is_named_coordinator(
+            "legacy-aidlc", None, "product-app", None
+        )
+        is False
+    )
+    # An explicit Coordinator root must normalize to this repository's root.
+    assert (
+        repository_is_named_coordinator(
+            None, "../legacy-aidlc/", None, "../legacy-aidlc"
+        )
+        is True
+    )
+    assert (
+        repository_is_named_coordinator(
+            None, "../legacy-aidlc", None, "../product-app"
+        )
+        is False
+    )
+    # When both fields are present, both must name this repository.
+    assert (
+        repository_is_named_coordinator(
+            "legacy-aidlc", "../product-app", "legacy-aidlc", "../legacy-aidlc"
+        )
+        is False
+    )
+
+
+def test_classify_repository_role_never_decides_from_name_alone() -> None:
+    # A name that merely looks legacy, with no other evidence, is
+    # unresolved -- never "retire" and never deleted on that basis alone.
+    assert (
+        classify_repository_role(
+            has_plugin_manifest=False,
+            has_shared_methodology_marker=False,
+            name_matches_legacy_pattern=True,
+        )
+        == "unresolved"
+    )
+    # Coordinator identity is an explicit name or root match, not the
+    # adopted-coordinator placement mode recorded on a product repository.
+    assert (
+        classify_repository_role(
+            has_plugin_manifest=False,
+            has_shared_methodology_marker=False,
+            name_matches_legacy_pattern=True,
+            coordinator_name="legacy-aidlc",
+            repository_id="legacy-aidlc",
+        )
+        == "product-coordination-repository"
+    )
+    assert (
+        classify_repository_role(
+            has_plugin_manifest=False,
+            has_shared_methodology_marker=False,
+            name_matches_legacy_pattern=False,
+            coordinator_name="legacy-aidlc",
+            repository_id="product-app",
+        )
+        == "product-source-repository"
+    )
+    assert (
+        classify_repository_role(
+            has_plugin_manifest=False,
+            has_shared_methodology_marker=True,
+            name_matches_legacy_pattern=False,
+        )
+        == "shared-methodology-checkout"
+    )
+    # Shared-methodology evidence wins over a coordinator name match, so the
+    # checkout stays ineligible for deletion.
+    assert (
+        classify_repository_role(
+            has_plugin_manifest=False,
+            has_shared_methodology_marker=True,
+            name_matches_legacy_pattern=False,
+            coordinator_name="legacy-aidlc",
+            repository_id="legacy-aidlc",
+        )
+        == "shared-methodology-checkout"
+    )
+    assert (
+        classify_repository_role(
+            has_plugin_manifest=True,
+            has_shared_methodology_marker=True,
+            name_matches_legacy_pattern=True,
+            coordinator_name="legacy-aidlc",
+            repository_id="legacy-aidlc",
+        )
+        == "plugin-installation"
+    )
+    # No evidence and no name match: an ordinary product source repository.
+    assert (
+        classify_repository_role(
+            has_plugin_manifest=False,
+            has_shared_methodology_marker=False,
+            name_matches_legacy_pattern=False,
+        )
+        == "product-source-repository"
+    )
+
+
+def test_relocate_workspace_folder_path_recomputes_relative_paths() -> None:
+    # Moving the workspace file into one of the sibling product repositories
+    # (the destination for that repository's own folder entry becomes ".").
+    assert (
+        relocate_workspace_folder_path(
+            "engagement/legacy-aidlc", "../product-app", "engagement/product-app"
+        )
+        == "."
+    )
+    # A sibling that is not the new workspace location recomputes to a
+    # different relative path, not the old one.
+    assert (
+        relocate_workspace_folder_path(
+            "engagement/legacy-aidlc", "../product-api", "engagement/product-app"
+        )
+        == "../product-api"
+    )
+    # Moving the workspace one level deeper adds a parent-directory segment.
+    assert (
+        relocate_workspace_folder_path(
+            "engagement", "product-app", "engagement/nested/new-home"
+        )
+        == "../../product-app"
+    )
+    # An already-absolute folder path is not joined onto the old directory.
+    assert (
+        relocate_workspace_folder_path(
+            "/work/engagement/legacy-aidlc",
+            "/work/engagement/product-app",
+            "/work/engagement/product-app",
+        )
+        == "."
+    )
+    assert (
+        relocate_workspace_folder_path(
+            "/work/engagement/legacy-aidlc",
+            "/work/engagement/product-api",
+            "/work/engagement/product-app",
+        )
+        == "../product-api"
+    )
+    try:
+        relocate_workspace_folder_path(
+            "engagement/legacy-aidlc",
+            "/work/engagement/product-app",
+            "engagement/product-app",
+        )
+    except ValueError as error:
+        assert "same coordinate system" in str(error)
+    else:
+        raise AssertionError("mixed absolute and relative paths must fail")
+
+
+def test_checkout_deletion_readiness_blocks_until_every_precondition_passes() -> None:
+    # Every precondition satisfied: ready, no blocking reasons.
+    assert (
+        checkout_deletion_readiness(
+            explicit_target="engagement/legacy-aidlc",
+            approved_target="engagement/legacy-aidlc",
+            migration_confirmed=True,
+            has_uncommitted_changes=False,
+            has_unestablished_recovery=False,
+            retention_established=True,
+            repository_role="product-coordination-repository",
+            has_active_references=False,
+        )
+        == ()
+    )
+    # A generic approval that does not name this exact target blocks it.
+    mismatched = checkout_deletion_readiness(
+        explicit_target="engagement/legacy-aidlc",
+        approved_target=None,
+        migration_confirmed=True,
+        has_uncommitted_changes=False,
+        has_unestablished_recovery=False,
+        retention_established=True,
+        repository_role="product-coordination-repository",
+        has_active_references=False,
+    )
+    assert len(mismatched) == 1 and "does not name this exact target" in mismatched[0]
+    # Unmigrated content, local changes, unrecoverable commits, and missing
+    # retention each report their own reason, and all can block at once.
+    every_reason = checkout_deletion_readiness(
+        explicit_target="x",
+        approved_target="x",
+        migration_confirmed=False,
+        has_uncommitted_changes=True,
+        has_unestablished_recovery=True,
+        retention_established=False,
+        repository_role="product-coordination-repository",
+        has_active_references=False,
+    )
+    assert len(every_reason) == 4
+
+
+def test_checkout_deletion_readiness_rejects_unsafe_targets() -> None:
+    ready = dict(
+        explicit_target="engagement/legacy-aidlc",
+        approved_target="engagement/legacy-aidlc",
+        migration_confirmed=True,
+        has_uncommitted_changes=False,
+        has_unestablished_recovery=False,
+        retention_established=True,
+        repository_role="product-coordination-repository",
+        has_active_references=False,
+    )
+    assert checkout_deletion_readiness(**ready) == ()
+
+    wildcard = checkout_deletion_readiness(
+        **{**ready, "explicit_target": "*aidlc*", "approved_target": "*aidlc*"}
+    )
+    assert any("wildcard" in reason for reason in wildcard)
+
+    mismatched = checkout_deletion_readiness(
+        **{**ready, "approved_target": "engagement/other-aidlc"}
+    )
+    assert any("does not name this exact target" in reason for reason in mismatched)
+
+    shared = checkout_deletion_readiness(
+        **{**ready, "repository_role": "shared-methodology-checkout"}
+    )
+    assert any("shared methodology" in reason for reason in shared)
+
+    dirty = checkout_deletion_readiness(**{**ready, "has_uncommitted_changes": True})
+    assert any("untracked" in reason or "uncommitted" in reason or "staged" in reason for reason in dirty)
+
+    unmigrated = checkout_deletion_readiness(**{**ready, "migration_confirmed": False})
+    assert any("not confirmed" in reason for reason in unmigrated)
+
+    unrecoverable = checkout_deletion_readiness(
+        **{**ready, "has_unestablished_recovery": True}
+    )
+    assert any("unestablished recovery" in reason for reason in unrecoverable)
+
+    no_retention = checkout_deletion_readiness(**{**ready, "retention_established": False})
+    assert any("retention" in reason for reason in no_retention)
+
+    referenced = checkout_deletion_readiness(**{**ready, "has_active_references": True})
+    assert any("references still point" in reason for reason in referenced)
+
+
+def test_retirement_decision_pending_mirrors_bugbot_reprompt_semantics() -> None:
+    # No decision on record: always ask.
+    assert retirement_decision_pending(None, same_run=False) is True
+    # Deferred: not re-asked within the same run, but still pending later.
+    assert retirement_decision_pending("defer", same_run=True) is False
+    assert retirement_decision_pending("defer", same_run=False) is True
+    # A final choice (A or B) is never re-asked, in any run.
+    assert retirement_decision_pending("retire-and-delete", same_run=False) is False
+    assert retirement_decision_pending("retire-and-retain-checkout", same_run=True) is False
+
+
+def test_migration_outcome_reports_partial_without_implying_atomicity() -> None:
+    distributed = {"app": "distributed", "api": "distributed"}
+    # Distributed context plus a finished retirement is complete. Option B
+    # (keep the checkout only as a historical copy) uses "completed".
+    assert migration_outcome(distributed, "completed") == "complete"
+    # No coordinator in scope does not by itself block an all-distributed run.
+    assert migration_outcome(distributed, "not-applicable") == "complete"
+    # Deferred, blocked, or missing retirement is never complete.
+    assert migration_outcome(distributed, "deferred") == "pending"
+    assert migration_outcome(distributed, "blocked") == "blocked"
+    assert migration_outcome(distributed, "unresolved") == "pending"
+    # One repository unavailable must report "partial," never "complete."
+    assert (
+        migration_outcome(
+            {"app": "distributed", "api": "unavailable"}, "completed"
+        )
+        == "partial"
+    )
+    # Every repository explicitly retained is a deliberate outcome, not a
+    # failure, once coordinator disposition is also resolved.
+    assert (
+        migration_outcome({"app": "retained-adopted-coordinator"}, "not-applicable")
+        == "retained"
+    )
+    # Keeping the adopted-coordinator architecture is "retained", not a
+    # finished distributed migration.
+    assert (
+        migration_outcome({"app": "retained-adopted-coordinator"}, "retained")
+        == "retained"
+    )
+    # Nothing migrated and something failed or unavailable: blocked.
+    assert (
+        migration_outcome({"app": "failed", "api": "unavailable"}, "completed")
+        == "blocked"
+    )
+    assert migration_outcome({}, "not-applicable") == "blocked"
+    try:
+        migration_outcome({"app": "distributed", "api": "typo-status"}, "completed")
+    except ValueError as error:
+        assert "typo-status" in str(error)
+    else:
+        raise AssertionError("an unknown repository state must fail")
+    try:
+        migration_outcome(distributed, "typo-disposition")
+    except ValueError as error:
+        assert "typo-disposition" in str(error)
+    else:
+        raise AssertionError("an unknown coordinator disposition must fail")
+    # Distributed repositories plus an active adopted-coordinator choice is
+    # contradictory: option B after a distributed migration is "completed".
+    try:
+        migration_outcome(distributed, "retained")
+    except ValueError as error:
+        assert "retained" in str(error)
+    else:
+        raise AssertionError("distributed repositories cannot use disposition retained")
+    try:
+        migration_outcome(
+            {"app": "distributed", "api": "retained-adopted-coordinator"},
+            "retained",
+        )
+    except ValueError as error:
+        assert "retained" in str(error)
+    else:
+        raise AssertionError("a mixed repository set cannot use disposition retained")
+
+
 def test_stale_proposal_does_not_match_a_newer_destination() -> None:
     assert proposal_is_current("abc", "abc", "old text", "old text") is True
     assert proposal_is_current("abc", "def", "old text", "old text") is False
@@ -2954,6 +3333,14 @@ if __name__ == "__main__":
         test_diff_module_sources_reports_added_and_removed_paths,
         test_scope_verification_status_is_partial_when_any_scope_is_unavailable,
         test_adopted_coordinator_destination_ignores_source_writability,
+        test_migration_destination_preserves_placement_until_approved,
+        test_repository_is_named_coordinator_ignores_placement_mode,
+        test_classify_repository_role_never_decides_from_name_alone,
+        test_relocate_workspace_folder_path_recomputes_relative_paths,
+        test_checkout_deletion_readiness_blocks_until_every_precondition_passes,
+        test_checkout_deletion_readiness_rejects_unsafe_targets,
+        test_retirement_decision_pending_mirrors_bugbot_reprompt_semantics,
+        test_migration_outcome_reports_partial_without_implying_atomicity,
         test_stale_proposal_does_not_match_a_newer_destination,
         test_unrelated_rules_are_not_part_of_the_approved_write_set,
         test_context_sync_outcome_unchanged_with_first_time_missing_bugbot_config,

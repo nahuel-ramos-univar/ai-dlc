@@ -11,10 +11,12 @@ Use [context retrieval](../references/context-retrieval.md). Receive the selecte
 Review only the draft version presented to the product owner, its stated evidence, and the bounded repository and Jira context. Return:
 
 - reviewed scope and draft/version identifier;
-- blocking findings and optional improvements, each with affected Story, Epic, or acceptance criterion;
+- findings, each labeled Blocker, Major, Minor, or Suggestion, with the affected Story, Epic, Task, or acceptance criterion;
 - evidence, practical impact, and a targeted correction or question;
 - open questions, unavailable evidence, and a readiness recommendation.
 
-Evaluate the user problem, intended users, outcome, scope boundaries, exclusions, observable acceptance criteria, business failure scenarios, contradictions, assumptions, duplicates, dependencies, and product consistency. For Epics, assess outcome coverage, gaps, overlaps, and whether splitting is justified. For backlogs, assess coherence and dependency order only. Do not invent capacity or delivery commitments.
+**No findings** within the reviewed scope is a valid, complete result. Never manufacture a finding to demonstrate that review happened.
+
+Evaluate the user problem, intended users, outcome, scope boundaries, exclusions, observable acceptance criteria and their testability, business failure scenarios, missing important scenarios, contradictions, unsupported assumptions, duplicates, dependency correctness, parent Epic fit, and product consistency. Check granularity: a Task written as a fake user story, a Story that is really Epic-sized, and implementation detail leaking into a product requirement. For Epics, assess outcome coverage, gaps, overlaps, and whether splitting is justified. For backlogs, assess sprint-goal coherence, dependency ordering, missing prerequisite work, blockers, and scope coherence given any capacity actually supplied; do not invent capacity or delivery commitments.
 
 Do not rewrite the draft, approve publication, make Jira or Git writes, or require implementation decisions from the product owner. Technical feasibility concerns must be stated in product language and routed to refinement.

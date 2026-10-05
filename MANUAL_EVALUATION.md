@@ -89,3 +89,21 @@ Jira discovery during migration (instruction behavior; not proved by the Python 
 - [ ] Place repeated ticket keys such as `CTY-321` in branch names, commits, or archived docs. Confirm the agent asks whether `CTY` is the Jira project and does not write it into `## Project references` before confirmation.
 - [ ] Use a ticket-key pattern when the Jira site and board are unknown. Confirm neither value is inferred or written.
 - [ ] Confirm the same Jira project across several repositories in one engagement. Confirm the agent asks once and reuses that confirmation, instead of asking the same question for every repository.
+
+Product Owner planning with `plan-work` (instruction behavior; not proved by the Python tests — `validate_work_item_type`, `validate_plan_item_id`, `validate_parent_reference`, `validate_dependency_graph`, `topological_plan_order`, `plan_outcome`, and `jira_mutation_authorized` are unit-tested as pure functions in `tests/context_tools_tests.py`, but none of them prove the agent's Product Owner judgment below; every item here is unproven until actually run in Cursor):
+
+- [ ] Ask `/plan-work` to define a User Story with a short, incomplete request. Confirm it asks only the small number of Product Owner questions that genuinely fill a gap, not a generic questionnaire.
+- [ ] Ask `/plan-work` to define the same User Story but supply complete information up front. Confirm it does not ask a redundant question the request already answered.
+- [ ] Ask `/plan-work` to define an Epic. Confirm the conversation and the resulting draft stay at Epic granularity, with no premature decomposition into implementation tasks unless explicitly requested.
+- [ ] Ask `/plan-work` to define a technical Task, for example configuring an API Gateway integration. Confirm the draft is not rewritten as a fake "As a developer, I want..." Story.
+- [ ] Draft a new User Story where a matching Jira Epic genuinely exists. Confirm `plan-work` recommends that Epic and states a short, evidence-based reason, rather than picking an Epic because of shared words.
+- [ ] Draft a new User Story where several Epics are plausible parents. Confirm the ambiguity is surfaced to the Product Owner rather than an arbitrary choice being made silently.
+- [ ] Draft a new User Story where no Jira Epic reasonably fits. Confirm `plan-work` recommends defining a new Epic and offers to help define it, without creating it.
+- [ ] Confirm this version of `plan-work` does not run a broad semantic search across existing Stories to detect a possible duplicate; its Jira lookup stays limited to finding a parent Epic, understanding existing planning context, and sprint-backlog discovery.
+- [ ] Run Sprint Backlog mode against a project with some existing Jira work. Confirm the proposal distinguishes selecting existing work from creating new work, surfaces dependencies, sprint-goal coherence, and blockers, and reports capacity as unknown rather than inventing it when no capacity evidence is available.
+- [ ] Disconnect Jira and run any `plan-work` mode. Confirm planning still proceeds, and the report clearly states which parts (duplicate search, Epic discovery, backlog discovery) were unavailable rather than silently skipping them.
+- [ ] Complete a draft and mark it ready for review. Confirm an independent `product-reviewer` assessment actually runs (or is reported unavailable with a reason) before publication approval is requested.
+- [ ] Deliberately draft a weak Story: a vague outcome, an untestable acceptance criterion, and a hidden assumption. Confirm the independent review returns meaningful findings that name each problem.
+- [ ] Draft a genuinely strong, complete Story. Confirm **no findings** is accepted as a valid, complete review result, and that the skill does not manufacture a finding to prove review happened.
+- [ ] Have the reviewer identify a finding that would change product scope, behavior, assumptions, or intent. Confirm the main chat surfaces that finding to the Product Owner for a decision rather than silently applying it.
+- [ ] Approve the local plan but withhold approval for the Jira mutation. Confirm nothing is created or changed in Jira, and the report distinguishes the approved local plan from the still-unauthorized Jira write.

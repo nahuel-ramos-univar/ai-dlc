@@ -400,6 +400,68 @@ def test_project_onboarding_is_conditionally_referenced() -> None:
         assert "project-onboarding.md" not in skill
 
 
+def test_plan_work_contract_has_required_language() -> None:
+    plan_dir = ROOT / ".cursor" / "skills" / "plan-work"
+
+    def flat(relative: str) -> str:
+        return " ".join((plan_dir / relative).read_text(encoding="utf-8").split())
+
+    skill = flat("SKILL.md")
+    task = flat("references/task.md")
+    epic_discovery = flat("references/epic-discovery.md")
+    feature_or_epic = flat("references/feature-or-epic.md")
+    sprint_backlog = flat("references/sprint-backlog.md")
+    update_existing = flat("references/update-existing.md")
+    product_review = flat("references/product-review.md")
+    reviewer = " ".join((ROOT / "agents" / "product-reviewer.md").read_text(encoding="utf-8").split())
+
+    # Section 1/17: Epic, User Story, Task, Sprint Backlog hierarchy; Sprint
+    # Backlog is a collection, not a fourth parent level.
+    assert "Epic" in skill and "User Story" in skill and "Task" in skill
+    assert "Sprint Backlog is a planning collection" in skill
+    assert "project-onboarding.md" not in skill
+
+    # Section 5: no fake "As a developer" Story-washing of technical work.
+    assert "As a developer" in task
+    assert "fake persona" in task
+
+    # Section 7/8: parent discovery is evidence-based, never silent, and is
+    # not a general semantic duplicate-story search.
+    assert "merely because titles share terms" in epic_discovery
+    assert "do not create it without explicit approval" in epic_discovery
+    assert "does not run a general semantic search for a duplicate Story" in epic_discovery
+
+    # Section 5 / Bugbot CTY-303-finding-2: a Task's parent discovery must
+    # allow a User Story, not only an Epic.
+    assert "recommend a parent User Story" in skill
+    assert "an Epic directly only when none does" in skill
+    assert "an Epic directly only when no such Story applies" in epic_discovery
+
+    # Section 3: Epic fields and no premature decomposition.
+    assert "problem or opportunity" in feature_or_epic
+    assert "Do not split this into implementation Tasks" in feature_or_epic
+
+    # Section 6: select vs. create, no invented capacity.
+    assert "selected" in sprint_backlog and "created" in sprint_backlog
+    assert "Do not invent team capacity" in sprint_backlog
+
+    # Section 12: preserve approved content, surface conflicts, no duplicate
+    # re-creation on an unchanged re-run.
+    assert "Preserve content the Product Owner already approved" in update_existing
+    assert "must not create a duplicate planning artifact" in update_existing
+
+    # Section 13/14: severity vocabulary, no-findings is valid, reviewer
+    # cannot silently decide a scope-changing finding.
+    for vocabulary in product_review, reviewer:
+        assert "Blocker" in vocabulary and "Major" in vocabulary and "Minor" in vocabulary
+        assert "Suggestion" in vocabulary
+    assert "No findings" in product_review or "no findings" in product_review.lower()
+    assert "manufacture a finding" in product_review
+
+    # Section 9: local plan approval never implies Jira mutation approval.
+    assert "is never, by itself, approval to mutate Jira" in skill
+
+
 def test_manual_evaluation_and_shared_contracts_exist() -> None:
     assert (ROOT / "MANUAL_EVALUATION.md").is_file()
     for filename in (
@@ -430,6 +492,7 @@ if __name__ == "__main__":
         test_context_review_fixture_documents_expected_findings,
         test_release_workflow_files_exist,
         test_project_onboarding_is_conditionally_referenced,
+        test_plan_work_contract_has_required_language,
         test_manual_evaluation_and_shared_contracts_exist,
     ]
     for test in tests:

@@ -2710,6 +2710,224 @@ def validate_generated_context(
 
     return checks
 
+
+# --- plan-work: product planning hierarchy and approval-boundary helpers ---
+#
+# These are the only pure, deterministic checks `plan-work` uses. They
+# validate structure (type labels, parent/dependency references, local id
+# shape, combined outcome, and the Jira-mutation approval gate). They never
+# decide whether a work item is semantically the right size, whether an
+# Epic is the correct parent, or how a Story should be written -- that
+# judgment stays in the skill's prose and the main chat's reasoning.
+
+WORK_ITEM_TYPES = frozenset({"epic", "user-story", "task"})
+
+PLAN_ITEM_ID_PATTERN = re.compile(r"^(?:[a-z0-9]+(?:-[a-z0-9]+)*|[A-Z][A-Z0-9]*-[0-9]+)$")
+
+PLAN_ITEM_STATUSES = frozenset(
+    {"drafted", "reviewed", "approved", "persisted", "blocked", "unavailable"}
+)
+
+
+def validate_work_item_type(item_type: str) -> str:
+    """Return `item_type` if it is a supported planning level, else raise.
+
+    Supported values are `"epic"`, `"user-story"`, and `"task"`. Sprint
+    Backlog is a planning collection of selected work items, not a level in
+    this hierarchy, so it is never a valid input here. This only checks
+    that the label is one the hierarchy recognizes; it never decides which
+    level a given request actually belongs to -- that classification is
+    Product Owner judgment made in chat, not in Python.
+    """
+    if item_type not in WORK_ITEM_TYPES:
+        raise ValueError(f"unsupported work item type: {item_type!r}")
+    return item_type
+
+
+def validate_plan_item_id(item_id: str) -> str:
+    """Return `item_id` if it is a well-formed local slug or Jira issue key.
+
+    A local, not-yet-published item uses a lowercase, hyphenated slug (the
+    same shape this plugin already uses for repository and module ids). An
+    item that already exists in Jira uses its real issue key, for example
+    `CTY-321`. Anything else raises `ValueError`, including a raw sentence
+    typed by a user, so a parent or dependency reference is never treated
+    as valid merely because it round-tripped through this function.
+    """
+    if not PLAN_ITEM_ID_PATTERN.fullmatch(item_id):
+        raise ValueError(f"not a valid local id or Jira issue key: {item_id!r}")
+    return item_id
+
+
+def validate_parent_reference(
+    item_type: str,
+    parent_type: str | None,
+    item_id: str,
+    parent_id: str | None,
+) -> tuple[str, ...]:
+    """Return reasons a declared parent relationship is structurally invalid.
+
+    Returns `()` when the relationship is structurally fine. Checks only
+    structure, never business fit:
+
+    - an epic must not declare a parent;
+    - a user story's parent, when one is given, must be an epic;
+    - a task's parent, when one is given, must be a user story or an epic;
+    - an item must not declare itself as its own parent;
+    - a declared parent id requires a declared parent type, and vice versa.
+
+    A user story or task with no declared parent at all is structurally
+    valid: the methodology does not require every item to have a
+    recommended parent before it can be drafted. This never decides
+    whether a specific Epic is the right Epic for a Story -- that is
+    Product Owner judgment evaluated against real Jira evidence, not
+    something a type label alone can determine.
+    """
+    validate_work_item_type(item_type)
+    has_parent_id = bool(parent_id)
+    has_parent_type = bool(parent_type)
+    if has_parent_id != has_parent_type:
+        return ("a declared parent requires both a parent type and a parent id",)
+    if not has_parent_type:
+        return ()
+    validate_work_item_type(parent_type)  # type: ignore[arg-type]
+    reasons: list[str] = []
+    if item_type == "epic":
+        reasons.append("an epic must not declare a parent")
+    elif item_type == "user-story" and parent_type != "epic":
+        reasons.append("a user story's parent must be an epic")
+    elif item_type == "task" and parent_type not in {"user-story", "epic"}:
+        reasons.append("a task's parent must be a user story or an epic")
+    if parent_id == item_id:
+        reasons.append("an item must not declare itself as its own parent")
+    return tuple(reasons)
+
+
+def validate_dependency_graph(edges: dict[str, list[str]]) -> dict[str, tuple[str, ...]]:
+    """Return per-item structural problems in a declared dependency graph.
+
+    `edges` maps each item's local id to the local ids it depends on. A
+    dependency id that is not also a key in `edges` is reported as
+    `"unknown dependency"` -- it may be a real external reference (an
+    existing Jira key this proposal never drafted), not necessarily an
+    error, so the caller decides what unknown means given its own
+    evidence. A dependency on the item's own id is always reported.
+
+    Items with no problems are omitted from the result, so a caller can
+    check `bool(result)` for "nothing to report."
+    """
+    known = set(edges)
+    problems: dict[str, tuple[str, ...]] = {}
+    for item_id, dependencies in edges.items():
+        reasons: list[str] = []
+        for dependency_id in dependencies:
+            if dependency_id == item_id:
+                reasons.append(f"depends on itself: {dependency_id!r}")
+            elif dependency_id not in known:
+                reasons.append(f"unknown dependency: {dependency_id!r}")
+        if reasons:
+            problems[item_id] = tuple(reasons)
+    return problems
+
+
+def topological_plan_order(edges: dict[str, list[str]]) -> tuple[str, ...]:
+    """Return a deterministic dependency-respecting order, or raise on a cycle.
+
+    `edges` maps each local id to the ids it depends on (which must come
+    before it in the result). Only dependency ids that are themselves keys
+    in `edges` are ordered against; an unknown dependency is not this
+    function's concern (use `validate_dependency_graph` for that). Visit
+    order follows `edges`' own iteration order, so the result is
+    reproducible across runs for the same input. Raises `ValueError` naming
+    one cycle member when the graph has a cycle; this never silently drops
+    an edge or returns an arbitrary partial order instead.
+    """
+    order: list[str] = []
+    visiting: set[str] = set()
+    visited: set[str] = set()
+
+    def visit(node: str) -> None:
+        if node in visited:
+            return
+        if node in visiting:
+            raise ValueError(f"dependency cycle detected at {node!r}")
+        visiting.add(node)
+        for dependency in edges.get(node, []):
+            if dependency in edges:
+                visit(dependency)
+        visiting.discard(node)
+        visited.add(node)
+        order.append(node)
+
+    for node in edges:
+        visit(node)
+    return tuple(order)
+
+
+def plan_outcome(item_statuses: dict[str, str]) -> str:
+    """Combine per-item planning statuses into one reachable plan outcome.
+
+    Each value is one of: `"drafted"` (not yet reviewed), `"reviewed"`
+    (independent review completed with no unresolved blocker), `"approved"`
+    (explicit publication approval given, not yet written), `"persisted"`
+    (the approved write happened and was re-read back), `"blocked"` (a
+    blocking review finding or an approval boundary is unresolved), or
+    `"unavailable"` (Jira or evidence needed for this item could not be
+    reached this run). Any other value raises `ValueError`.
+
+    Returns `"ready"` only when every item is `"persisted"`. Returns
+    `"approved"` when every item reached at least `"approved"` but at
+    least one is not yet `"persisted"` -- approval never implies the write
+    happened. Returns `"reviewed"` when every item is `"reviewed"`: review
+    is complete and nothing is blocked, but publication has not been
+    approved yet, which is a distinct, more advanced state than ordinary
+    mixed-progress `"partial"`. Returns `"blocked"` when any item is
+    `"blocked"`. Returns `"unavailable"` only when every item is
+    `"unavailable"`. Returns `"drafting"` when every item is `"drafted"` or
+    `"unavailable"` with at least one `"drafted"`. Returns `"partial"` for
+    any other mix, for example some items `"persisted"` while others are
+    still `"drafted"`, or items that disagree between `"reviewed"` and an
+    earlier stage. An empty `item_statuses` is `"unavailable"`: there is
+    nothing to plan. This never collapses a mixed result into a false
+    `"ready"`, and never implies one atomic write happened across every
+    item.
+    """
+    if not item_statuses:
+        return "unavailable"
+    values = set(item_statuses.values())
+    unknown = values - PLAN_ITEM_STATUSES
+    if unknown:
+        raise ValueError(f"unknown plan item status: {sorted(unknown)[0]!r}")
+    if "blocked" in values:
+        return "blocked"
+    if values == {"persisted"}:
+        return "ready"
+    if values <= {"approved", "persisted"}:
+        return "approved"
+    if values == {"reviewed"}:
+        return "reviewed"
+    if values == {"unavailable"}:
+        return "unavailable"
+    if values <= {"drafted", "unavailable"}:
+        return "drafting"
+    return "partial"
+
+
+def jira_mutation_authorized(local_plan_approved: bool, jira_mutation_approved: bool) -> bool:
+    """Return whether a Jira write may proceed.
+
+    Approving the local plan and approving a Jira mutation of that plan are
+    two distinct decisions; this function never derives the second from the
+    first. `local_plan_approved=True` with `jira_mutation_approved=False`
+    always returns `False`. A caller that already holds an explicit
+    `jira_mutation_approved` value does not strictly need this function --
+    it exists so that this specific boundary has one named, tested contract
+    instead of an inline boolean that a future edit could quietly collapse
+    into "local approval is enough."
+    """
+    return bool(jira_mutation_approved)
+
+
 def cli_validate(argv: list[str]) -> int:
     """Command-line entry point: `context_tools.py validate ...`.
 

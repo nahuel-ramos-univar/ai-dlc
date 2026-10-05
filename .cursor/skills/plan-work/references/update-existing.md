@@ -1,6 +1,6 @@
 # Update existing work
 
-Read the current issue fields, comments needed for context, linked work, and relevant implementation. Preserve unrelated text.
+Read the current issue fields, comments needed for context, linked work, and relevant implementation. Preserve unrelated text. Preserve content the Product Owner already approved unless newly read evidence actually conflicts with it; when it does, surface the conflict and let the Product Owner decide rather than silently overwriting the approved value. Running this on an unchanged item must not create a duplicate planning artifact.
 
 Show changes as a field-level diff:
 

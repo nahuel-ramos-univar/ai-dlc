@@ -51,6 +51,13 @@ from context_tools import (  # noqa: E402
     resolve_source_path,
     stable_repository_id,
     validate_generated_context,
+    jira_mutation_authorized,
+    plan_outcome,
+    topological_plan_order,
+    validate_dependency_graph,
+    validate_parent_reference,
+    validate_plan_item_id,
+    validate_work_item_type,
 )
 
 
@@ -3237,6 +3244,122 @@ def test_project_references_invalid_status_never_populates_values() -> None:
     assert unknown_role.values == {}
 
 
+def test_validate_work_item_type_accepts_hierarchy_rejects_sprint_backlog() -> None:
+    # Epic, user story, and task are the three planning levels this
+    # function recognizes. Sprint Backlog is a collection of selected work
+    # items, not a level in the hierarchy, so it is never a valid input.
+    for item_type in ("epic", "user-story", "task"):
+        assert validate_work_item_type(item_type) == item_type
+    for bad_type in ("sprint-backlog", "feature", "Epic", ""):
+        try:
+            validate_work_item_type(bad_type)
+            raise AssertionError(f"expected ValueError for {bad_type!r}")
+        except ValueError:
+            pass
+
+
+def test_validate_plan_item_id_accepts_slug_and_jira_key_rejects_sentence() -> None:
+    assert validate_plan_item_id("cancel-order-before-fulfillment") == (
+        "cancel-order-before-fulfillment"
+    )
+    assert validate_plan_item_id("CTY-321") == "CTY-321"
+    for bad_id in (
+        "We need a story that allows cancellation",
+        "cty 321",
+        "",
+        "-leading-hyphen",
+    ):
+        try:
+            validate_plan_item_id(bad_id)
+            raise AssertionError(f"expected ValueError for {bad_id!r}")
+        except ValueError:
+            pass
+
+
+def test_validate_parent_reference_hierarchy_rules() -> None:
+    # A user story with a recommended Epic parent is structurally valid.
+    assert validate_parent_reference("user-story", "epic", "cancel-order", "CTY-296") == ()
+    # A task under a user story is structurally valid.
+    assert validate_parent_reference("task", "user-story", "configure-gateway", "cancel-order") == ()
+    # A user story with no declared parent at all is structurally valid:
+    # the methodology does not require a parent before drafting.
+    assert validate_parent_reference("user-story", None, "cancel-order", None) == ()
+    # An epic must never declare a parent.
+    assert validate_parent_reference("epic", "epic", "checkout", "other-epic") != ()
+    # A user story's parent must be an epic, not another story or a task.
+    assert validate_parent_reference("user-story", "task", "cancel-order", "configure-gateway") != ()
+    # Self-parenting is always invalid regardless of type.
+    assert validate_parent_reference("task", "task", "same-id", "same-id") != ()
+    # A declared parent id without a parent type (or vice versa) is invalid.
+    assert validate_parent_reference("user-story", None, "cancel-order", "CTY-296") != ()
+    assert validate_parent_reference("user-story", "epic", "cancel-order", None) != ()
+
+
+def test_validate_dependency_graph_detects_self_and_unknown_dependencies() -> None:
+    problems = validate_dependency_graph(
+        {
+            "cancel-order": ["self-dependency-check", "payment-refund-task"],
+            "payment-refund-task": [],
+            "self-dependency-check": ["self-dependency-check"],
+        }
+    )
+    assert "unknown dependency: 'self-dependency-check'" not in str(problems)
+    assert "cancel-order" not in problems  # no problems: omitted, not an empty tuple
+    assert any("depends on itself" in reason for reason in problems["self-dependency-check"])
+
+    unknown = validate_dependency_graph({"cancel-order": ["CTY-999-not-loaded"]})
+    assert unknown["cancel-order"] == ("unknown dependency: 'CTY-999-not-loaded'",)
+
+
+def test_topological_plan_order_orders_dependencies_before_dependents_and_raises_on_cycle() -> None:
+    order = topological_plan_order(
+        {
+            "cancel-order": ["payment-refund-task"],
+            "payment-refund-task": ["configure-gateway"],
+            "configure-gateway": [],
+        }
+    )
+    assert order.index("configure-gateway") < order.index("payment-refund-task")
+    assert order.index("payment-refund-task") < order.index("cancel-order")
+
+    try:
+        topological_plan_order({"a": ["b"], "b": ["a"]})
+        raise AssertionError("expected ValueError for a dependency cycle")
+    except ValueError as exc:
+        assert "cycle" in str(exc)
+
+
+def test_plan_outcome_combines_item_statuses_without_implying_atomicity() -> None:
+    assert plan_outcome({"a": "persisted", "b": "persisted"}) == "ready"
+    assert plan_outcome({"a": "approved", "b": "persisted"}) == "approved"
+    assert plan_outcome({"a": "blocked", "b": "persisted"}) == "blocked"
+    assert plan_outcome({"a": "unavailable", "b": "unavailable"}) == "unavailable"
+    assert plan_outcome({"a": "drafted", "b": "unavailable"}) == "drafting"
+    assert plan_outcome({"a": "drafted", "b": "persisted"}) == "partial"
+    assert plan_outcome({}) == "unavailable"
+    # A fully reviewed plan (review complete, no blocker, not yet approved
+    # for publication) is its own distinct, more advanced state than
+    # ordinary mixed-progress "partial" -- Bugbot CTY-303-finding-1.
+    assert plan_outcome({"a": "reviewed", "b": "reviewed"}) == "reviewed"
+    # Reviewed mixed with an earlier stage still disagrees enough to stay
+    # "partial": review is not uniformly complete across the plan.
+    assert plan_outcome({"a": "reviewed", "b": "drafted"}) == "partial"
+    try:
+        plan_outcome({"a": "pending"})
+        raise AssertionError("expected ValueError for an unrecognized status")
+    except ValueError:
+        pass
+
+
+def test_jira_mutation_authorized_never_derives_from_local_plan_approval() -> None:
+    # Approving the local plan must never be mistaken for Jira
+    # authorization: only an explicit jira_mutation_approved=True allows it.
+    assert jira_mutation_authorized(local_plan_approved=True, jira_mutation_approved=False) is False
+    assert jira_mutation_authorized(local_plan_approved=False, jira_mutation_approved=True) is True
+    assert jira_mutation_authorized(local_plan_approved=True, jira_mutation_approved=True) is True
+    assert jira_mutation_authorized(local_plan_approved=False, jira_mutation_approved=False) is False
+
+
 if __name__ == "__main__":
     tests = [
         test_scope_classification_and_relocation,
@@ -3374,6 +3497,13 @@ if __name__ == "__main__":
         test_project_references_empty_live_section_is_reported_as_missing,
         test_project_references_preserve_fences_and_unrelated_lines,
         test_project_references_invalid_status_never_populates_values,
+        test_validate_work_item_type_accepts_hierarchy_rejects_sprint_backlog,
+        test_validate_plan_item_id_accepts_slug_and_jira_key_rejects_sentence,
+        test_validate_parent_reference_hierarchy_rules,
+        test_validate_dependency_graph_detects_self_and_unknown_dependencies,
+        test_topological_plan_order_orders_dependencies_before_dependents_and_raises_on_cycle,
+        test_plan_outcome_combines_item_statuses_without_implying_atomicity,
+        test_jira_mutation_authorized_never_derives_from_local_plan_approval,
     ]
     for test in tests:
         test()

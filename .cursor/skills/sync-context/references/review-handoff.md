@@ -35,8 +35,10 @@ Give the reviewer:
 - the deterministic validation result from [validation.md](validation.md).
 
 Do not pass the entire main-chat conversation by default. For an initial
-generation, the reviewer inspects the generated documents and their material
-claims. For an incremental change, focus the reviewer on changed claims,
+generation, the reviewer independently inspects enough representative
+source to challenge the proposal: the generated documents, their
+material claims, and omitted boundaries. Do not blindly re-scan every
+file. For an incremental change, focus the reviewer on changed claims,
 affected modules, and relevant shared boundaries; do not require a second
 exhaustive repository scan for every minor update.
 
@@ -48,6 +50,7 @@ Review scope:
 
 Findings:
 - Severity: blocker | major | minor
+- Dimension: accuracy | completeness
 - Context document and section.
 - Incorrect, unsupported, or missing assertion.
 - Source evidence.
@@ -61,6 +64,20 @@ Result:
 - Changes required.
 - Review incomplete.
 ```
+
+**Accuracy** findings are about a claim that does not match the source: a
+coverage row marked `verified` with no matching evidence, a stale behavior
+description, an incorrect dependency. **Completeness** findings are about
+what the document should cover for this module's actual responsibility but
+does not: an omitted consumer, a missing runtime flow, a coverage table
+with no row for a dimension this module plainly has. See
+[context-quality.md](context-quality.md) for the dimension list and what
+"good enough" means for each.
+
+An honestly marked `unknown` or `not applicable` row is not itself a
+finding. Only report it when the state is wrong — the dimension was
+actually inspected and should read `verified` or `partial`, or `not
+applicable` has no real reason behind it.
 
 ## Resolving findings
 
@@ -83,8 +100,14 @@ value, or a slash command for internal dispatch. If the host exposes only a
 general-purpose independent subagent and cannot invoke a named plugin agent
 directly, hand it the `context-reviewer` agent file as bounded task context
 and report the result as a general-purpose independent review, not native
-named-agent dispatch. If the host cannot run an independent subagent at all,
-continue with deterministic validation and clearly labeled self-review,
-report independent review as unavailable, and never call main-chat
-self-review independent. Do not claim this delegation path was tested beyond
+named-agent dispatch. If the host cannot run an independent subagent at all, continue with
+deterministic validation. Report independent semantic review as
+unavailable and quality assurance as partial. Clearly labeled self-review
+may continue drafting; it is not equivalent to independent review and must
+not be reported as fully reviewed, quality verified, or complete semantic
+review. For an initial/full sync or a material architecture change, still
+show the proposal, disclose the unavailability, and require explicit user
+approval before persistence. Do not add an extra approval prompt for a
+small factual update or a no-op, and never call main-chat self-review
+independent. Do not claim this delegation path was tested beyond
 what was actually invoked in this session.

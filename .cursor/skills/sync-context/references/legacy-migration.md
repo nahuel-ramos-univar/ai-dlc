@@ -204,7 +204,7 @@ exactly three options:
 
 Call `retirement_decision_pending(recorded_decision, same_run)` in
 `scripts/context_tools.py` to decide whether to ask again, mirroring the
-existing `bugbot_reprompt_allowed` reprompt pattern:
+existing `decision_reprompt_allowed` reprompt pattern:
 
 - No recorded decision (`None`) → always ask.
 - A recorded `"defer"` → do not re-ask within the same run
@@ -325,16 +325,7 @@ first.
 
 ## Reviewing a migration in Canvas
 
-Reuse this plugin's existing Canvas conventions (see
-[SKILL.md](../SKILL.md) Stage 3 and the shared
-[compact response style](../../../../references/response-style.md)); a
-migration review does not get a separate Canvas mechanism. When the host
-supports an interactive Canvas and it genuinely improves review, use it for
-both the proposal and the result; otherwise present the same content as
-clear chat sections and file links, and say plainly that Canvas was
-unavailable. Either way, this is a view onto the same proposal and report —
-never a second source of truth, and never a substitute for the written
-approval and completion-reporting steps above.
+Use the shared [canvas review](../../../../references/canvas-review.md) for the proposal and again for the result. A migration does not get a separate Canvas mechanism. The sections below are what that view shows for change set C. Canvas interaction is never deletion approval or retirement approval.
 
 **Before approval**, the Canvas (or its chat-section equivalent) should make
 these genuinely readable, not just summarized:

@@ -20,6 +20,9 @@ from context_tools import (  # noqa: E402
     classify_markdown_target,
     classify_repository_role,
     classify_repository_scope,
+    cli_plan_validate,
+    decision_reprompt_allowed,
+    external_jira_dependencies,
     diff_module_sources,
     find_live_section,
     cli_validate,
@@ -38,6 +41,7 @@ from context_tools import (  # noqa: E402
     repository_is_named_coordinator,
     normalize_remote,
     parse_project_references,
+    plan_validate_proposal,
     proposal_is_current,
     relocate_workspace_folder_path,
     resolve_placement,
@@ -51,6 +55,13 @@ from context_tools import (  # noqa: E402
     resolve_source_path,
     stable_repository_id,
     validate_generated_context,
+    jira_mutation_authorized,
+    plan_outcome,
+    topological_plan_order,
+    validate_dependency_graph,
+    validate_parent_reference,
+    validate_plan_item_id,
+    validate_work_item_type,
 )
 
 
@@ -626,11 +637,15 @@ def test_document_budget_flags_documents_over_the_limit() -> None:
     with tempfile.TemporaryDirectory() as temp:
         short = Path(temp) / "short.md"
         short.write_text("\n".join(f"line {i}" for i in range(50)) + "\n")
-        assert check_document_budget(short, max_lines=300)
+        assert check_document_budget(short)
 
         long = Path(temp) / "long.md"
-        long.write_text("\n".join(f"line {i}" for i in range(301)) + "\n")
-        assert not check_document_budget(long, max_lines=300)
+        long.write_text("\n".join(f"line {i}" for i in range(151)) + "\n")
+        assert not check_document_budget(long)
+        # This helper is the repository-index gate. A 300-line cap is not
+        # a module validity check; callers that want a module line count
+        # use document_metrics instead.
+        assert check_document_budget(long, max_lines=300)
 
 
 # --- Multi-repository workspace reference resolution ----------------------
@@ -1017,26 +1032,51 @@ def test_parse_recorded_fingerprint_reports_ambiguous_duplicate_fields() -> None
 # --- Aggregate deterministic validation -------------------------------------
 
 
+def _module_envelope_after_identity() -> list[str]:
+    return [
+        "## Coverage",
+        "",
+        "| Dimension | State | Evidence |",
+        "| --- | --- | --- |",
+        "",
+        "## Evidence and existing docs",
+        "",
+        "No local paths to resolve.",
+        "",
+        "## Unknowns",
+        "",
+        "- None recorded.",
+        "",
+    ]
+
+
+def _valid_module_generated_text(
+    repository_id: str, module_id: str, source: str, fingerprint: str
+) -> str:
+    return "\n".join(
+        [
+            f"# AIDLC context — {module_id}",
+            "",
+            "<!-- AI-DLC:generated:start -->",
+            "",
+            "## Identity and scope",
+            "",
+            f"- Repository ID: `{repository_id}`",
+            f"- Module ID: `{module_id}`",
+            f"- Source: `{source}`",
+            f"- Baseline and fingerprint: `deadbeefdeadbeefdeadbeefdeadbeefdeadbeef` / `{fingerprint}`",
+            "",
+            *_module_envelope_after_identity(),
+            "<!-- AI-DLC:generated:end -->",
+            "",
+        ]
+    )
+
+
 def _write_valid_module(module_dir: Path, repository_id: str, module_id: str, source: str) -> str:
     fingerprint, _ = content_fingerprint(module_dir)
     (module_dir / "AIDLC_CONTEXT.md").write_text(
-        "\n".join(
-            [
-                f"# AIDLC context — {module_id}",
-                "",
-                "<!-- AI-DLC:generated:start -->",
-                "",
-                "## Identity and scope",
-                "",
-                f"- Repository ID: `{repository_id}`",
-                f"- Module ID: `{module_id}`",
-                f"- Source: `{source}`",
-                f"- Baseline and fingerprint: `deadbeefdeadbeefdeadbeefdeadbeefdeadbeef` / `{fingerprint}`",
-                "",
-                "<!-- AI-DLC:generated:end -->",
-                "",
-            ]
-        )
+        _valid_module_generated_text(repository_id, module_id, source, fingerprint)
     )
     return fingerprint
 
@@ -1133,22 +1173,8 @@ def test_candidate_content_validates_first_time_generation_without_canonical_doc
                 "",
             ]
         )
-        module_text = "\n".join(
-            [
-                "# AIDLC context — storefront",
-                "",
-                "<!-- AI-DLC:generated:start -->",
-                "",
-                "## Identity and scope",
-                "",
-                "- Repository ID: `web`",
-                "- Module ID: `storefront`",
-                "- Source: `apps/storefront`",
-                f"- Baseline and fingerprint: `deadbeefdeadbeefdeadbeefdeadbeefdeadbeef` / `{module_fingerprint}`",
-                "",
-                "<!-- AI-DLC:generated:end -->",
-                "",
-            ]
+        module_text = _valid_module_generated_text(
+            "web", "storefront", "apps/storefront", module_fingerprint
         )
 
         checks = validate_generated_context(
@@ -1255,22 +1281,8 @@ def test_candidate_content_checks_the_proposal_instead_of_a_stale_on_disk_copy()
         assert baseline["modules:structure:../apps/storefront/AIDLC_CONTEXT.md"] == "failed"
 
         module_fingerprint, _ = content_fingerprint(module_dir)
-        proposed_text = "\n".join(
-            [
-                "# AIDLC context — storefront",
-                "",
-                "<!-- AI-DLC:generated:start -->",
-                "",
-                "## Identity and scope",
-                "",
-                "- Repository ID: `web`",
-                "- Module ID: `storefront`",
-                "- Source: `apps/storefront`",
-                f"- Baseline and fingerprint: `deadbeefdeadbeefdeadbeefdeadbeefdeadbeef` / `{module_fingerprint}`",
-                "",
-                "<!-- AI-DLC:generated:end -->",
-                "",
-            ]
+        proposed_text = _valid_module_generated_text(
+            "web", "storefront", "apps/storefront", module_fingerprint
         )
         checks = {
             c.name: c.status
@@ -1466,22 +1478,8 @@ def test_authorized_coordinator_candidate_passes_without_creating_files() -> Non
                 "",
             ]
         )
-        module_text = "\n".join(
-            [
-                "# AIDLC context — storefront",
-                "",
-                "<!-- AI-DLC:generated:start -->",
-                "",
-                "## Identity and scope",
-                "",
-                "- Repository ID: `web`",
-                "- Module ID: `storefront`",
-                "- Source: `apps/storefront`",
-                f"- Baseline and fingerprint: `deadbeefdeadbeefdeadbeefdeadbeefdeadbeef` / `{module_fingerprint}`",
-                "",
-                "<!-- AI-DLC:generated:end -->",
-                "",
-            ]
+        module_text = _valid_module_generated_text(
+            "web", "storefront", "apps/storefront", module_fingerprint
         )
         roots = {"web": web, "payments-platform-aidlc": coordinator}
         checks = validate_generated_context(
@@ -1579,6 +1577,42 @@ def test_validate_generated_context_fails_when_over_budget() -> None:
         )
         budget = next(c for c in checks if c.name == "index:budget")
         assert budget.status == "failed"
+
+
+def test_validate_generated_context_module_budget_is_not_a_validation_result() -> None:
+    """A module document's line count is never a ValidationCheck.
+
+    The repository index stays a hard-gated short index (covered by
+    `test_validate_generated_context_fails_when_over_budget`). A long
+    module document must not produce `modules:budget:<label>` as passed
+    or failed; callers that want the number use `document_metrics`.
+    """
+    with tempfile.TemporaryDirectory() as temp:
+        web = Path(temp) / "web"
+        (web / "apps" / "storefront").mkdir(parents=True)
+        (web / "apps" / "storefront" / "index.ts").write_text("export const x = 1;\n")
+        fingerprint = _write_valid_module(
+            web / "apps" / "storefront", "web", "storefront", "apps/storefront"
+        )
+        module_path = web / "apps" / "storefront" / "AIDLC_CONTEXT.md"
+        padding = "\n".join(f"- Verified detail line {i}" for i in range(500))
+        module_path.write_text(
+            module_path.read_text().replace(
+                "<!-- AI-DLC:generated:end -->",
+                f"\n## Extra detail\n\n{padding}\n\n<!-- AI-DLC:generated:end -->",
+            )
+        )
+        (web / "aidlc-docs").mkdir()
+        index = web / "aidlc-docs" / "repository-context.md"
+        _write_valid_index(index, web)
+
+        checks = validate_generated_context(index, {"web": web}, index_repository_id="web")
+        assert not any(check.name.startswith("modules:budget:") for check in checks)
+        identity = next(
+            c for c in checks if c.name == "modules:identity:../apps/storefront/AIDLC_CONTEXT.md"
+        )
+        assert identity.status == "passed", "padding must not break identity or freshness"
+        assert fingerprint  # the padded context document never enters its own fingerprint
 
 
 def test_validate_generated_context_reports_unresolved_for_missing_index() -> None:
@@ -1921,24 +1955,177 @@ def test_missing_evidence_file_fails_without_treating_symbols_as_paths() -> None
         web, index, module_doc = _single_repo_fixture(temp)
         module_doc.write_text(
             module_doc.read_text().replace(
-                "<!-- AI-DLC:generated:end -->",
-                "\n".join(
-                    [
-                        "## Evidence and existing docs",
-                        "",
-                        "- `OrderPlacedEvent`",
-                        "- `apps/storefront/deleted.ts`",
-                        "",
-                        "<!-- AI-DLC:generated:end -->",
-                    ]
-                ),
+                "No local paths to resolve.",
+                "- `OrderPlacedEvent`\n- `apps/storefront/deleted.ts`",
             )
         )
         checks = validate_generated_context(index, {"web": web}, index_repository_id="web")
         evidence = [check for check in checks if "evidence" in check.name]
         assert any(check.status == "failed" and "deleted.ts" in check.name for check in evidence)
+        assert any(
+            check.status == "failed"
+            and "deleted.ts" in check.name
+            and "referenced evidence path does not exist" in check.detail
+            for check in evidence
+        )
         assert not any("OrderPlacedEvent" in check.name for check in checks)
         assert cli_validate([str(index), "--root", f"web={web}", "--index-repository-id", "web"]) == 1
+
+
+def test_empty_evidence_catalog_is_not_applicable_not_passed() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web, index, _module_doc = _single_repo_fixture(temp)
+        checks = validate_generated_context(index, {"web": web}, index_repository_id="web")
+        evidence = next(
+            check
+            for check in checks
+            if check.name == "modules:evidence:../apps/storefront/AIDLC_CONTEXT.md"
+        )
+        assert evidence.status == "not_applicable"
+        assert "no local evidence paths to resolve" in evidence.detail
+        assert evidence.status != "passed"
+
+
+def test_valid_evidence_path_resolves_with_mechanical_wording() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web, index, module_doc = _single_repo_fixture(temp)
+        module_doc.write_text(
+            module_doc.read_text().replace(
+                "No local paths to resolve.",
+                "- `apps/storefront/index.ts`",
+            )
+        )
+        checks = validate_generated_context(index, {"web": web}, index_repository_id="web")
+        evidence = next(
+            check for check in checks if check.name.endswith("apps/storefront/index.ts")
+        )
+        assert evidence.status == "passed"
+        assert evidence.detail == "evidence references resolved"
+
+
+def test_evidence_path_outside_authorized_root_fails() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web, index, module_doc = _single_repo_fixture(temp)
+        module_doc.write_text(
+            module_doc.read_text().replace(
+                "No local paths to resolve.",
+                "- `../outside/secret.py`",
+            )
+        )
+        checks = validate_generated_context(index, {"web": web}, index_repository_id="web")
+        evidence = next(check for check in checks if "outside/secret.py" in check.name)
+        assert evidence.status == "failed"
+        assert "evidence path is outside authorized root" in evidence.detail
+
+
+def test_empty_modules_table_is_valid_index_only() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web = Path(temp) / "web"
+        web.mkdir()
+        (web / "README.md").write_text("# docs only\n")
+        (web / "aidlc-docs").mkdir()
+        index = web / "aidlc-docs" / "repository-context.md"
+        fingerprint, _ = content_fingerprint(web)
+        index.write_text(
+            "\n".join(
+                [
+                    "# Repository context",
+                    "",
+                    "<!-- AI-DLC:generated:start -->",
+                    "",
+                    "## Scope",
+                    "",
+                    "- Index: `single-repository`",
+                    "- Repository ID: `web`",
+                    f"- Fingerprint: `{fingerprint}`",
+                    "",
+                    "## Modules",
+                    "",
+                    "| Module | Source | Context | Status |",
+                    "| --- | --- | --- | --- |",
+                    "",
+                    "<!-- AI-DLC:generated:end -->",
+                    "",
+                ]
+            )
+        )
+        checks = validate_generated_context(index, {"web": web}, index_repository_id="web")
+        assert all(check.status in ("passed", "not_applicable") for check in checks)
+        assert not any(check.name.startswith("modules:link:") for check in checks)
+
+
+def test_empty_context_cell_fails_as_missing_local_context() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web, index, _module_doc = _single_repo_fixture(temp)
+        index.write_text(
+            index.read_text().replace(
+                "| `storefront` | `apps/storefront` | [x](../apps/storefront/AIDLC_CONTEXT.md) | current |",
+                "| `storefront` | `apps/storefront` |  | current |",
+            )
+        )
+        checks = validate_generated_context(index, {"web": web}, index_repository_id="web")
+        empty = next(check for check in checks if check.name.startswith("modules:link:"))
+        assert empty.status == "failed"
+        assert "module row requires a local context file" in empty.detail
+        assert cli_validate([str(index), "--root", f"web={web}", "--index-repository-id", "web"]) == 1
+
+
+def test_module_rows_without_context_column_fail() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web, index, _module_doc = _single_repo_fixture(temp)
+        index.write_text(
+            index.read_text()
+            .replace("| Module | Source | Context | Status |", "| Module | Source | Status |")
+            .replace("| --- | --- | --- | --- |", "| --- | --- | --- |")
+            .replace(
+                "| `storefront` | `apps/storefront` | [x](../apps/storefront/AIDLC_CONTEXT.md) | current |",
+                "| `storefront` | `apps/storefront` | current |",
+            )
+        )
+        checks = validate_generated_context(index, {"web": web}, index_repository_id="web")
+        column = next(check for check in checks if check.name == "modules:context-column")
+        assert column.status == "failed"
+        assert "every module row requires a local context file" in column.detail
+
+
+def test_module_envelope_passes_with_required_headings() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web, index, _module_doc = _single_repo_fixture(temp)
+        checks = validate_generated_context(index, {"web": web}, index_repository_id="web")
+        structure = next(
+            check
+            for check in checks
+            if check.name == "modules:structure:../apps/storefront/AIDLC_CONTEXT.md"
+        )
+        assert structure.status == "passed"
+        assert all(check.status in ("passed", "not_applicable") for check in checks)
+
+
+def test_module_envelope_fails_when_identity_is_missing() -> None:
+    _assert_missing_module_heading_fails("## Identity and scope")
+
+
+def test_module_envelope_fails_when_coverage_is_missing() -> None:
+    _assert_missing_module_heading_fails("## Coverage")
+
+
+def test_module_envelope_fails_when_evidence_is_missing() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web, index, module_doc = _single_repo_fixture(temp)
+        _remove_generated_heading(module_doc, "## Evidence and existing docs")
+        checks = validate_generated_context(index, {"web": web}, index_repository_id="web")
+        label = "../apps/storefront/AIDLC_CONTEXT.md"
+        structure = next(check for check in checks if check.name == f"modules:structure:{label}")
+        evidence = next(check for check in checks if check.name == f"modules:evidence:{label}")
+        assert structure.status == "failed"
+        assert "## Evidence and existing docs" in structure.detail
+        assert evidence.status == "failed"
+        assert "missing required heading" in evidence.detail
+        assert cli_validate([str(index), "--root", f"web={web}", "--index-repository-id", "web"]) == 1
+
+
+def test_module_envelope_fails_when_unknowns_is_missing() -> None:
+    _assert_missing_module_heading_fails("## Unknowns")
 
 
 def test_directory_context_target_is_a_structured_failure() -> None:
@@ -2019,25 +2206,8 @@ def test_artifact_home_fallback_document_is_not_required_inside_source() -> None
         fingerprint, _ = content_fingerprint(source)
         fallback = fallback_dir / "storefront.md"
         fallback.write_text(
-            "\n".join(
-                [
-                    "# AIDLC context — storefront",
-                    "",
-                    "The colocated file was not writable. Source root: `apps/storefront`.",
-                    "",
-                    "<!-- AI-DLC:generated:start -->",
-                    "",
-                    "## Identity and scope",
-                    "",
-                    "- Repository ID: `web`",
-                    "- Module ID: `storefront`",
-                    "- Source: `apps/storefront`",
-                    f"- Baseline and fingerprint: `deadbeefdeadbeefdeadbeefdeadbeefdeadbeef` / `{fingerprint}`",
-                    "",
-                    "<!-- AI-DLC:generated:end -->",
-                    "",
-                ]
-            )
+            "The colocated file was not writable. Source root: `apps/storefront`.\n\n"
+            + _valid_module_generated_text("web", "storefront", "apps/storefront", fingerprint)
         )
         index = web / "aidlc-docs" / "repository-context.md"
         index_fingerprint, _ = content_fingerprint(web)
@@ -2075,6 +2245,32 @@ def test_artifact_home_fallback_document_is_not_required_inside_source() -> None
 def _insert_before_generated_end(path: Path, extra: str) -> None:
     text = path.read_text()
     path.write_text(text.replace("<!-- AI-DLC:generated:end -->", f"{extra}\n<!-- AI-DLC:generated:end -->", 1))
+
+
+def _remove_generated_heading(path: Path, heading: str) -> None:
+    lines = path.read_text().splitlines()
+    start = next(index for index, line in enumerate(lines) if line.strip() == heading)
+    end = start + 1
+    while end < len(lines):
+        if lines[end].startswith("## ") or lines[end].strip() == "<!-- AI-DLC:generated:end -->":
+            break
+        end += 1
+    path.write_text("\n".join(lines[:start] + lines[end:]) + "\n")
+
+
+def _assert_missing_module_heading_fails(heading: str) -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web, index, module_doc = _single_repo_fixture(temp)
+        _remove_generated_heading(module_doc, heading)
+        checks = validate_generated_context(index, {"web": web}, index_repository_id="web")
+        structure = next(
+            check
+            for check in checks
+            if check.name == "modules:structure:../apps/storefront/AIDLC_CONTEXT.md"
+        )
+        assert structure.status == "failed"
+        assert heading in structure.detail
+        assert cli_validate([str(index), "--root", f"web={web}", "--index-repository-id", "web"]) == 1
 
 
 def _duplicate_section(path: Path, heading: str) -> None:
@@ -2135,16 +2331,11 @@ def test_local_context_target_may_include_a_fragment() -> None:
 def test_external_evidence_link_stays_not_applicable() -> None:
     with tempfile.TemporaryDirectory() as temp:
         web, index, module_doc = _single_repo_fixture(temp)
-        _insert_before_generated_end(
-            module_doc,
-            "\n".join(
-                [
-                    "## Evidence and existing docs",
-                    "",
-                    "- [guide](https://example.com/guide)",
-                    "",
-                ]
-            ),
+        module_doc.write_text(
+            module_doc.read_text().replace(
+                "No local paths to resolve.",
+                "- [guide](https://example.com/guide)",
+            )
         )
         checks = validate_generated_context(index, {"web": web})
         evidence = next(
@@ -3237,6 +3428,456 @@ def test_project_references_invalid_status_never_populates_values() -> None:
     assert unknown_role.values == {}
 
 
+def test_validate_work_item_type_accepts_hierarchy_rejects_sprint_backlog() -> None:
+    # Epic, user story, and task are the three planning levels this
+    # function recognizes. Sprint Backlog is a collection of selected work
+    # items, not a level in the hierarchy, so it is never a valid input.
+    for item_type in ("epic", "user-story", "task"):
+        assert validate_work_item_type(item_type) == item_type
+    for bad_type in ("sprint-backlog", "feature", "Epic", ""):
+        try:
+            validate_work_item_type(bad_type)
+            raise AssertionError(f"expected ValueError for {bad_type!r}")
+        except ValueError:
+            pass
+
+
+def test_validate_plan_item_id_accepts_slug_and_jira_key_rejects_sentence() -> None:
+    assert validate_plan_item_id("cancel-order-before-fulfillment") == (
+        "cancel-order-before-fulfillment"
+    )
+    assert validate_plan_item_id("CTY-321") == "CTY-321"
+    for bad_id in (
+        "We need a story that allows cancellation",
+        "cty 321",
+        "",
+        "-leading-hyphen",
+    ):
+        try:
+            validate_plan_item_id(bad_id)
+            raise AssertionError(f"expected ValueError for {bad_id!r}")
+        except ValueError:
+            pass
+
+
+def test_validate_parent_reference_hierarchy_rules() -> None:
+    # A user story with a recommended Epic parent is structurally valid.
+    assert validate_parent_reference("user-story", "epic", "cancel-order", "CTY-296") == ()
+    # A task under a user story is structurally valid.
+    assert validate_parent_reference("task", "user-story", "configure-gateway", "cancel-order") == ()
+    # A user story with no declared parent at all is structurally valid:
+    # the methodology does not require a parent before drafting.
+    assert validate_parent_reference("user-story", None, "cancel-order", None) == ()
+    # An epic must never declare a parent.
+    assert validate_parent_reference("epic", "epic", "checkout", "other-epic") != ()
+    # A user story's parent must be an epic, not another story or a task.
+    assert validate_parent_reference("user-story", "task", "cancel-order", "configure-gateway") != ()
+    # Self-parenting is always invalid regardless of type.
+    assert validate_parent_reference("task", "task", "same-id", "same-id") != ()
+    # A declared parent id without a parent type (or vice versa) is invalid.
+    assert validate_parent_reference("user-story", None, "cancel-order", "CTY-296") != ()
+    assert validate_parent_reference("user-story", "epic", "cancel-order", None) != ()
+    # Against a proposal, a local parent id must name an item of the declared type.
+    known = {"cancel-order": "user-story", "checkout": "epic"}
+    assert validate_parent_reference(
+        "task", "user-story", "configure-gateway", "cancel-order", known
+    ) == ()
+    mismatch = validate_parent_reference(
+        "user-story", "epic", "cancel-order", "configure-gateway",
+        {"configure-gateway": "task"},
+    )
+    assert any("does not match" in reason for reason in mismatch)
+    unknown_local = validate_parent_reference(
+        "user-story", "epic", "cancel-order", "missing-epic", known
+    )
+    assert any("unknown local parent" in reason for reason in unknown_local)
+    # A Jira key that is not in the proposal is not a structural failure.
+    assert validate_parent_reference(
+        "user-story", "epic", "cancel-order", "CTY-296", known
+    ) == ()
+
+
+def test_validate_dependency_graph_detects_self_and_unknown_dependencies() -> None:
+    problems = validate_dependency_graph(
+        {
+            "cancel-order": ["self-dependency-check", "payment-refund-task"],
+            "payment-refund-task": [],
+            "self-dependency-check": ["self-dependency-check"],
+        }
+    )
+    assert "unknown dependency: 'self-dependency-check'" not in str(problems)
+    assert "cancel-order" not in problems  # no problems: omitted, not an empty tuple
+    assert any("depends on itself" in reason for reason in problems["self-dependency-check"])
+
+    # A well-formed Jira key that is not an item in this proposal is not a
+    # structural failure. A local slug that is missing from the proposal is.
+    external = validate_dependency_graph({"cancel-order": ["CTY-999"]})
+    assert "cancel-order" not in external
+    assert external_jira_dependencies({"cancel-order": ["CTY-999"]})["cancel-order"] == ("CTY-999",)
+    local_unknown = validate_dependency_graph({"cancel-order": ["missing-story"]})
+    assert local_unknown["cancel-order"] == ("unknown local dependency: 'missing-story'",)
+
+
+def test_validate_dependency_graph_detects_duplicate_and_malformed_edges() -> None:
+    # Review finding: a repeated edge in one item's dependency list was
+    # previously invisible -- {"a": ["b", "b"], "b": []} used to return {}.
+    duplicate = validate_dependency_graph({"a": ["b", "b"], "b": []})
+    assert duplicate == {"a": ("duplicate dependency: 'b'",)}
+
+    # A malformed id -- neither this plugin's local slug shape nor a real
+    # Jira issue key shape -- is reported instead of silently accepted as
+    # an "unknown dependency".
+    malformed = validate_dependency_graph({"cancel-order": ["not a valid id!"]})
+    assert malformed["cancel-order"] == (
+        "not a valid local id or Jira issue key: 'not a valid id!'",
+    )
+
+    # A malformed item id (the dict key itself) is reported too.
+    malformed_key = validate_dependency_graph({"Not Valid": []})
+    assert malformed_key["Not Valid"] == (
+        "not a valid local id or Jira issue key: 'Not Valid'",
+    )
+
+
+def test_topological_plan_order_orders_dependencies_before_dependents_and_raises_on_cycle() -> None:
+    order = topological_plan_order(
+        {
+            "cancel-order": ["payment-refund-task"],
+            "payment-refund-task": ["configure-gateway"],
+            "configure-gateway": [],
+        }
+    )
+    assert order.index("configure-gateway") < order.index("payment-refund-task")
+    assert order.index("payment-refund-task") < order.index("cancel-order")
+
+    try:
+        topological_plan_order({"a": ["b"], "b": ["a"]})
+        raise AssertionError("expected ValueError for a dependency cycle")
+    except ValueError as exc:
+        assert "cycle" in str(exc)
+
+
+def test_plan_outcome_combines_item_statuses_without_implying_atomicity() -> None:
+    assert plan_outcome({"a": "persisted", "b": "persisted"}) == "ready"
+    assert plan_outcome({"a": "approved", "b": "persisted"}) == "approved"
+    assert plan_outcome({"a": "blocked", "b": "persisted"}) == "blocked"
+    assert plan_outcome({"a": "unavailable", "b": "unavailable"}) == "unavailable"
+    assert plan_outcome({"a": "drafted", "b": "unavailable"}) == "drafting"
+    assert plan_outcome({"a": "drafted", "b": "persisted"}) == "partial"
+    assert plan_outcome({}) == "unavailable"
+    # A fully reviewed plan (review complete, no blocker, not yet approved
+    # for publication) is its own distinct, more advanced state than
+    # ordinary mixed-progress "partial" -- Bugbot CTY-303-finding-1.
+    assert plan_outcome({"a": "reviewed", "b": "reviewed"}) == "reviewed"
+    # Reviewed mixed with an earlier stage still disagrees enough to stay
+    # "partial": review is not uniformly complete across the plan.
+    assert plan_outcome({"a": "reviewed", "b": "drafted"}) == "partial"
+    try:
+        plan_outcome({"a": "pending"})
+        raise AssertionError("expected ValueError for an unrecognized status")
+    except ValueError:
+        pass
+
+
+def test_jira_mutation_authorized_requires_both_local_and_jira_approval() -> None:
+    # Review finding: the previous implementation ignored
+    # local_plan_approved entirely (`return bool(jira_mutation_approved)`),
+    # so a plan that was never locally approved could still "authorize" a
+    # Jira write. Both approvals are now required.
+    assert jira_mutation_authorized(local_plan_approved=True, jira_mutation_approved=False) is False
+    assert jira_mutation_authorized(local_plan_approved=False, jira_mutation_approved=True) is False
+    assert jira_mutation_authorized(local_plan_approved=True, jira_mutation_approved=True) is True
+    assert jira_mutation_authorized(local_plan_approved=False, jira_mutation_approved=False) is False
+
+
+def test_decision_reprompt_allowed_same_shape_as_bugbot_reprompt() -> None:
+    # decision_reprompt_allowed is the generic contract; bugbot_reprompt_allowed
+    # is kept as a thin, same-behavior alias for existing Bugbot call sites.
+    for decision, same_run in (
+        ("declined", True),
+        ("declined", False),
+        ("deferred", True),
+        ("deferred", False),
+        ("approved", True),
+        ("approved", False),
+        ("", False),
+        ("unknown", False),
+    ):
+        assert decision_reprompt_allowed(decision, same_run) == bugbot_reprompt_allowed(
+            decision, same_run
+        )
+    assert decision_reprompt_allowed("deferred", same_run=False) is True
+    assert decision_reprompt_allowed("deferred", same_run=True) is False
+    assert decision_reprompt_allowed("declined", same_run=False) is False
+    assert decision_reprompt_allowed("approved", same_run=False) is False
+    assert decision_reprompt_allowed("", same_run=False) is True
+
+
+def test_plan_validate_proposal_runs_every_deterministic_check() -> None:
+    valid = plan_validate_proposal(
+        {
+            "items": [
+                {
+                    "id": "cancel-order",
+                    "type": "user-story",
+                    "parent_type": "epic",
+                    "parent_id": "CTY-100",
+                    "status": "reviewed",
+                    "dependencies": ["payment-refund-task"],
+                },
+                {
+                    "id": "payment-refund-task",
+                    "type": "task",
+                    "parent_type": "user-story",
+                    "parent_id": "cancel-order",
+                    "status": "reviewed",
+                    "dependencies": [],
+                },
+            ]
+        }
+    )
+    assert all(check.status in ("passed", "external") for check in valid)
+    outcome_checks = [c for c in valid if c.name == "plan:outcome"]
+    assert outcome_checks and "outcome: reviewed" in outcome_checks[0].detail
+    order_checks = [c for c in valid if c.name == "plan:order"]
+    assert order_checks and "payment-refund-task" in order_checks[0].detail
+    assert any(
+        check.name == "plan:external:cancel-order:parent"
+        and check.status == "external"
+        and "CTY-100" in check.detail
+        for check in valid
+    )
+
+    # A structurally broken proposal (bad parent, duplicate edge, no status
+    # anywhere) is reported as failed/unresolved, not silently passed.
+    broken = plan_validate_proposal(
+        {
+            "items": [
+                {"id": "a", "type": "task", "parent_type": "task", "parent_id": "b"},
+                {"id": "b", "type": "task", "dependencies": ["a", "a"]},
+            ]
+        }
+    )
+    statuses = {check.status for check in broken}
+    assert "failed" in statuses
+
+    empty = plan_validate_proposal({"items": []})
+    assert len(empty) == 1
+    assert empty[0].name == "plan:items"
+    assert empty[0].status == "unresolved"
+    assert empty[0].detail == "proposal has no items"
+
+
+def test_plan_validate_proposal_fail_closed_on_reported_shape_bugs() -> None:
+    # A persisted sibling must not make a plan with a status-less item look ready.
+    mixed = plan_validate_proposal(
+        {
+            "items": [
+                {"id": "a", "type": "epic", "status": "persisted"},
+                {"id": "b", "type": "epic"},
+            ]
+        }
+    )
+    outcome = next(check for check in mixed if check.name == "plan:outcome")
+    assert outcome.status == "failed"
+    assert "ready" not in outcome.detail
+    assert any(check.name == "plan:item:b:status" and check.status == "failed" for check in mixed)
+
+    # Duplicate ids must fail. They must not collapse to one passed item.
+    duplicates = plan_validate_proposal(
+        {
+            "items": [
+                {"id": "a", "type": "epic", "status": "drafted"},
+                {"id": "a", "type": "epic", "status": "persisted", "dependencies": ["a"]},
+            ]
+        }
+    )
+    assert any(check.status == "failed" and check.detail == "duplicate item id" for check in duplicates)
+    assert not any(
+        check.name == "plan:outcome" and check.status == "passed" and "ready" in check.detail
+        for check in duplicates
+    )
+
+    # An unsupported parent type is a failed check, not a traceback.
+    try:
+        unsupported = plan_validate_proposal(
+            {
+                "items": [
+                    {
+                        "id": "a",
+                        "type": "task",
+                        "parent_type": "subtask",
+                        "parent_id": "b",
+                        "status": "drafted",
+                    }
+                ]
+            }
+        )
+    except ValueError as error:
+        raise AssertionError(f"validator raised instead of failing closed: {error}") from error
+    assert any("unsupported parent type: 'subtask'" in check.detail for check in unsupported)
+
+    # A parent id that is not a slug or a Jira key fails the parent check.
+    bad_parent_id = plan_validate_proposal(
+        {
+            "items": [
+                {
+                    "id": "a",
+                    "type": "task",
+                    "parent_type": "epic",
+                    "parent_id": "this is not a valid id",
+                    "status": "drafted",
+                }
+            ]
+        }
+    )
+    assert any(
+        check.name == "plan:item:a:parent"
+        and check.status == "failed"
+        and "not a valid local id or Jira issue key" in check.detail
+        for check in bad_parent_id
+    )
+
+    # A parent_id in this proposal must match the declared parent_type.
+    wrong_sibling = plan_validate_proposal(
+        {
+            "items": [
+                {
+                    "id": "story-a",
+                    "type": "user-story",
+                    "parent_type": "epic",
+                    "parent_id": "task-b",
+                    "status": "drafted",
+                },
+                {"id": "task-b", "type": "task", "status": "drafted"},
+            ]
+        }
+    )
+    assert any(
+        check.name == "plan:item:story-a:parent"
+        and check.status == "failed"
+        and "does not match" in check.detail
+        for check in wrong_sibling
+    )
+
+    # A local parent slug that is not an item fails, like an unknown dependency.
+    missing_parent = plan_validate_proposal(
+        {
+            "items": [
+                {
+                    "id": "story-a",
+                    "type": "user-story",
+                    "parent_type": "epic",
+                    "parent_id": "missing-epic",
+                    "status": "drafted",
+                }
+            ]
+        }
+    )
+    assert any(
+        check.name == "plan:item:story-a:parent"
+        and check.status == "failed"
+        and "unknown local parent" in check.detail
+        for check in missing_parent
+    )
+
+    # An external Jira key is evidence to confirm, not a structural failure.
+    external = plan_validate_proposal(
+        {
+            "items": [
+                {
+                    "id": "cancel-order",
+                    "type": "user-story",
+                    "status": "drafted",
+                    "dependencies": ["CTY-100"],
+                }
+            ]
+        }
+    )
+    assert all(check.status != "failed" for check in external)
+    assert any(
+        check.status == "external" and "CTY-100" in check.detail for check in external
+    )
+
+    # The proposal root, each item, and dependencies are shape-checked
+    # before any semantic validator can misread them.
+    assert plan_validate_proposal([])[0].detail == "proposal must be a JSON object"
+    hello = plan_validate_proposal({"items": ["hello"]})
+    assert any(check.detail == "item must be an object" for check in hello)
+    split_dependency = plan_validate_proposal(
+        {
+            "items": [
+                {
+                    "id": "a",
+                    "type": "epic",
+                    "status": "drafted",
+                    "dependencies": "CTY-100",
+                }
+            ]
+        }
+    )
+    assert any(check.detail == "dependencies must be a list of strings" for check in split_dependency)
+    assert "'C'" not in " ".join(check.detail for check in split_dependency)
+
+
+def test_cli_plan_validate_exit_codes_match_check_results() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        temp_path = Path(temp)
+        passing = temp_path / "passing.json"
+        passing.write_text(
+            '{"items": [{"id": "a", "type": "epic", "status": "persisted"}]}',
+            encoding="utf-8",
+        )
+        assert cli_plan_validate([str(passing)]) == 0
+
+        failing = temp_path / "failing.json"
+        failing.write_text(
+            '{"items": [{"id": "a", "type": "epic", "parent_type": "epic", '
+            '"parent_id": "b"}]}',
+            encoding="utf-8",
+        )
+        assert cli_plan_validate([str(failing)]) == 1
+
+        unresolved = temp_path / "unresolved.json"
+        unresolved.write_text('{"items": []}', encoding="utf-8")
+        assert cli_plan_validate([str(unresolved)]) == 2
+
+        missing = temp_path / "does-not-exist.json"
+        assert cli_plan_validate([str(missing)]) == 2
+
+        external = temp_path / "external.json"
+        external.write_text(
+            '{"items": [{"id": "cancel-order", "type": "user-story", '
+            '"status": "drafted", "dependencies": ["CTY-100"]}]}',
+            encoding="utf-8",
+        )
+        assert cli_plan_validate([str(external)]) == 0
+
+    script = ROOT / "scripts" / "context_tools.py"
+    stdin_result = subprocess.run(
+        [sys.executable, str(script), "plan-validate", "-"],
+        input='{"items": [{"id": "a", "type": "epic", "status": "persisted"}]}\n',
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert stdin_result.returncode == 0, stdin_result.stderr
+
+    crash_result = subprocess.run(
+        [sys.executable, str(script), "plan-validate", "-"],
+        input=(
+            '{"items": [{"id": "a", "type": "task", "parent_type": "subtask", '
+            '"parent_id": "b", "status": "drafted"}]}\n'
+        ),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert crash_result.returncode == 1
+    assert "Traceback" not in crash_result.stdout
+    assert "Traceback" not in crash_result.stderr
+
+
 if __name__ == "__main__":
     tests = [
         test_scope_classification_and_relocation,
@@ -3306,6 +3947,7 @@ if __name__ == "__main__":
         test_git_discovery_failure_is_unresolved_validation_not_a_crash,
         test_validate_generated_context_fails_on_missing_markers_and_headings,
         test_validate_generated_context_fails_when_over_budget,
+        test_validate_generated_context_module_budget_is_not_a_validation_result,
         test_validate_generated_context_reports_unresolved_for_missing_index,
         test_validate_generated_context_multi_repo_requires_repository_column,
         test_validate_generated_context_true_multi_repo_engagement_passes,
@@ -3322,6 +3964,17 @@ if __name__ == "__main__":
         test_missing_index_identity_is_unresolved_not_success,
         test_module_metadata_must_match_the_index_row,
         test_missing_evidence_file_fails_without_treating_symbols_as_paths,
+        test_empty_evidence_catalog_is_not_applicable_not_passed,
+        test_valid_evidence_path_resolves_with_mechanical_wording,
+        test_evidence_path_outside_authorized_root_fails,
+        test_empty_modules_table_is_valid_index_only,
+        test_empty_context_cell_fails_as_missing_local_context,
+        test_module_rows_without_context_column_fail,
+        test_module_envelope_passes_with_required_headings,
+        test_module_envelope_fails_when_identity_is_missing,
+        test_module_envelope_fails_when_coverage_is_missing,
+        test_module_envelope_fails_when_evidence_is_missing,
+        test_module_envelope_fails_when_unknowns_is_missing,
         test_directory_context_target_is_a_structured_failure,
         test_failed_check_takes_exit_precedence_over_unresolved,
         test_unavailable_repository_is_unresolved_not_failed,
@@ -3374,6 +4027,18 @@ if __name__ == "__main__":
         test_project_references_empty_live_section_is_reported_as_missing,
         test_project_references_preserve_fences_and_unrelated_lines,
         test_project_references_invalid_status_never_populates_values,
+        test_validate_work_item_type_accepts_hierarchy_rejects_sprint_backlog,
+        test_validate_plan_item_id_accepts_slug_and_jira_key_rejects_sentence,
+        test_validate_parent_reference_hierarchy_rules,
+        test_validate_dependency_graph_detects_self_and_unknown_dependencies,
+        test_validate_dependency_graph_detects_duplicate_and_malformed_edges,
+        test_topological_plan_order_orders_dependencies_before_dependents_and_raises_on_cycle,
+        test_plan_outcome_combines_item_statuses_without_implying_atomicity,
+        test_jira_mutation_authorized_requires_both_local_and_jira_approval,
+        test_decision_reprompt_allowed_same_shape_as_bugbot_reprompt,
+        test_plan_validate_proposal_runs_every_deterministic_check,
+        test_plan_validate_proposal_fail_closed_on_reported_shape_bugs,
+        test_cli_plan_validate_exit_codes_match_check_results,
     ]
     for test in tests:
         test()

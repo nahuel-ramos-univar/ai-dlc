@@ -36,6 +36,14 @@ every order.
 
 - No automated tests are recorded for this fixture module.
 
+## Coverage
+
+| Dimension | State | Evidence |
+| --- | --- | --- |
+| Entry points | verified | `source/notifications/notifications_worker.py` → `NotificationsWorker.run_once` |
+| Retry and idempotency | verified | `source/notifications/notifications_worker.py` → `_handle` guards against duplicate delivery with an idempotency check before sending the email |
+| Security and trust boundaries | not applicable | internal queue consumer, no external caller |
+
 ## Evidence and existing docs
 
 - `source/notifications/notifications_worker.py`

@@ -1,5 +1,20 @@
 # Feature or Epic
 
-Define the outcome, affected users, measurable success, boundaries, and independently valuable Story slices. Avoid technical decomposition unless it changes business scope.
+Define the outcome, affected users, measurable success, boundaries, and independently valuable Story slices. Avoid technical decomposition unless it changes business scope. Do not split this into implementation Tasks unless the user asks for that.
 
-Return a feature proposal and a small set of candidate Stories. Label ordering and dependency assumptions as proposals. Do not create issues until the user approves the exact Epic and Story payloads.
+Propose:
+
+- title;
+- problem or opportunity;
+- objective;
+- business or user outcome;
+- actors or personas, where relevant;
+- scope;
+- out-of-scope boundaries;
+- major scenarios or capabilities;
+- success criteria;
+- known dependencies;
+- risks;
+- open questions.
+
+An initial set of likely Stories under this Epic may be proposed as candidates only, clearly labeled as not committed. Label ordering and dependency assumptions as proposals. Do not publish an Epic with the User Story description template. Do not create issues until the user approves the exact Epic and Story payloads.

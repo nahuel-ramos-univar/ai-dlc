@@ -63,33 +63,52 @@ Delivery stays a developer step, not a skill. After validation says the change i
 ## Host prerequisites and fallbacks
 
 - **Jira:** The package uses an authenticated Atlassian MCP supplied by Cursor. It does not bundle credentials, a server ID, a site, or a project key. A disconnected, unauthorized, or unavailable MCP leaves the draft intact and marks Jira work pending.
-- **Context:** `/sync-context` runs discover → detect changes → propose →
-  validate/review → approve → apply → report. When nothing relevant changed
+- **Context:** `/sync-context` runs discover → detect changes → explore
+  architecture → rich inventory with material findings → AI synthesis →
+  mechanical safety validation → independent AI review → approve → apply
+  → report.
+  When nothing relevant changed
   since the last recorded fingerprint, it stops after detection: no file
-  rewrite, no Canvas, no approval prompt. Otherwise it stages a proposal
+  rewrite and no approval prompt. The closing result is still shown.
+  Otherwise it stages a proposal
   (affected module, evidence inspected, proposed diff) before writing
   anything, resolves placement as distributed-by-default or an
   explicitly-adopted coordinator, writes one short index under
-  `<artifact-home>/aidlc-docs/` plus selectively useful
-  `<module-root>/AIDLC_CONTEXT.md` files, and proposes Bugbot guidance and a
-  narrowly scoped project rule as separate, independently approved change
-  sets. Context files are not implicitly loaded by Cursor; a plugin-owned
+  `<artifact-home>/aidlc-docs/` plus `AIDLC_CONTEXT.md` for each
+  meaningful architectural module listed in `## Modules` — including a
+  single-module service. Repository size or module count does not decide
+  documentation depth. Index-only (empty Modules table, no module context
+  file) is reserved for a repository with no meaningful architectural
+  module, such as a documentation-only tree or an extremely small passive
+  package. A listed module always points at a local context file.
+  Context files are not implicitly loaded by Cursor; a plugin-owned
   rule (`rules/ai-dlc-context-and-evidence.mdc`, Agent Decides) makes that
   discipline reachable even without a typed slash command, and lifecycle
   skills otherwise read the index and selected module context explicitly.
-  Before treating context as final, it runs deterministic validation (line
-  budgets, links, fingerprints, stale or duplicate entries) and requests an
+  Architecture exploration prefers `context-architect` for a behaviorful
+  initial or full sync when host delegation is available. It produces a
+  coverage inventory plus material findings and runtime
+  flows. The Coverage table is an index of architectural understanding,
+  not the full architecture documentation; `## Material architecture
+  details` preserves what downstream agents need. The main chat
+  synthesizes those into documents without mechanically re-scanning the
+  whole tree. Before treating context as final, it
+  runs deterministic validation (index line budget, the module-context
+  structural envelope, links, fingerprints, stale or duplicate entries,
+  evidence-path existence) and requests an
   independent `context-reviewer` assessment for initial generation or a
   material change; it states plainly when that review was skipped or
-  unavailable. Legacy migration stays inside this skill as its own change
+  unavailable. Required independent review that cannot run leaves quality
+  assurance partial and still needs explicit approval before persistence.
+  Legacy migration stays inside this skill as its own change
   set, separate from context generation; generating new context never by
   itself means migration is complete.
 - **Git and delivery:** Skills may inspect the local Git root, branch, and diff. They do not commit, push, open a pull request, or merge. The developer does that delivery with normal tools after validation.
 - **Provider checks:** Remote checks and approvals are observed only when a verified provider integration shows them. `validate-change` records that evidence. It does not merge.
 - **Agents:** The plugin defines reviewer prompts, but does not expose a dispatch API. The main chat uses host-supported independent delegation when available. A host general-purpose subagent may receive a bounded reviewer prompt when named plugin-agent dispatch is unavailable; that is reported as general-purpose review, not native agent dispatch. Otherwise review remains visibly pending or requires a named human review or policy-permitted exception.
-- **Canvas and Bugbot:** Canvas has structured-chat fallback. Bugbot requires user invocation through `/review-bugbot`; its presence in chat does not prove it ran.
+- **Canvas and Bugbot:** `/sync-context` and `/plan-work` close with the host's Canvas capability when the current host can open one. The Canvas is a view of the same proposal and written files, not a second copy. On a host that cannot open a Canvas, those runs use the same sections in chat and say Canvas is unavailable on this host; a run with nothing new to show gets a short chat reply either way, not a mandatory Canvas. Bugbot requires user invocation through `/review-bugbot`; its presence in chat does not prove it ran.
 
-The main chat drafts planning and refinement. Independent agents are used only for review or bounded implementation: `product-reviewer`, `refinement-reviewer`, `implementer`, `implementation-reviewer`, `validator`, and `context-reviewer`. `context-reviewer` checks generated or updated repository context against current source for `sync-context`; it does not replace deterministic validation and a clean result covers only the scope it reviewed. Reviewer agents declare `readonly: true`; Cursor must recognize that setting in the installed host for write restrictions to be enforced. This plugin does not provide an agent orchestration API.
+The main chat drafts planning, refinement, and context synthesis. Independent agents are used for discovery, review, or bounded implementation: `context-architect` (read-only architecture exploration for `/sync-context`), `product-reviewer`, `refinement-reviewer`, `implementer`, `implementation-reviewer`, `validator`, and `context-reviewer`. `context-architect` returns an inventory, not a finished document. `context-reviewer` checks generated or updated repository context against current source for `sync-context`; it does not replace deterministic validation and a clean result covers only the scope it reviewed. Reviewer and architect agents declare `readonly: true`; Cursor must recognize that setting in the installed host for write restrictions to be enforced. This plugin does not provide an agent orchestration API.
 
 There is no package-manager build or separate packager in this repository. The manifest and skill sources are authoritative. Structural checks do not verify runtime host behavior or external integrations. Run:
 

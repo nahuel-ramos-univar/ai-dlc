@@ -46,7 +46,7 @@ Use the same approve/decline/defer contract as
 content before writing it, ask once per confirmed policy, and persist the
 decision in the configured artifact home's configuration keyed by the stable
 repository ID. Do not ask again after `declined` unless the user explicitly
-asks to reconsider; `bugbot_reprompt_allowed` in `scripts/context_tools.py`
+asks to reconsider; `decision_reprompt_allowed` in `scripts/context_tools.py`
 encodes this same decision shape and may be reused for the same check.
 
 Approval of change set A (context documents) does not authorize set B.

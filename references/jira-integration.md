@@ -14,8 +14,14 @@ Classify Jira results precisely:
 - **Successful empty:** the query ran successfully and found no matching records.
 - **Successful:** the query returned records or fields.
 
-For reads, retrieve only the current issue fields and relationships needed for the workflow. For duplicate search, report the query limits. If Jira is unavailable, say that the search was unavailable; never report that no duplicates exist.
+For reads, retrieve only the current issue fields and relationships needed for the workflow. `/plan-work` does not run a standalone duplicate search. If some other workflow does search for duplicates, report the query limits, and if Jira is unavailable say the search was unavailable rather than reporting that no duplicates exist.
 
-Before a write, show the exact creation or update payload. Preserve unrelated fields. Re-read relevant fields before applying an approved update. If concurrent edits materially change the approved payload, show the revised diff and seek approval again.
+Before a write, show the exact creation or update payload. Author description and other rich-text fields as Markdown. Do not hand-write Jira wiki markup. The Atlassian MCP converts Markdown on write, and wiki input is stored as literal text or escaped markers. When the issue type has an acceptance-criteria field, write acceptance criteria only in that field. Discover the field from the issue type. Do not hardcode a custom field id, and do not also place those criteria in the description.
+
+Jira's own issue-type hierarchy is not the same shape as this plugin's Epic → User Story → Task planning levels. In standard Jira, Epic is the top level; Story, Task, and Bug normally sit as peers directly under an Epic, with no parent relationship among themselves; Subtask sits under a Story, a Task, or a Bug. Before creating any Jira parent link, discover the connected site's actual issue types and hierarchy for the target project; do not assume a `parent` or `epicLink` field accepts the same shape as this plugin's conceptual model.
+
+A recommended parent in this plugin is a logical relationship, for example "this Task supports Story X". It does not by itself choose the Jira issue type. When a Task supports a Story, put the exact issue type in the payload the Product Owner approves, after discovering what the site allows. Typical options are: create a Jira Subtask under that Story, or create a Jira Task and link it to that Story. Do not silently change a Task into a Subtask because a Story was recommended as its parent. If the site's hierarchy configuration cannot be discovered, say so and ask which issue type to use rather than guessing.
+
+Preserve unrelated fields. Re-read relevant fields before applying an approved update. If concurrent edits materially change the approved payload, show the revised diff and seek approval again.
 
 After an uncertain or partial write, read the target before retrying. Do not claim idempotency unless the available tool documents it. If a creation may have succeeded but no reliable record can be identified, stop and report the ambiguity. Confirmed writes must report their issue key and URL. Keep disconnected operations pending and resume them without restarting the intake.

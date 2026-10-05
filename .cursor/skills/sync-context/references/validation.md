@@ -27,16 +27,26 @@ run. Do not write an absolute local path into `.ai-dlc-config.md`,
 ## Checks
 
 - **Line budget.** `check_document_budget(path, max_lines)` counts lines with
-  `document_metrics`. Use 150 for `aidlc-docs/repository-context.md` and 300
-  for a module context or fallback document, per
-  [context-templates.md](context-templates.md).
+  `document_metrics`. It is the repository-index hard gate only. Default
+  `max_lines` is 150, matching `aidlc-docs/repository-context.md` in
+  [context-templates.md](context-templates.md). Do not call it as a module
+  validity gate. Inside `validate_generated_context`, `index:budget` reports
+  `"failed"` over 150 lines. Module line count is not a validation result;
+  call `document_metrics` and report `lines` plus the 300-line advisory
+  guideline as a metric, never as passed or failed. A line budget on the
+  index is a measurable property; whether a module document is *complete*
+  is not something this module can measure.
 - **Required structure.** Confirm exactly one well-formed
   `<!-- AI-DLC:generated:start -->` / `<!-- AI-DLC:generated:end -->` block,
   and confirm the required heading (`## Identity and scope` for a module,
-  `## Scope` for the repository index) is inside that block. A heading
-  outside the block does not count. Missing, repeated, nested, or unclosed
-  markers fail this check. Fenced examples are ignored, including example
-  headings and example marker strings.
+  `## Scope` for the repository index) is inside that block. A generated
+  module document also needs the rest of the structural envelope:
+  `## Coverage`, `## Evidence and existing docs`, and `## Unknowns`. Those
+  headings prove the artifact is a module context document. They do not
+  prove architectural quality, evidence sufficiency, or that any Coverage
+  row is correct. A heading outside the block does not count. Missing,
+  repeated, nested, or unclosed markers fail this check. Fenced examples
+  are ignored, including example headings and example marker strings.
 - **Workspace references.** For every link in the repository index's Modules
   table, resolve it with `resolve_markdown_links(index_path, authorized_roots)`.
   It returns one of five states per link: `"ok"` (resolves inside an
@@ -141,19 +151,31 @@ read as text. `unavailable` and an unresolved repository identity stay
 
 A generated repository index has exactly one live `## Scope` and exactly
 one live `## Modules`. A generated module document has exactly one live
-`## Identity and scope`. A second copy fails even when the text matches.
-Headings inside backtick or tilde fences, and headings outside the
-generated block, are not that copy. When the metadata section is
+`## Identity and scope`, one live `## Coverage`, one live `## Evidence and
+existing docs`, and one live `## Unknowns`. A second copy fails even when
+the text matches. Headings inside backtick or tilde fences, and headings
+outside the generated block, are not that copy. When the metadata section is
 ambiguous, identity and fingerprint are not reported as passed. An
 ambiguous freshness check is not a successful freshness check.
 
-`## Evidence and existing docs` path references are checked too. A bullet
-that is only a Markdown link is resolved relative to the context document.
-A bullet that is only `` `repository-relative/path` `` is resolved in the
-row's owning repository. A bullet that is only `` `repository-id:relative/path` ``
-is resolved in that authorized repository. A backtick symbol name, or prose
-with inline code, is not a path. File existence does not prove the file
-supports the claim.
+`## Evidence and existing docs` is required on a generated module document.
+A missing heading is a structural failure (`missing required heading`), not
+`not_applicable`. Path references inside that section are checked
+mechanically. A bullet that is only a Markdown link is resolved relative to
+the context document. A bullet that is only `` `repository-relative/path` ``
+is resolved in the row's owning repository. A bullet that is only
+`` `repository-id:relative/path` `` is resolved in that authorized
+repository. A backtick symbol name, or prose with inline code, is not a
+path. A passing evidence check means the path resolved inside an authorized
+root (`evidence references resolved`); it does not prove the file supports
+the surrounding claim. An evidence section with no local path references is
+`not_applicable` (`no local evidence paths to resolve`), not passed. A
+missing local path fails (`referenced evidence path does not exist`). A
+path outside an authorized root fails (`evidence path is outside authorized
+root`). Every module row's Context cell must be a local
+readable context file; an empty Context cell fails (`module row requires
+a local context file`). An empty Modules table is a valid index-only
+representation.
 
 Do not treat missing configuration, an inaccessible repository, or a parsing
 failure as passing or `not_applicable`. This function is read-only: it never
@@ -200,9 +222,13 @@ plugin root instead of a relative guess.
 ```bash
 python3 <resolved-path-to>/context_tools.py validate <index-path> \
   --root <repo-id>=<repo-root> [--root <repo-id>=<repo-root> ...] \
-  [--index-repository-id <repo-id>] [--index-budget 150] [--module-budget 300] \
+  [--index-repository-id <repo-id>] [--index-budget 150] \
   [--candidate <final-absolute-path>=<staged-file> ...]
 ```
+
+`--module-budget` is still accepted so older invocations do not fail; it
+does not produce a check. Module line count is a metric from
+`document_metrics`, not a validation result.
 
 To check a proposal before writing it, write each proposed document's text to
 a temporary staging file, then pass `--candidate

@@ -93,10 +93,25 @@ and inaccessible sibling directories, and do not read secrets or ignored
 private files merely to expand coverage.
 
 ### 2. Detect relevant changes
-For a first sync (no usable prior index or module context), the outcome is
-**first-time generation**: inventory the agreed scope, inspect enough
-current source to produce accurate context, and record actual coverage and
-limitations honestly.
+Classify the sync into one of three effort tiers; this decision drives how
+much architecture exploration Stage 3 does, not just whether a document gets
+rewritten:
+
+- **Initial or full sync** — no usable prior index or module context, or an
+  explicit full-refresh request. Outcome: **first-time generation**.
+  Inventory the agreed scope, run full architecture exploration per
+  [architecture-discovery.md](references/architecture-discovery.md) for each
+  meaningful module, and record actual coverage and limitations honestly.
+- **Material architecture change** — a changed integration, data store,
+  trust boundary, background process, or public contract. Explore the
+  affected dimensions and direct neighbors per
+  [architecture-discovery.md](references/architecture-discovery.md); do not
+  re-explore unaffected modules.
+- **Small factual update** — a rename, a dependency bump with no behavior
+  change, a comment or config fix. Targeted inspection of the changed paths
+  is enough; architecture exploration is not required for this tier.
+
+For a first sync, follow the Initial/full sync exploration tier above.
 
 For a later sync, recompute `content_fingerprint` for each affected scope and
 classify it against the recorded value with `classify_fingerprint_change`
@@ -109,8 +124,9 @@ evidence supports it. See [incremental-refresh.md](references/incremental-refres
 
 **If every affected scope classifies `unchanged` and there is no unresolved
 evidence gap, the source-document part of change set A needs no rewrite.**
-Do not rewrite any document, do not create a Canvas or report file for that
-part, and do not update a timestamp merely to show activity. An unchanged
+Do not rewrite any document and do not open an approval proposal for that
+part. Do not update a timestamp merely to show activity. The closing result
+in Stage 7 is still shown. An unchanged
 source fingerprint is not the whole of change set A, though: a pending,
 user-requested `## Project references` update (switching the configured
 Jira board, for example) is also part of set A, and it stays reachable even
@@ -139,17 +155,70 @@ is safe), or **blocked** (ambiguous placement, identity, or a conflicting
 policy — ask the one focused question that resolves it).
 
 ### 3. Prepare a proposal
-Identify meaningful modules by architectural responsibility; a small
-single-module repository keeps one concise repository context, never a
-manufactured module file. Inspect the declared source, contracts, and tests
-for each affected module directly. Ground material claims in source
-evidence: a repository-relative path plus the relevant symbol or
-configuration key, not a line number alone. Label an inference as an
-inference. Record an Unknown only when it is not already stated as a fact
-elsewhere in the same documents. Record a code-versus-documentation conflict
-instead of silently choosing one narrative. Never claim a whole module was
-read because its files were enumerated or hashed, and never assume an
-unchanged file proves its existing prose is still correct.
+Identify meaningful modules by architectural responsibility, not by
+repository size or module count. A single-module repository can still
+require rich context. Every meaningful architectural module listed in
+`## Modules` must have its own local `AIDLC_CONTEXT.md` (or the documented
+fallback). A module row with an empty or missing Context target is invalid.
+Create that file for a service or application, a Lambda or backend with
+business behavior, a frontend, an API, an integration service, Terraform
+or infrastructure with meaningful runtime topology, a persistence or data
+component, or a behaviorful library. Keep the index alone only when there
+is genuinely no meaningful architectural module to represent — a
+documentation-only repository, a trivial metadata or config package, or an
+extremely small passive types or constants package. Represent that as an
+empty `## Modules` table, not a listed module that points nowhere. Do not
+skip `AIDLC_CONTEXT.md` merely because the repository is single-module.
+
+For a tier that needs it (initial/full sync, or a material architecture
+change — see Stage 2), run architecture exploration before drafting, per
+[architecture-discovery.md](references/architecture-discovery.md): decide
+each relevant dimension's state (verified, partial, inferred, unknown, not
+applicable) with cited evidence, and capture representative runtime flows.
+Explore directly in this chat for a genuinely trivial or passive
+repository. For an initial or full sync of a behaviorful system (API or
+backend, Lambda or application, frontend, integration or event-driven
+service, data-processing service, or meaningful infrastructure/runtime
+repository), prefer `context-architect` when host delegation is available.
+A large or heterogeneous repository may add bounded parallel exploration
+if justified. Do not dispatch one subagent
+per directory, per file, or per dimension by default, and do not add a
+second orchestration layer beyond this flow, one exploration role, and one
+independent `context-reviewer` — see
+[architecture-discovery.md](references/architecture-discovery.md) for the
+parallelism guidance this maps to. If `context-architect` cannot be
+dispatched, explore here and report that unavailability; that is not
+independent review. A small factual update skips this step
+entirely and goes straight to targeted inspection below.
+
+The main chat consumes the architecture inventory, including its material
+findings. Re-open source only to resolve an uncertainty, reconcile
+conflicting evidence, verify a material claim before writing it, fill a
+gap the architect identified, or inspect something the final context
+needs that the architect did not sufficiently establish. Do not
+mechanically re-inspect the whole scope already explored. Explorer does
+broad discovery; this step synthesizes and verifies; `context-reviewer`
+independently samples and challenges. Do not turn all three into a full
+rescan of the same tree.
+
+Ground material claims in source evidence: a repository-relative
+path plus the relevant symbol or configuration key, not a line number alone.
+Label an inference as an inference. Record an Unknown only when it is not
+already stated as a fact elsewhere in the same documents. Record a
+code-versus-documentation conflict instead of silently choosing one
+narrative. Never claim a whole module was read because its files were
+enumerated or hashed, and never assume an unchanged file proves its existing
+prose is still correct. Build the `## Coverage` table from the exploration
+result per [context-quality.md](references/context-quality.md); it is a
+summary of what was considered, not the full architecture documentation.
+Preserve the architect's material findings in
+`## Material architecture details`, with subsections only for dimensions
+that matter to this module. Do not compress those findings into one-line
+Coverage rows. Do not pad Coverage with every dimension on the master list
+regardless of relevance, and do not treat an honest `unknown` row as
+something to hide or fill with a guess. Any local path used as supporting
+evidence in Coverage, runtime flows, Material architecture details, or
+constraints must also appear in `## Evidence and existing docs`.
 
 Stage the candidate change as a concrete proposal, not a direct write: the
 affected repository/module, what changed in the source, evidence paths
@@ -166,23 +235,17 @@ evidence just gathered, and whether legacy migration items are present
 (change set C, [legacy-migration.md](references/legacy-migration.md)). Each
 set is prepared independently; none is bundled into set A's content.
 
-If the host supports an interactive Canvas for reviewing the proposal, use
-it when it genuinely improves review; otherwise present a clear table and
-diff in chat. Do not claim writing a `.tsx` file guarantees an interactive
-panel, and never let a Canvas become a second source of truth — reconcile
-any edit made there back into the proposal object before Stage 4. For a
-migration proposal specifically, the readable before/after content the
-Canvas (or its chat-section fallback) must show is detailed in
-[legacy-migration.md](references/legacy-migration.md), "Reviewing a
-migration in Canvas" — reuse these same conventions rather than inventing a
-separate presentation for migration.
+Show the proposal with the shared [canvas review](../../../references/canvas-review.md). Reconcile any edit made there back into the proposal object before Stage 4. For a migration proposal, the readable before/after content is detailed in [legacy-migration.md](references/legacy-migration.md), "Reviewing a migration in Canvas".
 
 ### 4. Validate and review
 Run deterministic validation through `validate_generated_context` in
-`scripts/context_tools.py` (line budgets, required structure, workspace
-references, declared source paths, and fingerprint reproducibility), built
+`scripts/context_tools.py` (the repository-index line budget, required
+structure, workspace references, declared source paths, and fingerprint
+reproducibility), built
 from an explicit `authorized_roots` mapping per
-[validation.md](references/validation.md). To check the staged proposal
+[validation.md](references/validation.md). Module line count is not a
+validation result; if you want that number, call `document_metrics` and
+report it as a metric, not as passed or failed. To check the staged proposal
 itself before writing any canonical file, pass its proposed text through the
 optional `candidate_content` mapping (or the CLI's repeatable `--candidate
 FINAL_PATH=STAGED_FILE`): it resolves links and source paths as if the
@@ -204,7 +267,11 @@ follow-up review for unresolved major findings, then report remaining
 issues and ask for a decision. Do not launch one reviewer per module by
 default. If independent delegation is unavailable, say so and follow the
 documented fallback; never label this chat's own re-check as independent
-review.
+review. For an initial/full sync or a material architecture change, that
+unavailability must stay visible in the result: context generation and
+mechanical validation may complete, independent semantic review is
+unavailable, and quality assurance is partial. Do not report the run as
+fully reviewed or quality verified.
 
 ### 5. Obtain approval
 Present each relevant change set explicitly — **A. Context documents**,
@@ -213,6 +280,13 @@ asking once per file. Respect authorization already given in this session
 for the same change set and scope; do not ask again for it. A request for an
 explanation does not authorize any write. A request for a context refresh
 authorizes set A only, never set C, and does not by itself authorize set B.
+
+When independent review was required (initial/full sync or a material
+architecture change) but could not run, still show the proposal, disclose
+that independent semantic review was unavailable, and require explicit
+user approval before persistence. A generic refresh request or this chat's
+self-review is not that approval. Do not add an extra approval prompt for
+a small factual update or a no-op.
 
 When set C includes a legacy coordinator, also surface the mandatory
 coordinator-retirement decision before the run can report migration
@@ -250,7 +324,7 @@ separate step, after every precondition in that reference's "Checkout
 deletion preconditions" passes for that exact, named target.
 
 ### 7. Report
-Validate final outputs after writing. Summarize changes by repository.
+Close the run in the shared [canvas review](../../../references/canvas-review.md). Refresh it from the files just written when a write happened. Validate final outputs after writing. Summarize changes by repository.
 Report a partial failure clearly rather than folding it into an overall
 "done." State the outcome plainly: first-time generation, relevant updates
 applied, no relevant changes, partial verification, or blocked. If change
@@ -311,7 +385,9 @@ Return the stage reached, the outcome (first-time generation / relevant
 updates / no relevant changes / partial verification / blocked), the
 repository index, changed module contexts, evidence revision, coverage
 boundaries, stale or unknown areas, the deterministic validation result, the
-independent review result or skip reason, and the status of each relevant
+independent review result (completed, skipped for a small factual update, or
+unavailable) and, when required independent review was unavailable, that
+quality assurance is partial, and the status of each relevant
 change set (A/B/C): applied, proposed and pending approval, declined, or not
 applicable. For a migration run, also return the per-repository migration
 outcome and each identified coordinator's retirement disposition.
@@ -326,6 +402,13 @@ Read [artifact-home.md](references/artifact-home.md),
 [project-rules.md](references/project-rules.md),
 [legacy-migration.md](references/legacy-migration.md),
 [repository preflight](../../../references/repository-preflight.md),
+[canvas review](../../../references/canvas-review.md),
 [skill composition](../../../references/skill-composition.md), and
 [Jira integration](../../../references/jira-integration.md) for the required
 evidence shape.
+
+Load [architecture-discovery.md](references/architecture-discovery.md) and
+[context-quality.md](references/context-quality.md) only for the tiers in
+Stage 2/3 that use them (initial/full sync, or a material architecture
+change). This is progressive disclosure, not a change to what this skill
+already does: a small factual-update refresh does not need either file.

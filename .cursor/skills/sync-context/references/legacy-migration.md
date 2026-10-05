@@ -61,6 +61,18 @@ A nested `.git` marker alone does not prove a real Git submodule (see
 classified role plainly, and treat an **unresolved** role as a gap to
 disclose, not as grounds to retire or delete anything.
 
+Repository role and project references are two independent checks. Each
+repository being moved to distributed context during this migration may
+already have a persisted `## Context identities` entry from a prior sync
+and still have no confirmed `## Project references` section — a missing
+Jira site, project, or board is not resolved just because identity already
+exists. Check each repository's `## Project references` on its own merits
+per [project-onboarding.md](../../../../references/project-onboarding.md),
+including its guidance on treating a recurring ticket-key pattern (seen in
+file names, branches, or archived docs across the repositories in scope) as
+a discoverable signal worth asking about, not something to silently leave
+unconfirmed because the migration's own checklist did not mention it.
+
 ## Inventory before classifying
 
 Inspect the actual installed legacy components in each repository; do not

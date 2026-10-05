@@ -289,6 +289,14 @@ prove the whole repository context is correct; each covers only its declared
 scope. Natural-language selection of this skill never by itself authorizes
 Stage 6; it only starts Stage 1.
 
+Do not put raw introspection, a traceback, a `SyntaxError`, or other
+debugging output in the user-facing report. Prefer the documented contract
+and the source. An internal diagnostic command is allowed when it is the
+reliable way to check a signature or a failure, but its raw output stays
+diagnostic evidence and must not appear in the final reply. If a call
+raises, read the message, fix the call, and report the outcome in plain
+language.
+
 Never archive or delete a remote repository as part of this skill — a
 remote repository's lifecycle is outside its authority regardless of which
 legacy-retirement option a user picks. Never delete a local checkout by

@@ -536,6 +536,11 @@ def migration_outcome(
 ) -> str:
     """Combine repository results with coordinator retirement, without implying one transaction.
 
+    The input `coordinator_disposition` and the returned outcome are
+    different lists. `"pending"` is only a return value. `"retained"` and
+    `"blocked"` appear in both lists and do not mean the same thing in both
+    places.
+
     Each value in `repository_statuses` is one of:
 
     - `"distributed"` — this repository's migration was applied and
@@ -562,7 +567,14 @@ def migration_outcome(
     - `"unresolved"` — the mandatory retirement decision has not been made.
     - `"not-applicable"` — this run has no legacy coordinator.
 
-    Any other repository state or disposition raises `ValueError`.
+    `"pending"` is never a valid input: it is a result this function
+    returns, not a disposition a caller records or passes back in. Passing
+    it raises `ValueError` with a message that says so explicitly, instead
+    of the generic "unknown disposition" message, because confusing the
+    output vocabulary with the input vocabulary is a realistic mistake —
+    the two lists share `"blocked"` and overlap in spirit but are not the
+    same list. Any other unrecognized repository state or disposition
+    raises the generic `ValueError`.
 
     Returns `"complete"` only when every repository is `"distributed"` and
     the disposition is `"completed"` or `"not-applicable"`. A deferred,
@@ -579,6 +591,11 @@ def migration_outcome(
     empty. A partial repository result is not rolled into a sibling
     repository's success.
     """
+    if coordinator_disposition == "pending":
+        raise ValueError(
+            "'pending' is a result migration_outcome returns, never a valid "
+            "input disposition; pass 'deferred' or 'unresolved' instead"
+        )
     if coordinator_disposition not in COORDINATOR_DISPOSITIONS:
         raise ValueError(
             f"unknown coordinator disposition: {coordinator_disposition!r}"

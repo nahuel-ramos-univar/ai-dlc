@@ -2742,12 +2742,24 @@ def test_migration_outcome_reports_partial_without_implying_atomicity() -> None:
         assert "typo-disposition" in str(error)
     else:
         raise AssertionError("an unknown coordinator disposition must fail")
+    # "pending" is only ever a return value of this function, never a valid
+    # input. A caller that passes it back in (confusing the output
+    # vocabulary with the input vocabulary) gets a message that says so,
+    # not a generic "unknown disposition" message.
+    try:
+        migration_outcome(distributed, "pending")
+    except ValueError as error:
+        message = str(error)
+        assert "'pending' is a result" in message
+        assert "deferred" in message and "unresolved" in message
+    else:
+        raise AssertionError("'pending' must never be accepted as an input disposition")
     # Distributed repositories plus an active adopted-coordinator choice is
     # contradictory: option B after a distributed migration is "completed".
     try:
         migration_outcome(distributed, "retained")
     except ValueError as error:
-        assert "retained" in str(error)
+        assert "only valid when every" in str(error)
     else:
         raise AssertionError("distributed repositories cannot use disposition retained")
     try:

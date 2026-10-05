@@ -15,7 +15,27 @@ Inside the authorized scope, look at what is already there before asking:
 - existing Cursor rules and other agent instructions;
 - formatter, linter, type-check, test, and build configuration;
 - project commands and CI configuration that are already present;
-- a Jira or design link the user supplied for this request.
+- a Jira or design link the user supplied for this request;
+- a recurring ticket-key pattern (for example `NBA2-677`, `CTY-311`) in file
+  names, branch names, commit messages, or archived task docs. This is not
+  proof of a confirmed project — it is evidence that one is likely already
+  in daily use. Treat it the same as any other discovered-but-unconfirmed
+  signal: worth asking about, never worth writing into `## Project
+  references` on its own.
+
+A repository already having a persisted `## Context identities` entry does
+not mean Jira or Figma onboarding already happened for it. Identity and
+project references are two different, independently-confirmed things;
+check for `## Project references` on its own merits, including during a
+legacy-coordinator migration where every repository being moved to
+distributed context may still be missing it.
+
+Check each repository's section independently, then ask once for the
+engagement. When the repositories in scope show the same confirmed Jira
+project, reuse that confirmation for the others. Do not ask the same
+question again for every repository. A ticket-key pattern is not permission
+to write the project, the site, or a board. A confirmed project key is not
+permission to invent a site or a board that nobody confirmed.
 
 Do not scan unrelated repositories, private files, secrets, or the whole workspace by default. Do not treat a remote URL as permission to reach it over the network.
 

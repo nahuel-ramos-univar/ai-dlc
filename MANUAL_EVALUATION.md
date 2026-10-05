@@ -158,3 +158,15 @@ Hardening scenarios for architectural preservation, index-only representation, e
 - [ ] **D. Secret safety.** A repository containing `.env`, environment-variable references in source, and secret-manager configuration. Confirm explorer and reviewer describe secret handling without opening or reproducing actual secret values.
 - [ ] **E. Evidence catalog.** Confirm material local evidence paths used throughout Coverage, runtime flows, Material architecture details, and constraints also appear in `## Evidence and existing docs`.
 - [ ] **F. Honest partial coverage.** Only part of a security flow can be inspected. Confirm the Coverage state is `partial`, not incorrectly `verified`.
+
+- [ ] **Initial behaviorful service.** Run `/sync-context` against a small-but-behaviorful service. Confirm `context-architect` is preferred when available, rich context is generated, and runtime behavior or material architecture is preserved.
+- [ ] **Reviewer unavailable.** Run in an environment without independent subagent delegation. Confirm the proposal can still be presented, independent review is explicitly reported unavailable, quality assurance is reported partial, self-review is not presented as equivalent, and persistence requires explicit approval.
+- [ ] **Empty structural context.** Confirm an almost-empty `AIDLC_CONTEXT.md` cannot pass mechanical validation just because `## Identity and scope` exists. Missing `## Coverage`, `## Evidence and existing docs`, or `## Unknowns` must fail.
+- [ ] **Evidence catalog missing.** Confirm a generated module context without `## Evidence and existing docs` fails structural validation.
+- [ ] **Evidence exists but no local paths.** Confirm the deterministic result is `not_applicable` with `no local evidence paths to resolve`, and does not say semantic evidence validation passed.
+
+Real-world smoke evaluation (not executed in this change; do not treat these as passed until actually run against a consumer checkout, and do not modify a consumer repository from this plugin work):
+
+- [ ] REST/backend service — compare generated context quality against previous shallow outputs.
+- [ ] Terraform/infrastructure repository — same comparison.
+- [ ] Frontend or small behaviorful service — same comparison.

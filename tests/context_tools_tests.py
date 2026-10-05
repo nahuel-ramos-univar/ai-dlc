@@ -1032,26 +1032,51 @@ def test_parse_recorded_fingerprint_reports_ambiguous_duplicate_fields() -> None
 # --- Aggregate deterministic validation -------------------------------------
 
 
+def _module_envelope_after_identity() -> list[str]:
+    return [
+        "## Coverage",
+        "",
+        "| Dimension | State | Evidence |",
+        "| --- | --- | --- |",
+        "",
+        "## Evidence and existing docs",
+        "",
+        "No local paths to resolve.",
+        "",
+        "## Unknowns",
+        "",
+        "- None recorded.",
+        "",
+    ]
+
+
+def _valid_module_generated_text(
+    repository_id: str, module_id: str, source: str, fingerprint: str
+) -> str:
+    return "\n".join(
+        [
+            f"# AIDLC context — {module_id}",
+            "",
+            "<!-- AI-DLC:generated:start -->",
+            "",
+            "## Identity and scope",
+            "",
+            f"- Repository ID: `{repository_id}`",
+            f"- Module ID: `{module_id}`",
+            f"- Source: `{source}`",
+            f"- Baseline and fingerprint: `deadbeefdeadbeefdeadbeefdeadbeefdeadbeef` / `{fingerprint}`",
+            "",
+            *_module_envelope_after_identity(),
+            "<!-- AI-DLC:generated:end -->",
+            "",
+        ]
+    )
+
+
 def _write_valid_module(module_dir: Path, repository_id: str, module_id: str, source: str) -> str:
     fingerprint, _ = content_fingerprint(module_dir)
     (module_dir / "AIDLC_CONTEXT.md").write_text(
-        "\n".join(
-            [
-                f"# AIDLC context — {module_id}",
-                "",
-                "<!-- AI-DLC:generated:start -->",
-                "",
-                "## Identity and scope",
-                "",
-                f"- Repository ID: `{repository_id}`",
-                f"- Module ID: `{module_id}`",
-                f"- Source: `{source}`",
-                f"- Baseline and fingerprint: `deadbeefdeadbeefdeadbeefdeadbeefdeadbeef` / `{fingerprint}`",
-                "",
-                "<!-- AI-DLC:generated:end -->",
-                "",
-            ]
-        )
+        _valid_module_generated_text(repository_id, module_id, source, fingerprint)
     )
     return fingerprint
 
@@ -1148,22 +1173,8 @@ def test_candidate_content_validates_first_time_generation_without_canonical_doc
                 "",
             ]
         )
-        module_text = "\n".join(
-            [
-                "# AIDLC context — storefront",
-                "",
-                "<!-- AI-DLC:generated:start -->",
-                "",
-                "## Identity and scope",
-                "",
-                "- Repository ID: `web`",
-                "- Module ID: `storefront`",
-                "- Source: `apps/storefront`",
-                f"- Baseline and fingerprint: `deadbeefdeadbeefdeadbeefdeadbeefdeadbeef` / `{module_fingerprint}`",
-                "",
-                "<!-- AI-DLC:generated:end -->",
-                "",
-            ]
+        module_text = _valid_module_generated_text(
+            "web", "storefront", "apps/storefront", module_fingerprint
         )
 
         checks = validate_generated_context(
@@ -1270,22 +1281,8 @@ def test_candidate_content_checks_the_proposal_instead_of_a_stale_on_disk_copy()
         assert baseline["modules:structure:../apps/storefront/AIDLC_CONTEXT.md"] == "failed"
 
         module_fingerprint, _ = content_fingerprint(module_dir)
-        proposed_text = "\n".join(
-            [
-                "# AIDLC context — storefront",
-                "",
-                "<!-- AI-DLC:generated:start -->",
-                "",
-                "## Identity and scope",
-                "",
-                "- Repository ID: `web`",
-                "- Module ID: `storefront`",
-                "- Source: `apps/storefront`",
-                f"- Baseline and fingerprint: `deadbeefdeadbeefdeadbeefdeadbeefdeadbeef` / `{module_fingerprint}`",
-                "",
-                "<!-- AI-DLC:generated:end -->",
-                "",
-            ]
+        proposed_text = _valid_module_generated_text(
+            "web", "storefront", "apps/storefront", module_fingerprint
         )
         checks = {
             c.name: c.status
@@ -1481,22 +1478,8 @@ def test_authorized_coordinator_candidate_passes_without_creating_files() -> Non
                 "",
             ]
         )
-        module_text = "\n".join(
-            [
-                "# AIDLC context — storefront",
-                "",
-                "<!-- AI-DLC:generated:start -->",
-                "",
-                "## Identity and scope",
-                "",
-                "- Repository ID: `web`",
-                "- Module ID: `storefront`",
-                "- Source: `apps/storefront`",
-                f"- Baseline and fingerprint: `deadbeefdeadbeefdeadbeefdeadbeefdeadbeef` / `{module_fingerprint}`",
-                "",
-                "<!-- AI-DLC:generated:end -->",
-                "",
-            ]
+        module_text = _valid_module_generated_text(
+            "web", "storefront", "apps/storefront", module_fingerprint
         )
         roots = {"web": web, "payments-platform-aidlc": coordinator}
         checks = validate_generated_context(
@@ -1972,33 +1955,26 @@ def test_missing_evidence_file_fails_without_treating_symbols_as_paths() -> None
         web, index, module_doc = _single_repo_fixture(temp)
         module_doc.write_text(
             module_doc.read_text().replace(
-                "<!-- AI-DLC:generated:end -->",
-                "\n".join(
-                    [
-                        "## Evidence and existing docs",
-                        "",
-                        "- `OrderPlacedEvent`",
-                        "- `apps/storefront/deleted.ts`",
-                        "",
-                        "<!-- AI-DLC:generated:end -->",
-                    ]
-                ),
+                "No local paths to resolve.",
+                "- `OrderPlacedEvent`\n- `apps/storefront/deleted.ts`",
             )
         )
         checks = validate_generated_context(index, {"web": web}, index_repository_id="web")
         evidence = [check for check in checks if "evidence" in check.name]
         assert any(check.status == "failed" and "deleted.ts" in check.name for check in evidence)
+        assert any(
+            check.status == "failed"
+            and "deleted.ts" in check.name
+            and "referenced evidence path does not exist" in check.detail
+            for check in evidence
+        )
         assert not any("OrderPlacedEvent" in check.name for check in checks)
         assert cli_validate([str(index), "--root", f"web={web}", "--index-repository-id", "web"]) == 1
 
 
 def test_empty_evidence_catalog_is_not_applicable_not_passed() -> None:
     with tempfile.TemporaryDirectory() as temp:
-        web, index, module_doc = _single_repo_fixture(temp)
-        _insert_before_generated_end(
-            module_doc,
-            "\n".join(["## Evidence and existing docs", "", "No local paths yet.", ""]),
-        )
+        web, index, _module_doc = _single_repo_fixture(temp)
         checks = validate_generated_context(index, {"web": web}, index_repository_id="web")
         evidence = next(
             check
@@ -2006,35 +1982,40 @@ def test_empty_evidence_catalog_is_not_applicable_not_passed() -> None:
             if check.name == "modules:evidence:../apps/storefront/AIDLC_CONTEXT.md"
         )
         assert evidence.status == "not_applicable"
-        assert "no path references to resolve" in evidence.detail
+        assert "no local evidence paths to resolve" in evidence.detail
         assert evidence.status != "passed"
 
 
 def test_valid_evidence_path_resolves_with_mechanical_wording() -> None:
     with tempfile.TemporaryDirectory() as temp:
         web, index, module_doc = _single_repo_fixture(temp)
-        _insert_before_generated_end(
-            module_doc,
-            "\n".join(["## Evidence and existing docs", "", "- `apps/storefront/index.ts`", ""]),
+        module_doc.write_text(
+            module_doc.read_text().replace(
+                "No local paths to resolve.",
+                "- `apps/storefront/index.ts`",
+            )
         )
         checks = validate_generated_context(index, {"web": web}, index_repository_id="web")
         evidence = next(
             check for check in checks if check.name.endswith("apps/storefront/index.ts")
         )
         assert evidence.status == "passed"
-        assert evidence.detail == "evidence reference resolves"
+        assert evidence.detail == "evidence references resolved"
 
 
 def test_evidence_path_outside_authorized_root_fails() -> None:
     with tempfile.TemporaryDirectory() as temp:
         web, index, module_doc = _single_repo_fixture(temp)
-        _insert_before_generated_end(
-            module_doc,
-            "\n".join(["## Evidence and existing docs", "", "- `../outside/secret.py`", ""]),
+        module_doc.write_text(
+            module_doc.read_text().replace(
+                "No local paths to resolve.",
+                "- `../outside/secret.py`",
+            )
         )
         checks = validate_generated_context(index, {"web": web}, index_repository_id="web")
         evidence = next(check for check in checks if "outside/secret.py" in check.name)
         assert evidence.status == "failed"
+        assert "evidence path is outside authorized root" in evidence.detail
 
 
 def test_empty_modules_table_is_valid_index_only() -> None:
@@ -2105,6 +2086,46 @@ def test_module_rows_without_context_column_fail() -> None:
         column = next(check for check in checks if check.name == "modules:context-column")
         assert column.status == "failed"
         assert "every module row requires a local context file" in column.detail
+
+
+def test_module_envelope_passes_with_required_headings() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web, index, _module_doc = _single_repo_fixture(temp)
+        checks = validate_generated_context(index, {"web": web}, index_repository_id="web")
+        structure = next(
+            check
+            for check in checks
+            if check.name == "modules:structure:../apps/storefront/AIDLC_CONTEXT.md"
+        )
+        assert structure.status == "passed"
+        assert all(check.status in ("passed", "not_applicable") for check in checks)
+
+
+def test_module_envelope_fails_when_identity_is_missing() -> None:
+    _assert_missing_module_heading_fails("## Identity and scope")
+
+
+def test_module_envelope_fails_when_coverage_is_missing() -> None:
+    _assert_missing_module_heading_fails("## Coverage")
+
+
+def test_module_envelope_fails_when_evidence_is_missing() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web, index, module_doc = _single_repo_fixture(temp)
+        _remove_generated_heading(module_doc, "## Evidence and existing docs")
+        checks = validate_generated_context(index, {"web": web}, index_repository_id="web")
+        label = "../apps/storefront/AIDLC_CONTEXT.md"
+        structure = next(check for check in checks if check.name == f"modules:structure:{label}")
+        evidence = next(check for check in checks if check.name == f"modules:evidence:{label}")
+        assert structure.status == "failed"
+        assert "## Evidence and existing docs" in structure.detail
+        assert evidence.status == "failed"
+        assert "missing required heading" in evidence.detail
+        assert cli_validate([str(index), "--root", f"web={web}", "--index-repository-id", "web"]) == 1
+
+
+def test_module_envelope_fails_when_unknowns_is_missing() -> None:
+    _assert_missing_module_heading_fails("## Unknowns")
 
 
 def test_directory_context_target_is_a_structured_failure() -> None:
@@ -2185,25 +2206,8 @@ def test_artifact_home_fallback_document_is_not_required_inside_source() -> None
         fingerprint, _ = content_fingerprint(source)
         fallback = fallback_dir / "storefront.md"
         fallback.write_text(
-            "\n".join(
-                [
-                    "# AIDLC context — storefront",
-                    "",
-                    "The colocated file was not writable. Source root: `apps/storefront`.",
-                    "",
-                    "<!-- AI-DLC:generated:start -->",
-                    "",
-                    "## Identity and scope",
-                    "",
-                    "- Repository ID: `web`",
-                    "- Module ID: `storefront`",
-                    "- Source: `apps/storefront`",
-                    f"- Baseline and fingerprint: `deadbeefdeadbeefdeadbeefdeadbeefdeadbeef` / `{fingerprint}`",
-                    "",
-                    "<!-- AI-DLC:generated:end -->",
-                    "",
-                ]
-            )
+            "The colocated file was not writable. Source root: `apps/storefront`.\n\n"
+            + _valid_module_generated_text("web", "storefront", "apps/storefront", fingerprint)
         )
         index = web / "aidlc-docs" / "repository-context.md"
         index_fingerprint, _ = content_fingerprint(web)
@@ -2241,6 +2245,32 @@ def test_artifact_home_fallback_document_is_not_required_inside_source() -> None
 def _insert_before_generated_end(path: Path, extra: str) -> None:
     text = path.read_text()
     path.write_text(text.replace("<!-- AI-DLC:generated:end -->", f"{extra}\n<!-- AI-DLC:generated:end -->", 1))
+
+
+def _remove_generated_heading(path: Path, heading: str) -> None:
+    lines = path.read_text().splitlines()
+    start = next(index for index, line in enumerate(lines) if line.strip() == heading)
+    end = start + 1
+    while end < len(lines):
+        if lines[end].startswith("## ") or lines[end].strip() == "<!-- AI-DLC:generated:end -->":
+            break
+        end += 1
+    path.write_text("\n".join(lines[:start] + lines[end:]) + "\n")
+
+
+def _assert_missing_module_heading_fails(heading: str) -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web, index, module_doc = _single_repo_fixture(temp)
+        _remove_generated_heading(module_doc, heading)
+        checks = validate_generated_context(index, {"web": web}, index_repository_id="web")
+        structure = next(
+            check
+            for check in checks
+            if check.name == "modules:structure:../apps/storefront/AIDLC_CONTEXT.md"
+        )
+        assert structure.status == "failed"
+        assert heading in structure.detail
+        assert cli_validate([str(index), "--root", f"web={web}", "--index-repository-id", "web"]) == 1
 
 
 def _duplicate_section(path: Path, heading: str) -> None:
@@ -2301,16 +2331,11 @@ def test_local_context_target_may_include_a_fragment() -> None:
 def test_external_evidence_link_stays_not_applicable() -> None:
     with tempfile.TemporaryDirectory() as temp:
         web, index, module_doc = _single_repo_fixture(temp)
-        _insert_before_generated_end(
-            module_doc,
-            "\n".join(
-                [
-                    "## Evidence and existing docs",
-                    "",
-                    "- [guide](https://example.com/guide)",
-                    "",
-                ]
-            ),
+        module_doc.write_text(
+            module_doc.read_text().replace(
+                "No local paths to resolve.",
+                "- [guide](https://example.com/guide)",
+            )
         )
         checks = validate_generated_context(index, {"web": web})
         evidence = next(
@@ -3945,6 +3970,11 @@ if __name__ == "__main__":
         test_empty_modules_table_is_valid_index_only,
         test_empty_context_cell_fails_as_missing_local_context,
         test_module_rows_without_context_column_fail,
+        test_module_envelope_passes_with_required_headings,
+        test_module_envelope_fails_when_identity_is_missing,
+        test_module_envelope_fails_when_coverage_is_missing,
+        test_module_envelope_fails_when_evidence_is_missing,
+        test_module_envelope_fails_when_unknowns_is_missing,
         test_directory_context_target_is_a_structured_failure,
         test_failed_check_takes_exit_precedence_over_unresolved,
         test_unavailable_repository_is_unresolved_not_failed,

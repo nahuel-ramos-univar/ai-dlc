@@ -85,18 +85,22 @@ Delivery stays a developer step, not a skill. After validation says the change i
   rule (`rules/ai-dlc-context-and-evidence.mdc`, Agent Decides) makes that
   discipline reachable even without a typed slash command, and lifecycle
   skills otherwise read the index and selected module context explicitly.
-  Architecture exploration (`context-architect` when the scope warrants
-  it) produces a coverage inventory plus material findings and runtime
+  Architecture exploration prefers `context-architect` for a behaviorful
+  initial or full sync when host delegation is available. It produces a
+  coverage inventory plus material findings and runtime
   flows. The Coverage table is an index of architectural understanding,
   not the full architecture documentation; `## Material architecture
   details` preserves what downstream agents need. The main chat
   synthesizes those into documents without mechanically re-scanning the
   whole tree. Before treating context as final, it
-  runs deterministic validation (index line budget, links, fingerprints,
-  stale or duplicate entries, evidence-path existence) and requests an
+  runs deterministic validation (index line budget, the module-context
+  structural envelope, links, fingerprints, stale or duplicate entries,
+  evidence-path existence) and requests an
   independent `context-reviewer` assessment for initial generation or a
   material change; it states plainly when that review was skipped or
-  unavailable. Legacy migration stays inside this skill as its own change
+  unavailable. Required independent review that cannot run leaves quality
+  assurance partial and still needs explicit approval before persistence.
+  Legacy migration stays inside this skill as its own change
   set, separate from context generation; generating new context never by
   itself means migration is complete.
 - **Git and delivery:** Skills may inspect the local Git root, branch, and diff. They do not commit, push, open a pull request, or merge. The developer does that delivery with normal tools after validation.

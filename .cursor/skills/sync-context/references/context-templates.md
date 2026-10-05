@@ -73,7 +73,10 @@ same-document anchor. Every module row requires that local file. An empty
 or missing Context cell is invalid. Index-only repositories keep the
 Modules header and leave the table empty; they do not list a module that
 points nowhere. Each generated index has one `## Scope` and one
-`## Modules`. Each module document has one `## Identity and scope`.
+`## Modules`. Each module document has one `## Identity and scope`, one
+`## Coverage`, one `## Evidence and existing docs`, and one `## Unknowns`.
+Those four headings are the deterministic structural envelope. Runtime
+flows and `## Material architecture details` are not mechanically required.
 
 ```markdown
 # Repository context
@@ -164,7 +167,9 @@ Evidence bullets have three path forms, and only those forms are checked:
 A symbol name such as `` `OrderPlacedEvent` `` is not a file path. Prose
 that mentions a path inline is not checked. A path that exists is not proof
 that it supports the surrounding claim. A catalog with no path references
-is mechanically `not_applicable`, not a semantic pass.
+is mechanically `not_applicable` (`no local evidence paths to resolve`),
+not a semantic pass. A missing `## Evidence and existing docs` heading
+fails structural validation.
 
 ```markdown
 # AIDLC context — <module name>

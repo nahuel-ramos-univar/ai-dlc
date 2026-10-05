@@ -2078,24 +2078,37 @@ def _budget_from_text(name: str, text: str, max_lines: int) -> ValidationCheck:
     return ValidationCheck(name, "failed", f"{lines} lines exceeds budget {max_lines}")
 
 
-def _structure_from_text(name: str, text: str, required_heading: str) -> ValidationCheck:
+MODULE_CONTEXT_ENVELOPE = (
+    "## Identity and scope",
+    "## Coverage",
+    "## Evidence and existing docs",
+    "## Unknowns",
+)
+
+
+def _structure_from_text(name: str, text: str, *required_headings: str) -> ValidationCheck:
     block = parse_generated_block(text)
     if block.status != "ok":
         return ValidationCheck(name, "failed", f"generated block status: {block.status}")
-    found = find_live_section(block.text, required_heading)
-    if found.status == "missing":
-        return ValidationCheck(
-            name,
-            "failed",
-            f"missing required heading {required_heading!r} inside the generated block",
-        )
-    if found.status == "ambiguous":
-        return ValidationCheck(
-            name,
-            "failed",
-            f"duplicate heading {required_heading!r} inside the generated block",
-        )
-    return ValidationCheck(name, "passed", f"markers and {required_heading!r} present")
+    if not required_headings:
+        raise ValueError("at least one required heading is needed")
+    for heading in required_headings:
+        found = find_live_section(block.text, heading)
+        if found.status == "missing":
+            return ValidationCheck(
+                name,
+                "failed",
+                f"missing required heading {heading!r} inside the generated block",
+            )
+        if found.status == "ambiguous":
+            return ValidationCheck(
+                name,
+                "failed",
+                f"duplicate heading {heading!r} inside the generated block",
+            )
+    if len(required_headings) == 1:
+        return ValidationCheck(name, "passed", f"markers and {required_headings[0]!r} present")
+    return ValidationCheck(name, "passed", "markers and required module headings present")
 
 
 @dataclass(frozen=True)
@@ -2239,7 +2252,7 @@ def _module_document_checks(
         return checks
 
     checks.append(
-        _structure_from_text(f"modules:structure:{label}", text, "## Identity and scope")
+        _structure_from_text(f"modules:structure:{label}", text, *MODULE_CONTEXT_ENVELOPE)
     )
 
     block = parse_generated_block(text)
@@ -2339,8 +2352,24 @@ def _module_document_checks(
         checks.append(ValidationCheck(evidence_name, "unresolved", "module document has no generated block"))
         return checks
     evidence_section = _section_lines(block.text, "## Evidence and existing docs")
-    if evidence_section is None:
-        checks.append(ValidationCheck(evidence_name, "not_applicable", "no evidence section was declared"))
+    live_evidence = find_live_section(block.text, "## Evidence and existing docs")
+    if live_evidence.status == "ambiguous":
+        checks.append(
+            ValidationCheck(
+                evidence_name,
+                "failed",
+                "duplicate heading '## Evidence and existing docs' inside the generated block",
+            )
+        )
+        return checks
+    if live_evidence.status == "missing" or evidence_section is None:
+        checks.append(
+            ValidationCheck(
+                evidence_name,
+                "failed",
+                "missing required heading '## Evidence and existing docs' inside the generated block",
+            )
+        )
         return checks
     items = _evidence_items(evidence_section)
     if not items:
@@ -2348,7 +2377,7 @@ def _module_document_checks(
             ValidationCheck(
                 evidence_name,
                 "not_applicable",
-                "no path references to resolve",
+                "no local evidence paths to resolve",
             )
         )
         return checks
@@ -2366,21 +2395,34 @@ def _module_document_checks(
             status = classify_markdown_target(
                 module_path, value, authorized_roots, candidate_paths=candidate_paths
             )
-            checks.append(
-                _reference_check(f"{evidence_name}:{value}", status, "evidence reference resolves")
-            )
+            checks.append(_evidence_reference_check(f"{evidence_name}:{value}", status))
         elif kind == "cross":
             repo_id, _, relative = value.partition(":")
             status = resolve_source_path(repo_id, relative, authorized_roots)
-            checks.append(
-                _reference_check(f"{evidence_name}:{value}", status, "evidence reference resolves")
-            )
+            checks.append(_evidence_reference_check(f"{evidence_name}:{value}", status))
         else:
             status = resolve_source_path(repository_id, value, authorized_roots)
-            checks.append(
-                _reference_check(f"{evidence_name}:{value}", status, "evidence reference resolves")
-            )
+            checks.append(_evidence_reference_check(f"{evidence_name}:{value}", status))
     return checks
+
+
+def _evidence_reference_check(name: str, status: str) -> ValidationCheck:
+    """Map an evidence-path classification to a mechanical validation check.
+
+    A passing result means the path resolved inside an authorized root. It
+    never means the file supports the surrounding claim.
+    """
+    if status == "ok":
+        return ValidationCheck(name, "passed", "evidence references resolved")
+    if status == "external":
+        return ValidationCheck(name, "not_applicable", "external or anchor reference")
+    if status in {"unavailable", "unresolved"}:
+        return ValidationCheck(name, "unresolved", f"reference status: {status}")
+    if status == "missing":
+        return ValidationCheck(name, "failed", "referenced evidence path does not exist")
+    if status == "unresolvable":
+        return ValidationCheck(name, "failed", "evidence path is outside authorized root")
+    return ValidationCheck(name, "failed", f"reference status: {status}")
 
 
 def _is_inside(path: Path, root: Path) -> bool:

@@ -175,14 +175,20 @@ change — see Stage 2), run architecture exploration before drafting, per
 [architecture-discovery.md](references/architecture-discovery.md): decide
 each relevant dimension's state (verified, partial, inferred, unknown, not
 applicable) with cited evidence, and capture representative runtime flows.
-Explore directly in this chat for a small or already-familiar scope. Dispatch
-one `context-architect` call for a scope large or unfamiliar enough that a
-single pass would plausibly miss a dimension; do not dispatch one subagent
+Explore directly in this chat for a genuinely trivial or passive
+repository. For an initial or full sync of a behaviorful system (API or
+backend, Lambda or application, frontend, integration or event-driven
+service, data-processing service, or meaningful infrastructure/runtime
+repository), prefer `context-architect` when host delegation is available.
+A large or heterogeneous repository may add bounded parallel exploration
+if justified. Do not dispatch one subagent
 per directory, per file, or per dimension by default, and do not add a
 second orchestration layer beyond this flow, one exploration role, and one
 independent `context-reviewer` — see
 [architecture-discovery.md](references/architecture-discovery.md) for the
-parallelism guidance this maps to. A small factual update skips this step
+parallelism guidance this maps to. If `context-architect` cannot be
+dispatched, explore here and report that unavailability; that is not
+independent review. A small factual update skips this step
 entirely and goes straight to targeted inspection below.
 
 The main chat consumes the architecture inventory, including its material
@@ -261,7 +267,11 @@ follow-up review for unresolved major findings, then report remaining
 issues and ask for a decision. Do not launch one reviewer per module by
 default. If independent delegation is unavailable, say so and follow the
 documented fallback; never label this chat's own re-check as independent
-review.
+review. For an initial/full sync or a material architecture change, that
+unavailability must stay visible in the result: context generation and
+mechanical validation may complete, independent semantic review is
+unavailable, and quality assurance is partial. Do not report the run as
+fully reviewed or quality verified.
 
 ### 5. Obtain approval
 Present each relevant change set explicitly — **A. Context documents**,
@@ -270,6 +280,13 @@ asking once per file. Respect authorization already given in this session
 for the same change set and scope; do not ask again for it. A request for an
 explanation does not authorize any write. A request for a context refresh
 authorizes set A only, never set C, and does not by itself authorize set B.
+
+When independent review was required (initial/full sync or a material
+architecture change) but could not run, still show the proposal, disclose
+that independent semantic review was unavailable, and require explicit
+user approval before persistence. A generic refresh request or this chat's
+self-review is not that approval. Do not add an extra approval prompt for
+a small factual update or a no-op.
 
 When set C includes a legacy coordinator, also surface the mandatory
 coordinator-retirement decision before the run can report migration
@@ -368,7 +385,9 @@ Return the stage reached, the outcome (first-time generation / relevant
 updates / no relevant changes / partial verification / blocked), the
 repository index, changed module contexts, evidence revision, coverage
 boundaries, stale or unknown areas, the deterministic validation result, the
-independent review result or skip reason, and the status of each relevant
+independent review result (completed, skipped for a small factual update, or
+unavailable) and, when required independent review was unavailable, that
+quality assurance is partial, and the status of each relevant
 change set (A/B/C): applied, proposed and pending approval, declined, or not
 applicable. For a migration run, also return the per-repository migration
 outcome and each identified coordinator's retirement disposition.

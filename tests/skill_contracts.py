@@ -343,6 +343,7 @@ def test_architecture_discovery_contract_has_required_language() -> None:
     reviewer = flat(ROOT / "agents" / "context-reviewer.md")
     architect = flat(ROOT / "agents" / "context-architect.md")
     validation = flat(sync_dir / "references" / "validation.md")
+    handoff = flat(sync_dir / "references" / "review-handoff.md")
 
     # The five-state coverage model is AI-decided, not a Python checklist.
     for state in ("Verified", "Partial", "Inferred", "Unknown", "Not applicable"):
@@ -439,8 +440,16 @@ def test_architecture_discovery_contract_has_required_language() -> None:
     assert "module row with an empty or missing Context target is invalid" in skill
 
     # Mechanical evidence wording must not look like semantic success.
-    assert "evidence reference resolves" in validation
-    assert "no path references to resolve" in validation
+    assert "evidence references resolved" in validation
+    assert "no local evidence paths to resolve" in validation
+    assert "missing required heading" in validation
+    assert "structural envelope" in validation or "Coverage" in validation
+    assert "prefer `context-architect`" in skill
+    assert "prefer one `context-architect` call" in discovery
+    assert "quality assurance is partial" in skill
+    assert "quality assurance as partial" in handoff
+    assert "self-review is not that approval" in skill
+    assert "never call main-chat self-review independent" in handoff
     assert "module row requires a local context file" in validation
 
     readme = flat(ROOT / "README.md")
@@ -713,6 +722,11 @@ def test_manual_evaluation_covers_context_quality_scenarios() -> None:
         "F. Honest partial coverage",
         "Material architecture details",
         "empty `## Modules` table",
+        "Reviewer unavailable",
+        "Empty structural context",
+        "Evidence catalog missing",
+        "Evidence exists but no local paths",
+        "REST/backend service",
     ):
         assert hardening in manual
 

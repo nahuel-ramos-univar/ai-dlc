@@ -100,8 +100,14 @@ value, or a slash command for internal dispatch. If the host exposes only a
 general-purpose independent subagent and cannot invoke a named plugin agent
 directly, hand it the `context-reviewer` agent file as bounded task context
 and report the result as a general-purpose independent review, not native
-named-agent dispatch. If the host cannot run an independent subagent at all,
-continue with deterministic validation and clearly labeled self-review,
-report independent review as unavailable, and never call main-chat
-self-review independent. Do not claim this delegation path was tested beyond
+named-agent dispatch. If the host cannot run an independent subagent at all, continue with
+deterministic validation. Report independent semantic review as
+unavailable and quality assurance as partial. Clearly labeled self-review
+may continue drafting; it is not equivalent to independent review and must
+not be reported as fully reviewed, quality verified, or complete semantic
+review. For an initial/full sync or a material architecture change, still
+show the proposal, disclose the unavailability, and require explicit user
+approval before persistence. Do not add an extra approval prompt for a
+small factual update or a no-op, and never call main-chat self-review
+independent. Do not claim this delegation path was tested beyond
 what was actually invoked in this session.

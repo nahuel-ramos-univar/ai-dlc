@@ -34,12 +34,17 @@ Scale parallelism to actual complexity, not to a default pattern:
 
 - Do not dispatch one subagent per directory or per file by default.
 - Do not dispatch one subagent per architectural dimension by default.
-- A small repository or module is explored directly in the main flow, or by
-  one `context-architect` call for the whole scope. Reserve a dispatched
-  `context-architect` call, or more than one in parallel, for a scope large
-  or unfamiliar enough that one pass would plausibly miss a dimension —
+- A genuinely trivial or passive repository may be explored directly in
+  the main flow.
+- For an initial or full sync of a behaviorful system, prefer one
+  `context-architect` call when host delegation is available.
+- Reserve more than one architect in parallel for a scope large or
+  heterogeneous enough that one pass would plausibly miss a dimension —
   for example several independently deployable services in one sync, or a
   monorepo with package boundaries nobody has mapped yet.
+- If the host cannot dispatch `context-architect`, explore in the main
+  flow and report that the architect was unavailable. That is not
+  independent review.
 - Justify parallel dispatch with the actual scope in front of you, not with
   "this is standard practice for a sync."
 

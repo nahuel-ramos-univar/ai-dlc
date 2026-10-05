@@ -35,8 +35,10 @@ Give the reviewer:
 - the deterministic validation result from [validation.md](validation.md).
 
 Do not pass the entire main-chat conversation by default. For an initial
-generation, the reviewer inspects the generated documents and their material
-claims. For an incremental change, focus the reviewer on changed claims,
+generation, the reviewer independently inspects enough representative
+source to challenge the proposal: the generated documents, their
+material claims, and omitted boundaries. Do not blindly re-scan every
+file. For an incremental change, focus the reviewer on changed claims,
 affected modules, and relevant shared boundaries; do not require a second
 exhaustive repository scan for every minor update.
 
@@ -48,6 +50,7 @@ Review scope:
 
 Findings:
 - Severity: blocker | major | minor
+- Dimension: accuracy | completeness
 - Context document and section.
 - Incorrect, unsupported, or missing assertion.
 - Source evidence.
@@ -61,6 +64,20 @@ Result:
 - Changes required.
 - Review incomplete.
 ```
+
+**Accuracy** findings are about a claim that does not match the source: a
+coverage row marked `verified` with no matching evidence, a stale behavior
+description, an incorrect dependency. **Completeness** findings are about
+what the document should cover for this module's actual responsibility but
+does not: an omitted consumer, a missing runtime flow, a coverage table
+with no row for a dimension this module plainly has. See
+[context-quality.md](context-quality.md) for the dimension list and what
+"good enough" means for each.
+
+An honestly marked `unknown` or `not applicable` row is not itself a
+finding. Only report it when the state is wrong — the dimension was
+actually inspected and should read `verified` or `partial`, or `not
+applicable` has no real reason behind it.
 
 ## Resolving findings
 

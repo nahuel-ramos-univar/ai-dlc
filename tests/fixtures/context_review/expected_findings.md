@@ -39,23 +39,34 @@ To run a fair evaluation, do one of:
 | `unsupported-claim` | `## Responsibility` | Claims Twilio SMS receipts are sent for every order | Neither `notifications_worker.py` nor `email_templates.py` sends SMS or references Twilio; the claim has no source path, symbol, or configuration key backing it. |
 | `omitted-dependency` | `## Dependencies and consumers` | Says the worker has no other consumer | `source/receipts/receipts_digest.py` imports `NOTIFICATION_SENT_TOPIC` from `notifications.notifications_worker` and subscribes to it to build a reorder digest. That import is a real, inspectable dependency this section omits. |
 | `fact-contradicted-by-unknown` | `## Unknowns` | Lists the Twilio SMS behavior as unknown | The same document already states that behavior as fact in `## Responsibility`; an Unknown must not restate a claimed fact. |
+| `false-completeness-coverage` | `## Coverage` → `Retry and idempotency` row | Marks "Retry and idempotency" `verified` with evidence pointing at `_handle` | `source/notifications/notifications_worker.py`'s `_handle` has no idempotency guard at all: it unconditionally sends the email and republishes `NOTIFICATION_SENT_TOPIC` on every call, so a redelivered `OrderPlacedEvent` sends a duplicate confirmation email. This is the "false completeness" pattern in [context-quality.md](../../../.cursor/skills/sync-context/references/context-quality.md): a confident `verified` claim that does not match the cited source, which is worse than an honest `unknown` row. |
 
 ## Deterministic checks that do not catch these defects
 
 An end-to-end run of `validate_generated_context` (via the
 `context_tools.py validate` CLI) against an isolated copy of this fixture,
 with a representative one-module repository index built on top of it and
-this module's real content fingerprint recorded, reports all 11 applicable
+this module's real content fingerprint recorded, reports all 10 applicable
 checks as `passed`: index line budget, required structure, index
 fingerprint, the Modules table, duplicate identity, duplicate context
-target, the link to this module document, this module's own line budget and
-required structure, this module's own fingerprint, and the declared source
+target, the link to this module document, this module's required
+structure, this module's own fingerprint, and the declared source
 path. None of that mechanical evidence reads prose for contradictions,
-unsupported claims, or a mismatch between a stated file count and the actual
-file count in `source/notifications/`. Closing that gap is what independent
-review is for, not deterministic validation.
+unsupported claims, a mismatch between a stated file count and the actual
+file count in `source/notifications/`, or whether a `## Coverage` row's
+`verified` state is actually backed by the file it cites. Module line
+count is not a validation result at all (`document_metrics` can report it
+as a metric), so it has no opinion on these defects either. Closing that
+gap is what independent review is for, not deterministic validation.
 
 ## Live evaluation record
+
+**Coverage note:** the first recorded run below predates the `## Coverage`
+section and the seeded `false-completeness-coverage` defect; it evaluated
+the original four defects only. A second run, recorded further down, was
+performed specifically to check the fifth defect once it was added.
+
+### Run 1 — original four defects
 
 **Date:** 2026-09-28.
 
@@ -73,7 +84,8 @@ directory (`tests/fixtures/context_review/`, including this
 the constraint "do not read `expected_findings.md`" was enforced by absence,
 not only by instruction.
 
-**Outcome — all 4 seeded defects were found:**
+**Outcome — all 4 defects seeded at the time of this run were found; the
+fifth, `false-completeness-coverage`, was added later (see Run 2 below):**
 
 | Marker | Found? | Matched reviewer finding |
 | --- | --- | --- |
@@ -98,3 +110,44 @@ fallback, not `context-reviewer` running as a native named subagent, and not
 a statistically meaningful sample. Treat it as evidence that the review
 workflow can catch these four defect categories when actually invoked, not
 as a guarantee for every future run.
+
+### Run 2 — `false-completeness-coverage` added
+
+**Date:** 2026-10-05.
+
+**Invocation:** Same documented general-purpose fallback as Run 1 (a
+`generalPurpose` subagent given the current `agents/context-reviewer.md`
+text inline as its role). The isolated copy for this run was placed under
+`/tmp/fixture_eval_<random>/` and contained only `AIDLC_CONTEXT.md`,
+`source/`, and a minimal `aidlc-docs/repository-context.md` — again, nothing
+from `tests/fixtures/context_review/` itself, so `expected_findings.md` was
+unreachable from that scope rather than merely instructed-against.
+
+**Outcome — the targeted defect was found, plus every defect from Run 1:**
+
+| Marker | Found? | Matched reviewer finding |
+| --- | --- | --- |
+| `false-completeness-coverage` | Yes | Finding 1 (blocker, accuracy: `_handle` has no idempotency guard; the `verified` Retry-and-idempotency row does not match the source it cites) |
+| `unsupported-claim` | Yes | Finding 2 (major, accuracy: the Twilio/SMS claim) |
+| `fact-contradicted-by-unknown` | Yes | Finding 3 (major, accuracy: the SMS Unknown restates and contradicts the Responsibility claim) |
+| `omitted-dependency` | Yes | Finding 4 (major, completeness: omitted `NOTIFICATION_SENT_TOPIC` interface and the `receipts` consumer) |
+| `unsupported-coverage-claim` | Yes | Finding 7 (minor, accuracy: the "4 tracked files" Examined count does not match the 2 files actually in `source/notifications`) |
+
+**Extra findings not in the seeded set:** Finding 5 (major, completeness:
+no runtime-flow row and no mention of the `email_client` dependency) and
+Finding 6 (major, accuracy: the `not applicable` Security-and-trust-boundaries
+row is itself wrong, because the worker does handle `customer_email` and an
+outbound integration). Both are reasonable observations grounded in the
+actual source, not false claims about the fixture; neither is counted as a
+false positive. Finding 6 is a useful reminder that `not applicable` needs a
+real reason, exactly as `context-reviewer`'s contract requires, and that a
+reviewer should check that reason rather than accept it at face value.
+
+**Result reported by the reviewer:** "changes required," with an explicit
+limitations section naming what was and was not inspected.
+
+**Caveat on this record:** same as Run 1 — one fallback run, not a
+statistically meaningful sample, and not native `context-reviewer`
+dispatch. Treat it as evidence the strengthened Accuracy/Completeness
+contract and the `## Coverage` table can surface a false-`verified` claim
+when actually invoked, not as a guarantee for every future run.

@@ -27,9 +27,15 @@ run. Do not write an absolute local path into `.ai-dlc-config.md`,
 ## Checks
 
 - **Line budget.** `check_document_budget(path, max_lines)` counts lines with
-  `document_metrics`. Use 150 for `aidlc-docs/repository-context.md` and 300
-  for a module context or fallback document, per
-  [context-templates.md](context-templates.md).
+  `document_metrics`. It is the repository-index hard gate only. Default
+  `max_lines` is 150, matching `aidlc-docs/repository-context.md` in
+  [context-templates.md](context-templates.md). Do not call it as a module
+  validity gate. Inside `validate_generated_context`, `index:budget` reports
+  `"failed"` over 150 lines. Module line count is not a validation result;
+  call `document_metrics` and report `lines` plus the 300-line advisory
+  guideline as a metric, never as passed or failed. A line budget on the
+  index is a measurable property; whether a module document is *complete*
+  is not something this module can measure.
 - **Required structure.** Confirm exactly one well-formed
   `<!-- AI-DLC:generated:start -->` / `<!-- AI-DLC:generated:end -->` block,
   and confirm the required heading (`## Identity and scope` for a module,
@@ -152,8 +158,15 @@ that is only a Markdown link is resolved relative to the context document.
 A bullet that is only `` `repository-relative/path` `` is resolved in the
 row's owning repository. A bullet that is only `` `repository-id:relative/path` ``
 is resolved in that authorized repository. A backtick symbol name, or prose
-with inline code, is not a path. File existence does not prove the file
-supports the claim.
+with inline code, is not a path. A passing evidence check means the path
+resolved inside an authorized root (`evidence reference resolves`); it does
+not prove the file supports the surrounding claim. An evidence section
+with no path references is `not_applicable` (`no path references to
+resolve`), not passed. A missing evidence section is also
+`not_applicable`. Every module row's Context cell must be a local
+readable context file; an empty Context cell fails (`module row requires
+a local context file`). An empty Modules table is a valid index-only
+representation.
 
 Do not treat missing configuration, an inaccessible repository, or a parsing
 failure as passing or `not_applicable`. This function is read-only: it never
@@ -200,9 +213,13 @@ plugin root instead of a relative guess.
 ```bash
 python3 <resolved-path-to>/context_tools.py validate <index-path> \
   --root <repo-id>=<repo-root> [--root <repo-id>=<repo-root> ...] \
-  [--index-repository-id <repo-id>] [--index-budget 150] [--module-budget 300] \
+  [--index-repository-id <repo-id>] [--index-budget 150] \
   [--candidate <final-absolute-path>=<staged-file> ...]
 ```
+
+`--module-budget` is still accepted so older invocations do not fail; it
+does not produce a check. Module line count is a metric from
+`document_metrics`, not a validation result.
 
 To check a proposal before writing it, write each proposed document's text to
 a temporary staging file, then pass `--candidate

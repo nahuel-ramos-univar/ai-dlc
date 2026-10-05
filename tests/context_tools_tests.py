@@ -637,11 +637,15 @@ def test_document_budget_flags_documents_over_the_limit() -> None:
     with tempfile.TemporaryDirectory() as temp:
         short = Path(temp) / "short.md"
         short.write_text("\n".join(f"line {i}" for i in range(50)) + "\n")
-        assert check_document_budget(short, max_lines=300)
+        assert check_document_budget(short)
 
         long = Path(temp) / "long.md"
-        long.write_text("\n".join(f"line {i}" for i in range(301)) + "\n")
-        assert not check_document_budget(long, max_lines=300)
+        long.write_text("\n".join(f"line {i}" for i in range(151)) + "\n")
+        assert not check_document_budget(long)
+        # This helper is the repository-index gate. A 300-line cap is not
+        # a module validity check; callers that want a module line count
+        # use document_metrics instead.
+        assert check_document_budget(long, max_lines=300)
 
 
 # --- Multi-repository workspace reference resolution ----------------------
@@ -1592,6 +1596,42 @@ def test_validate_generated_context_fails_when_over_budget() -> None:
         assert budget.status == "failed"
 
 
+def test_validate_generated_context_module_budget_is_not_a_validation_result() -> None:
+    """A module document's line count is never a ValidationCheck.
+
+    The repository index stays a hard-gated short index (covered by
+    `test_validate_generated_context_fails_when_over_budget`). A long
+    module document must not produce `modules:budget:<label>` as passed
+    or failed; callers that want the number use `document_metrics`.
+    """
+    with tempfile.TemporaryDirectory() as temp:
+        web = Path(temp) / "web"
+        (web / "apps" / "storefront").mkdir(parents=True)
+        (web / "apps" / "storefront" / "index.ts").write_text("export const x = 1;\n")
+        fingerprint = _write_valid_module(
+            web / "apps" / "storefront", "web", "storefront", "apps/storefront"
+        )
+        module_path = web / "apps" / "storefront" / "AIDLC_CONTEXT.md"
+        padding = "\n".join(f"- Verified detail line {i}" for i in range(500))
+        module_path.write_text(
+            module_path.read_text().replace(
+                "<!-- AI-DLC:generated:end -->",
+                f"\n## Extra detail\n\n{padding}\n\n<!-- AI-DLC:generated:end -->",
+            )
+        )
+        (web / "aidlc-docs").mkdir()
+        index = web / "aidlc-docs" / "repository-context.md"
+        _write_valid_index(index, web)
+
+        checks = validate_generated_context(index, {"web": web}, index_repository_id="web")
+        assert not any(check.name.startswith("modules:budget:") for check in checks)
+        identity = next(
+            c for c in checks if c.name == "modules:identity:../apps/storefront/AIDLC_CONTEXT.md"
+        )
+        assert identity.status == "passed", "padding must not break identity or freshness"
+        assert fingerprint  # the padded context document never enters its own fingerprint
+
+
 def test_validate_generated_context_reports_unresolved_for_missing_index() -> None:
     with tempfile.TemporaryDirectory() as temp:
         index = Path(temp) / "does-not-exist.md"
@@ -1950,6 +1990,121 @@ def test_missing_evidence_file_fails_without_treating_symbols_as_paths() -> None
         assert any(check.status == "failed" and "deleted.ts" in check.name for check in evidence)
         assert not any("OrderPlacedEvent" in check.name for check in checks)
         assert cli_validate([str(index), "--root", f"web={web}", "--index-repository-id", "web"]) == 1
+
+
+def test_empty_evidence_catalog_is_not_applicable_not_passed() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web, index, module_doc = _single_repo_fixture(temp)
+        _insert_before_generated_end(
+            module_doc,
+            "\n".join(["## Evidence and existing docs", "", "No local paths yet.", ""]),
+        )
+        checks = validate_generated_context(index, {"web": web}, index_repository_id="web")
+        evidence = next(
+            check
+            for check in checks
+            if check.name == "modules:evidence:../apps/storefront/AIDLC_CONTEXT.md"
+        )
+        assert evidence.status == "not_applicable"
+        assert "no path references to resolve" in evidence.detail
+        assert evidence.status != "passed"
+
+
+def test_valid_evidence_path_resolves_with_mechanical_wording() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web, index, module_doc = _single_repo_fixture(temp)
+        _insert_before_generated_end(
+            module_doc,
+            "\n".join(["## Evidence and existing docs", "", "- `apps/storefront/index.ts`", ""]),
+        )
+        checks = validate_generated_context(index, {"web": web}, index_repository_id="web")
+        evidence = next(
+            check for check in checks if check.name.endswith("apps/storefront/index.ts")
+        )
+        assert evidence.status == "passed"
+        assert evidence.detail == "evidence reference resolves"
+
+
+def test_evidence_path_outside_authorized_root_fails() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web, index, module_doc = _single_repo_fixture(temp)
+        _insert_before_generated_end(
+            module_doc,
+            "\n".join(["## Evidence and existing docs", "", "- `../outside/secret.py`", ""]),
+        )
+        checks = validate_generated_context(index, {"web": web}, index_repository_id="web")
+        evidence = next(check for check in checks if "outside/secret.py" in check.name)
+        assert evidence.status == "failed"
+
+
+def test_empty_modules_table_is_valid_index_only() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web = Path(temp) / "web"
+        web.mkdir()
+        (web / "README.md").write_text("# docs only\n")
+        (web / "aidlc-docs").mkdir()
+        index = web / "aidlc-docs" / "repository-context.md"
+        fingerprint, _ = content_fingerprint(web)
+        index.write_text(
+            "\n".join(
+                [
+                    "# Repository context",
+                    "",
+                    "<!-- AI-DLC:generated:start -->",
+                    "",
+                    "## Scope",
+                    "",
+                    "- Index: `single-repository`",
+                    "- Repository ID: `web`",
+                    f"- Fingerprint: `{fingerprint}`",
+                    "",
+                    "## Modules",
+                    "",
+                    "| Module | Source | Context | Status |",
+                    "| --- | --- | --- | --- |",
+                    "",
+                    "<!-- AI-DLC:generated:end -->",
+                    "",
+                ]
+            )
+        )
+        checks = validate_generated_context(index, {"web": web}, index_repository_id="web")
+        assert all(check.status in ("passed", "not_applicable") for check in checks)
+        assert not any(check.name.startswith("modules:link:") for check in checks)
+
+
+def test_empty_context_cell_fails_as_missing_local_context() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web, index, _module_doc = _single_repo_fixture(temp)
+        index.write_text(
+            index.read_text().replace(
+                "| `storefront` | `apps/storefront` | [x](../apps/storefront/AIDLC_CONTEXT.md) | current |",
+                "| `storefront` | `apps/storefront` |  | current |",
+            )
+        )
+        checks = validate_generated_context(index, {"web": web}, index_repository_id="web")
+        empty = next(check for check in checks if check.name.startswith("modules:link:"))
+        assert empty.status == "failed"
+        assert "module row requires a local context file" in empty.detail
+        assert cli_validate([str(index), "--root", f"web={web}", "--index-repository-id", "web"]) == 1
+
+
+def test_module_rows_without_context_column_fail() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        web, index, _module_doc = _single_repo_fixture(temp)
+        index.write_text(
+            index.read_text()
+            .replace("| Module | Source | Context | Status |", "| Module | Source | Status |")
+            .replace("| --- | --- | --- | --- |", "| --- | --- | --- |")
+            .replace(
+                "| `storefront` | `apps/storefront` | [x](../apps/storefront/AIDLC_CONTEXT.md) | current |",
+                "| `storefront` | `apps/storefront` | current |",
+            )
+        )
+        checks = validate_generated_context(index, {"web": web}, index_repository_id="web")
+        column = next(check for check in checks if check.name == "modules:context-column")
+        assert column.status == "failed"
+        assert "every module row requires a local context file" in column.detail
 
 
 def test_directory_context_target_is_a_structured_failure() -> None:
@@ -3297,6 +3452,24 @@ def test_validate_parent_reference_hierarchy_rules() -> None:
     # A declared parent id without a parent type (or vice versa) is invalid.
     assert validate_parent_reference("user-story", None, "cancel-order", "CTY-296") != ()
     assert validate_parent_reference("user-story", "epic", "cancel-order", None) != ()
+    # Against a proposal, a local parent id must name an item of the declared type.
+    known = {"cancel-order": "user-story", "checkout": "epic"}
+    assert validate_parent_reference(
+        "task", "user-story", "configure-gateway", "cancel-order", known
+    ) == ()
+    mismatch = validate_parent_reference(
+        "user-story", "epic", "cancel-order", "configure-gateway",
+        {"configure-gateway": "task"},
+    )
+    assert any("does not match" in reason for reason in mismatch)
+    unknown_local = validate_parent_reference(
+        "user-story", "epic", "cancel-order", "missing-epic", known
+    )
+    assert any("unknown local parent" in reason for reason in unknown_local)
+    # A Jira key that is not in the proposal is not a structural failure.
+    assert validate_parent_reference(
+        "user-story", "epic", "cancel-order", "CTY-296", known
+    ) == ()
 
 
 def test_validate_dependency_graph_detects_self_and_unknown_dependencies() -> None:
@@ -3438,11 +3611,17 @@ def test_plan_validate_proposal_runs_every_deterministic_check() -> None:
             ]
         }
     )
-    assert all(check.status == "passed" for check in valid)
+    assert all(check.status in ("passed", "external") for check in valid)
     outcome_checks = [c for c in valid if c.name == "plan:outcome"]
     assert outcome_checks and "outcome: reviewed" in outcome_checks[0].detail
     order_checks = [c for c in valid if c.name == "plan:order"]
     assert order_checks and "payment-refund-task" in order_checks[0].detail
+    assert any(
+        check.name == "plan:external:cancel-order:parent"
+        and check.status == "external"
+        and "CTY-100" in check.detail
+        for check in valid
+    )
 
     # A structurally broken proposal (bad parent, duplicate edge, no status
     # anywhere) is reported as failed/unresolved, not silently passed.
@@ -3532,6 +3711,49 @@ def test_plan_validate_proposal_fail_closed_on_reported_shape_bugs() -> None:
         and check.status == "failed"
         and "not a valid local id or Jira issue key" in check.detail
         for check in bad_parent_id
+    )
+
+    # A parent_id in this proposal must match the declared parent_type.
+    wrong_sibling = plan_validate_proposal(
+        {
+            "items": [
+                {
+                    "id": "story-a",
+                    "type": "user-story",
+                    "parent_type": "epic",
+                    "parent_id": "task-b",
+                    "status": "drafted",
+                },
+                {"id": "task-b", "type": "task", "status": "drafted"},
+            ]
+        }
+    )
+    assert any(
+        check.name == "plan:item:story-a:parent"
+        and check.status == "failed"
+        and "does not match" in check.detail
+        for check in wrong_sibling
+    )
+
+    # A local parent slug that is not an item fails, like an unknown dependency.
+    missing_parent = plan_validate_proposal(
+        {
+            "items": [
+                {
+                    "id": "story-a",
+                    "type": "user-story",
+                    "parent_type": "epic",
+                    "parent_id": "missing-epic",
+                    "status": "drafted",
+                }
+            ]
+        }
+    )
+    assert any(
+        check.name == "plan:item:story-a:parent"
+        and check.status == "failed"
+        and "unknown local parent" in check.detail
+        for check in missing_parent
     )
 
     # An external Jira key is evidence to confirm, not a structural failure.
@@ -3700,6 +3922,7 @@ if __name__ == "__main__":
         test_git_discovery_failure_is_unresolved_validation_not_a_crash,
         test_validate_generated_context_fails_on_missing_markers_and_headings,
         test_validate_generated_context_fails_when_over_budget,
+        test_validate_generated_context_module_budget_is_not_a_validation_result,
         test_validate_generated_context_reports_unresolved_for_missing_index,
         test_validate_generated_context_multi_repo_requires_repository_column,
         test_validate_generated_context_true_multi_repo_engagement_passes,
@@ -3716,6 +3939,12 @@ if __name__ == "__main__":
         test_missing_index_identity_is_unresolved_not_success,
         test_module_metadata_must_match_the_index_row,
         test_missing_evidence_file_fails_without_treating_symbols_as_paths,
+        test_empty_evidence_catalog_is_not_applicable_not_passed,
+        test_valid_evidence_path_resolves_with_mechanical_wording,
+        test_evidence_path_outside_authorized_root_fails,
+        test_empty_modules_table_is_valid_index_only,
+        test_empty_context_cell_fails_as_missing_local_context,
+        test_module_rows_without_context_column_fail,
         test_directory_context_target_is_a_structured_failure,
         test_failed_check_takes_exit_precedence_over_unresolved,
         test_unavailable_repository_is_unresolved_not_failed,

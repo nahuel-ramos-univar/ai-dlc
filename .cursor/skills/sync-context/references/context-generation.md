@@ -44,7 +44,25 @@ file that moved since the proposal was prepared.
 
 Keep `.ai-dlc-config.md` minimal. Keep `aidlc-docs/repository-context.md` as a short workspace index. It lists each actual Git root, its repository ID, meaningful modules, source paths, freshness marker, and links to colocated context. It is not a codebase dump.
 
-Use `<module-root>/AIDLC_CONTEXT.md` for useful modules. A module has an architectural responsibility: app, API, service, shared package, or infrastructure stack. Do not infer a module from directory depth. A small single-module repository keeps one concise repository context and no manufactured module file. Do not create one context file per source file or directory; generate module context only where it provides useful, distinct information beyond the repository index.
+Use `<module-root>/AIDLC_CONTEXT.md` for useful modules. A module has an
+architectural responsibility: app, API, service, shared package, or
+infrastructure stack. Do not infer a module from directory depth.
+Repository size or module count is not documentation depth. Every
+meaningful architectural module listed in `## Modules` must have its own
+local `AIDLC_CONTEXT.md` (or the documented fallback). A module row with
+an empty or missing Context target is invalid. Create that file for a
+service or application, a Lambda or backend with business behavior, a
+frontend, an API, an integration service, Terraform or infrastructure with
+meaningful runtime topology, a persistence or data component, or a
+behaviorful library — even when the repository contains only one module.
+Keep the index alone only when there is genuinely no meaningful
+architectural module: a documentation-only repository, a trivial metadata
+or config package, or an extremely small passive types or constants
+package. Represent that as an empty `## Modules` table, not a listed
+module that points nowhere. Do not skip `AIDLC_CONTEXT.md` merely because
+the repository is single-module. Do not create one context file per source
+file or directory; generate module context only where it provides useful,
+distinct information beyond the repository index.
 
 If the source repository or module root cannot be written, use the documented
 fallback `<artifact-home>/aidlc-docs/context/<repo-id>/<module-id>.md` and link
@@ -72,7 +90,27 @@ Reject IDs outside `[a-z0-9-]`. Never use raw user input as a path. Record
 repository-relative source paths and the verified remote when available. Do not
 write absolute local checkout paths into generated context.
 
-Each module `AIDLC_CONTEXT.md` states repository identity, source paths, responsibility, entry points, interfaces, callers or dependencies, verified tests and commands, constraints, evidence paths, freshness, and explicit unknowns. Do not copy source, generated output, vendor content, cache content, or secrets.
+Each module `AIDLC_CONTEXT.md` states repository identity, source paths,
+responsibility, entry points, interfaces, representative runtime flows,
+callers or dependencies, verified tests and commands, constraints, a
+coverage table against the dimensions in
+[architecture-discovery.md](architecture-discovery.md), material
+architecture details for the dimensions that actually matter, a canonical
+evidence catalog, freshness, and explicit unknowns. The Coverage table is
+a summary of what was considered; `## Material architecture details`
+preserves the discovered knowledge a downstream agent needs. `## Evidence
+and existing docs` is the canonical catalog of repository-relative local
+paths used as supporting evidence. Any local path cited in Coverage,
+runtime flows, Material architecture details, or constraints must also
+appear there. Python only checks that those catalogued paths exist inside
+an authorized root; whether a path supports the surrounding claim is an
+AI-reviewer judgment. Run architecture discovery before drafting or
+materially refreshing a module document; see
+[architecture-discovery.md](architecture-discovery.md) for how deep that
+exploration goes for initial, material-change, and small-update syncs, and
+[context-quality.md](context-quality.md) for what the coverage table records
+and what makes the result good enough. Do not copy source, generated output,
+vendor content, cache content, or secrets.
 
 Ground a material claim about architecture, behavior, integrations, configuration, security boundaries, or testing in source evidence: a repository-relative path plus the relevant symbol or configuration key. Avoid relying only on a line number, because it goes stale. A test file proves that test code exists, not that it passed. A CI configuration proves that a job is configured, not that it ran successfully. A declared dependency does not prove runtime usage. A configured integration does not prove authenticated connectivity. Repository documentation supports evidence; it does not automatically override current code.
 
@@ -146,14 +184,28 @@ document without showing a targeted proposal first.
 
 ## Examples
 
-Single-module repository:
+Single-module service (behaviorful — payments, an API, a worker):
+
+```text
+aidlc-docs/
+  repository-context.md
+AIDLC_CONTEXT.md
+```
+
+`repository-context.md` stays a short index. The module document holds
+coverage as a summary, material architecture details, runtime flows, and
+the rest of the architectural inventory. Do not skip `AIDLC_CONTEXT.md`
+for this shape merely because it is a single module.
+
+Documentation-only or genuinely passive repository (no meaningful module):
 
 ```text
 aidlc-docs/
   repository-context.md
 ```
 
-`repository-context.md` identifies the Git root, `src/`, entry point, tests, evidence revision, and unknowns. No module file is created.
+Keep an empty `## Modules` table. Do not list a module whose Context
+column points nowhere.
 
 Monorepo:
 
@@ -183,4 +235,4 @@ web/                              # Git root
 payments/                         # Git root
 ```
 
-If `payments/` is itself a small single-module repository, keep context in its index and do not create `payments/AIDLC_CONTEXT.md`.
+If `payments/` is a behaviorful service (handlers, a payment client, persistence), create `payments/AIDLC_CONTEXT.md` even though it is a single-module repository. List it in `## Modules` only when that local context file exists.

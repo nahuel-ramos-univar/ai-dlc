@@ -1159,8 +1159,15 @@ PATH_EXTENSIONS = (
 )
 
 
-def check_document_budget(path: Path, max_lines: int = 300) -> bool:
-    """True when the document's line count is within the declared budget."""
+def check_document_budget(path: Path, max_lines: int = 150) -> bool:
+    """True when a repository index is within its hard line-budget.
+
+    This is the index-only validity gate used by `index:budget`. Default
+    `max_lines` is 150, matching `context-templates.md`. Do not use this
+    function as a module-context validity gate: a module document's length
+    is an authoring guideline, not a pass/fail property. Call
+    `document_metrics` if a caller wants a module line count to report.
+    """
     lines, _ = document_metrics(path)
     return lines <= max_lines
 
@@ -2060,6 +2067,11 @@ def _reference_check(
 
 
 def _budget_from_text(name: str, text: str, max_lines: int) -> ValidationCheck:
+    """Hard line-budget check. Use only for the repository index (`index:budget`).
+
+    Module context length is not a validation result. Call `document_metrics`
+    if a caller wants a module line count to report as a metric.
+    """
     lines = len(text.splitlines())
     if lines <= max_lines:
         return ValidationCheck(name, "passed", f"{lines} lines (budget {max_lines})")
@@ -2201,11 +2213,13 @@ def _module_document_checks(
     module_id: str | None,
     source_path: str | None,
     authorized_roots: dict[str, Path],
-    module_budget: int,
     candidate_content: dict[Path, str] | None = None,
     candidate_paths: frozenset[Path] = frozenset(),
 ) -> list[ValidationCheck]:
-    """Budget, structure, identity, freshness, and evidence for one module document.
+    """Structure, identity, freshness, and evidence for one module document.
+
+    Module line count is not a validation result. Call `document_metrics` if
+    a caller wants that number as an authoring metric.
 
     `candidate_content` lets `module_path` be read from a proposed-content
     mapping instead of disk, so a module document can be validated at its
@@ -2219,13 +2233,11 @@ def _module_document_checks(
     if error or text is None:
         detail = error or f"{module_path} is not readable"
         status = "failed" if error and "not a regular file" in error else "unresolved"
-        checks.append(ValidationCheck(f"modules:budget:{label}", status, detail))
         checks.append(ValidationCheck(f"modules:structure:{label}", status, detail))
         checks.append(ValidationCheck(identity_name, status, detail))
         checks.append(ValidationCheck(fingerprint_name, "unresolved", detail))
         return checks
 
-    checks.append(_budget_from_text(f"modules:budget:{label}", text, module_budget))
     checks.append(
         _structure_from_text(f"modules:structure:{label}", text, "## Identity and scope")
     )
@@ -2332,7 +2344,13 @@ def _module_document_checks(
         return checks
     items = _evidence_items(evidence_section)
     if not items:
-        checks.append(ValidationCheck(evidence_name, "passed", "no path references declared"))
+        checks.append(
+            ValidationCheck(
+                evidence_name,
+                "not_applicable",
+                "no path references to resolve",
+            )
+        )
         return checks
     if not repository_id:
         checks.append(
@@ -2348,14 +2366,20 @@ def _module_document_checks(
             status = classify_markdown_target(
                 module_path, value, authorized_roots, candidate_paths=candidate_paths
             )
-            checks.append(_reference_check(f"{evidence_name}:{value}", status, "evidence link resolves"))
+            checks.append(
+                _reference_check(f"{evidence_name}:{value}", status, "evidence reference resolves")
+            )
         elif kind == "cross":
             repo_id, _, relative = value.partition(":")
             status = resolve_source_path(repo_id, relative, authorized_roots)
-            checks.append(_reference_check(f"{evidence_name}:{value}", status, "evidence path exists"))
+            checks.append(
+                _reference_check(f"{evidence_name}:{value}", status, "evidence reference resolves")
+            )
         else:
             status = resolve_source_path(repository_id, value, authorized_roots)
-            checks.append(_reference_check(f"{evidence_name}:{value}", status, "evidence path exists"))
+            checks.append(
+                _reference_check(f"{evidence_name}:{value}", status, "evidence reference resolves")
+            )
     return checks
 
 
@@ -2487,7 +2511,15 @@ def validate_generated_context(
     A passing result never proves an Unknown is accurate, that a described
     dependency is correct, or that a claim is well-supported. Those
     judgments belong to independent review (`context-reviewer`).
+
+    `index_budget` is a hard gate: the repository index is deliberately a
+    short index, and `index:budget` reports `"failed"` over that cap.
+    `module_budget` is accepted for CLI compatibility and is not used.
+    Module line count is not a validation result; call `document_metrics`
+    if a caller wants that number as an authoring metric. See
+    `context-templates.md` and `context-quality.md`.
     """
+    _ = module_budget
     candidate_content = dict(candidate_content) if candidate_content else {}
     if candidate_content:
         candidate_content, problem = _prepare_candidate_content(
@@ -2688,7 +2720,16 @@ def validate_generated_context(
                 ValidationCheck("modules:duplicate-context-target", "passed", "no duplicate targets")
             )
         for row_index, target in enumerate(contexts.values):
-            resolved_target = _link_target(target)
+            resolved_target = _link_target(target).strip()
+            if not resolved_target:
+                checks.append(
+                    ValidationCheck(
+                        f"modules:link:{row_index}",
+                        "failed",
+                        "module row requires a local context file",
+                    )
+                )
+                continue
             status = classify_markdown_target(
                 index_path,
                 resolved_target,
@@ -2713,15 +2754,27 @@ def validate_generated_context(
                     module_ids.values[row_index],
                     source_path,
                     authorized_roots,
-                    module_budget,
                     candidate_content=candidate_content,
                     candidate_paths=candidate_paths,
                 )
             )
     else:
-        checks.append(
-            ValidationCheck("modules:context-column", "unresolved", f"Context column status: {contexts.status}")
-        )
+        if module_ids.status == "ok" and module_ids.values:
+            checks.append(
+                ValidationCheck(
+                    "modules:context-column",
+                    "failed",
+                    "every module row requires a local context file",
+                )
+            )
+        else:
+            checks.append(
+                ValidationCheck(
+                    "modules:context-column",
+                    "unresolved",
+                    f"Context column status: {contexts.status}",
+                )
+            )
 
     if sources.status == "ok" and row_repository_ids is not None:
         entries = list(zip(row_repository_ids, sources.values))
@@ -2805,6 +2858,7 @@ def validate_parent_reference(
     parent_type: str | None,
     item_id: str,
     parent_id: str | None,
+    known_items: dict[str, str] | None = None,
 ) -> tuple[str, ...]:
     """Return reasons a declared parent relationship is structurally invalid.
 
@@ -2818,6 +2872,18 @@ def validate_parent_reference(
     - a parent id must be a local slug or a Jira issue key;
     - an item must not declare itself as its own parent;
     - a declared parent id requires a declared parent type, and vice versa.
+
+    When `known_items` maps each id in this proposal to its declared type:
+
+    - a `parent_id` that is also a key must have that item's actual type
+      match `parent_type`;
+    - a well-formed local slug that is not a key is `"unknown local parent"`;
+    - a well-formed Jira issue key that is not a key is not a structural
+      failure here. The caller reports it as `"external"` evidence, the
+      same way `external_jira_dependencies` does for dependencies.
+
+    Omit `known_items` only when there is no proposal to look up against.
+    `plan_validate_proposal` always passes it.
 
     A user story or task with no declared parent at all is structurally
     valid: the methodology does not require every item to have a
@@ -2848,12 +2914,24 @@ def validate_parent_reference(
             reasons.append("a user story's parent must be an epic")
         elif item_type == "task" and parent_type not in {"user-story", "epic"}:
             reasons.append("a task's parent must be a user story or an epic")
+    parent_id_ok = True
     try:
         validate_plan_item_id(parent_id)  # type: ignore[arg-type]
     except ValueError:
         reasons.append(f"not a valid local id or Jira issue key: {parent_id!r}")
+        parent_id_ok = False
     if parent_id == item_id:
         reasons.append("an item must not declare itself as its own parent")
+    if known_items is not None and parent_id_ok and parent_id:
+        if parent_id in known_items:
+            actual = known_items[parent_id]
+            if parent_type and actual != parent_type:
+                reasons.append(
+                    f"declared parent type {parent_type!r} does not match "
+                    f"item {parent_id!r} of type {actual!r}"
+                )
+        elif not JIRA_ISSUE_KEY_PATTERN.fullmatch(parent_id):
+            reasons.append(f"unknown local parent: {parent_id!r}")
     return tuple(reasons)
 
 
@@ -3051,7 +3129,10 @@ def plan_validate_proposal(proposal: object) -> list[ValidationCheck]:
     - `"parent_type"` / `"parent_id"` (optional, both or neither): the
       declared parent's type and id. `parent_id` must itself be a local
       slug or a Jira issue key. An unsupported `parent_type` is a failed
-      check, not an exception.
+      check, not an exception. When `parent_id` is also an item in this
+      proposal, that item's actual type must match `parent_type`. A local
+      slug that is not an item fails. A Jira issue key that is not an
+      item is reported with status `"external"` and does not fail the run.
     - `"dependencies"` (optional): a list of strings. A missing key means
       no dependencies. A string is not a list, and it is not split into
       characters. A local slug that is not an item in this proposal fails.
@@ -3163,6 +3244,8 @@ def plan_validate_proposal(proposal: object) -> list[ValidationCheck]:
             checks.append(ValidationCheck(f"plan:item:{item['id']}:id", "failed", "duplicate item id"))
         seen_ids.add(item["id"])
 
+    known_items = {item["id"]: item["type"] for item in usable}
+
     for item in usable:
         item_id = item["id"]
         check_name = f"plan:item:{item_id}"
@@ -3177,7 +3260,11 @@ def plan_validate_proposal(proposal: object) -> list[ValidationCheck]:
             checks.append(ValidationCheck(f"{check_name}:id", "failed", str(error)))
         try:
             parent_reasons = validate_parent_reference(
-                item["type"], item["parent_type"], item_id, item["parent_id"]
+                item["type"],
+                item["parent_type"],
+                item_id,
+                item["parent_id"],
+                known_items,
             )
         except ValueError as error:
             checks.append(ValidationCheck(f"{check_name}:parent", "failed", str(error)))
@@ -3188,6 +3275,19 @@ def plan_validate_proposal(proposal: object) -> list[ValidationCheck]:
                 )
             else:
                 checks.append(ValidationCheck(f"{check_name}:parent", "passed", "structurally valid"))
+                parent_id = item["parent_id"]
+                if (
+                    isinstance(parent_id, str)
+                    and parent_id not in known_items
+                    and JIRA_ISSUE_KEY_PATTERN.fullmatch(parent_id)
+                ):
+                    checks.append(
+                        ValidationCheck(
+                            f"plan:external:{item_id}:parent",
+                            "external",
+                            f"external Jira parent {parent_id!r}; confirm it exists before publication",
+                        )
+                    )
         if not isinstance(item["status"], str) or item["status"] == "":
             checks.append(ValidationCheck(f"{check_name}:status", "failed", "status is required"))
 
@@ -3301,7 +3401,12 @@ def cli_validate(argv: list[str]) -> int:
     )
     parser.add_argument("--index-repository-id", default=None)
     parser.add_argument("--index-budget", type=int, default=150)
-    parser.add_argument("--module-budget", type=int, default=300)
+    parser.add_argument(
+        "--module-budget",
+        type=int,
+        default=300,
+        help="accepted for compatibility; not used. Module line count is not a validation result",
+    )
     args = parser.parse_args(argv)
 
     authorized_roots: dict[str, Path] = {}

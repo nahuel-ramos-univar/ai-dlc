@@ -2759,7 +2759,7 @@ def test_migration_outcome_reports_partial_without_implying_atomicity() -> None:
     try:
         migration_outcome(distributed, "retained")
     except ValueError as error:
-        assert "retained" in str(error)
+        assert "only valid when every" in str(error)
     else:
         raise AssertionError("distributed repositories cannot use disposition retained")
     try:

@@ -82,3 +82,10 @@ Legacy-coordinator migration (instruction behavior; not proved by the Python tes
 - [ ] Simulate one repository in a two-repository migration failing partway (for example, an unwritable module root) while the other succeeds. Confirm the report distinguishes the two outcomes per repository, does not roll back the repository that succeeded, and does not call the overall migration "complete."
 - [ ] Confirm a repository whose only legacy evidence is a name match (for example containing `aidlc`) with no plugin manifest, no operating-model evidence, and no shared-methodology marker is reported as unresolved, and that nothing is deleted or retired for it on that basis alone.
 - [ ] Confirm a repository classified as a shared methodology checkout is never offered retirement option A (migrate and delete) in this workflow, even if the user asks to delete it.
+
+Jira discovery during migration (instruction behavior; not proved by the Python tests):
+
+- [ ] Run a distributed migration where `## Context identities` already exists and `## Project references` does not. Confirm onboarding is still considered, and identity alone is not treated as a confirmed Jira project.
+- [ ] Place repeated ticket keys such as `CTY-321` in branch names, commits, or archived docs. Confirm the agent asks whether `CTY` is the Jira project and does not write it into `## Project references` before confirmation.
+- [ ] Use a ticket-key pattern when the Jira site and board are unknown. Confirm neither value is inferred or written.
+- [ ] Confirm the same Jira project across several repositories in one engagement. Confirm the agent asks once and reuses that confirmation, instead of asking the same question for every repository.

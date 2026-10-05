@@ -30,6 +30,13 @@ check for `## Project references` on its own merits, including during a
 legacy-coordinator migration where every repository being moved to
 distributed context may still be missing it.
 
+Check each repository's section independently, then ask once for the
+engagement. When the repositories in scope show the same confirmed Jira
+project, reuse that confirmation for the others. Do not ask the same
+question again for every repository. A ticket-key pattern is not permission
+to write the project, the site, or a board. A confirmed project key is not
+permission to invent a site or a board that nobody confirmed.
+
 Do not scan unrelated repositories, private files, secrets, or the whole workspace by default. Do not treat a remote URL as permission to reach it over the network.
 
 Label each item as one of: configured and verified, confirmed by the user but not verified, an observed convention that is not a team policy, missing, or conflicting. An existing config file does not prove its commands pass. A URL does not prove authenticated access. A repeated coding pattern is not a team policy.

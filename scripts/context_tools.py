@@ -536,6 +536,11 @@ def migration_outcome(
 ) -> str:
     """Combine repository results with coordinator retirement, without implying one transaction.
 
+    The input `coordinator_disposition` and the returned outcome are
+    different lists. `"pending"` is only a return value. `"retained"` and
+    `"blocked"` appear in both lists and do not mean the same thing in both
+    places.
+
     Each value in `repository_statuses` is one of:
 
     - `"distributed"` — this repository's migration was applied and

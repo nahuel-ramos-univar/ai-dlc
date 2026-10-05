@@ -68,10 +68,13 @@ and still have no confirmed `## Project references` section — a missing
 Jira site, project, or board is not resolved just because identity already
 exists. Check each repository's `## Project references` on its own merits
 per [project-onboarding.md](../../../../references/project-onboarding.md),
-including its guidance on treating a recurring ticket-key pattern (seen in
-file names, branches, or archived docs across the repositories in scope) as
-a discoverable signal worth asking about, not something to silently leave
-unconfirmed because the migration's own checklist did not mention it.
+then ask once for the engagement. Reuse a project reference the user
+already confirmed when the repositories in scope belong to that same
+project. Do not ask the identical question again for every repository. A
+recurring ticket-key pattern (seen in file names, branches, or archived
+docs) is a signal worth asking about. It is not a confirmed project, site,
+or board, and it must not be written into `## Project references` before
+the user confirms it.
 
 ## Inventory before classifying
 
@@ -405,8 +408,19 @@ Combine per-repository results with
 `migration_outcome(repository_statuses, coordinator_disposition)` in
 `scripts/context_tools.py`. Unknown repository states and unknown
 dispositions raise `ValueError`; they are not treated as a partial success.
-`coordinator_disposition` is `"completed"`, `"retained"`, `"deferred"`,
-`"blocked"`, `"unresolved"`, or `"not-applicable"`.
+`coordinator_disposition` and the value this function returns are two
+different lists. A word that appears in both does not mean the same thing
+in both places.
+
+Input, `coordinator_disposition`: `"completed"`, `"retained"`,
+`"deferred"`, `"blocked"`, `"unresolved"`, `"not-applicable"`.
+
+Output: `"complete"`, `"retained"`, `"pending"`, `"blocked"`, `"partial"`.
+
+`"pending"` is only an output. `"retained"` as an input means the
+adopted-coordinator architecture stays active. `"retained"` as an output
+means that choice is what the run reports. `"blocked"` is an input when
+deletion cannot proceed, and an output when the run must stop.
 
 - Every repository is `"distributed"` and the disposition is
   `"completed"` or `"not-applicable"` → `"complete"`. `"completed"` covers

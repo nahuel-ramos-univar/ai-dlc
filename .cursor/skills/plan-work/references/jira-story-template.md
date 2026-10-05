@@ -1,6 +1,6 @@
 # User Story description template
 
-Offer this once, on the first `plan-work` run for an engagement, before a User Story description is drafted for Jira. The Product Owner may accept it, edit the headings, or decline it.
+Offer the template only when preparing the Jira publication payload, after the product content has been drafted and reviewed. Do not offer it while the Product Owner is still answering product questions or while the story is being drafted. The Product Owner may accept it, edit the headings, or decline it.
 
 Record the decision in the artifact home `.ai-dlc-config.md`:
 
@@ -10,7 +10,7 @@ Record the decision in the artifact home `.ai-dlc-config.md`:
 - Source: `plugin-default`
 ```
 
-Use `approved`, `declined`, or `deferred`. Pass that decision to `bugbot_reprompt_allowed`. An approved shape is reused. A decline is not offered again unless the Product Owner asks to reconsider. A defer is not offered again in the same run.
+Use `approved`, `declined`, or `deferred`. Pass that decision to `decision_reprompt_allowed`. An approved shape is reused. A decline is not offered again unless the Product Owner asks to reconsider. A defer is not offered again in the same run.
 
 If the Product Owner edits the shape, show the edited template and wait for approval before writing it. Save the approved text at `aidlc-docs/planning-template.md` under the artifact home, and record `Source: aidlc-docs/planning-template.md` instead of `plugin-default`. Do not write an absolute local path.
 

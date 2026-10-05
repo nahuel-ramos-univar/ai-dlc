@@ -18,7 +18,7 @@ Propose:
 - assumptions and technical constraints, clearly labeled;
 - validation or testing expectations, where appropriate;
 - source or traceability: what evidence this item is based on;
-- duplicate candidates and rationale.
+- any obvious duplicate noticed incidentally while inspecting a candidate parent or an explicitly referenced issue. Do not run a standalone duplicate search.
 
 Do not invent behavior purely to make the acceptance criteria look complete; leave unresolved behavior as an explicit open question instead. Technical constraints should explain the impact in business language. Hand implementation details to `refine-story`.
 

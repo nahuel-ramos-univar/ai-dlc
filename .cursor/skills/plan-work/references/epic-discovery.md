@@ -9,6 +9,6 @@ When drafting a new User Story, find the right Epic to attach it to rather than 
 5. Report one of:
    - a strong match, with a short explanation of why it fits;
    - several plausible candidates, with the ambiguity stated so the Product Owner decides, not an arbitrary pick;
-   - no reasonable fit, with a recommendation to define a new Epic — help define it if the Product Owner wants to proceed, but do not create it without explicit approval.
+   - no reasonable fit: for a Story, recommend defining a new Epic; for a Task, recommend defining a new User Story when one genuinely applies, or a new Epic directly only when none does. Help define the recommended parent if the Product Owner wants to proceed, but do not create it without explicit approval.
 
-This step does not run a general semantic search for a duplicate Story. If an exact matching issue is already referenced by the user, or is found naturally while reading a candidate's existing scope, do not propose creating an obvious duplicate of it; that is this step's only duplicate-safety responsibility.
+This step does not run a general semantic search for a duplicate Story, and it does not run a standalone duplicate search. If an obvious duplicate is encountered incidentally while inspecting the candidate parent or an explicitly referenced issue, surface it and do not propose creating it.

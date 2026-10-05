@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import ipaddress
+import json
 import os
 import posixpath
 import re
@@ -140,18 +141,27 @@ def detect_repository_id_collision(
     return owner
 
 
-def bugbot_reprompt_allowed(decision: str, same_run: bool) -> bool:
-    """Decide whether a recorded Bugbot decision may be re-proposed now.
+def decision_reprompt_allowed(decision: str, same_run: bool) -> bool:
+    """Decide whether a recorded approve/decline/defer decision may be re-asked now.
 
-    `decision` is the value recorded under `## Bugbot decisions` in
-    `bugbot-configuration.md`: `"approved"`, `"declined"`, or `"deferred"`.
-    A `declined` decision is never re-proposed by this helper; only an
-    explicit user request to reconsider does that, and that request is a
-    separate action outside this function. A `deferred` decision is not
-    re-proposed within the same run, but may be re-proposed on a later run.
-    An `approved` decision needs no reprompt; apply the existing approval
-    instead of asking again. Any other value is treated as no decision on
-    record, so a prompt is allowed.
+    `decision` is one of `"approved"`, `"declined"`, or `"deferred"` -- the
+    shape this plugin already reuses for several unrelated decisions
+    recorded in `.ai-dlc-config.md`: Bugbot's `## Bugbot decisions`, a
+    distributed-context adoption choice, and `plan-work`'s `## Planning
+    template` offer. Any caller recording a decision in exactly this
+    three-value shape should call this function instead of inventing its
+    own reprompt rule, so the same-run and later-run behavior stays
+    identical everywhere it is used.
+
+    - `"declined"` is never re-proposed by this helper; only an explicit
+      user request to reconsider does that, and that request is a separate
+      action outside this function.
+    - `"deferred"` is not re-proposed within the same run, but may be
+      re-proposed on a later run.
+    - `"approved"` needs no reprompt; apply the existing approval instead
+      of asking again.
+    - Any other value, including no recorded decision at all, is treated
+      as "nothing decided yet," so a prompt is allowed.
     """
     if decision == "declined":
         return False
@@ -160,6 +170,19 @@ def bugbot_reprompt_allowed(decision: str, same_run: bool) -> bool:
     if decision == "approved":
         return False
     return True
+
+
+def bugbot_reprompt_allowed(decision: str, same_run: bool) -> bool:
+    """Decide whether a recorded Bugbot decision may be re-proposed now.
+
+    `decision` is the value recorded under `## Bugbot decisions` in
+    `bugbot-configuration.md`. This is `decision_reprompt_allowed` under
+    the name Bugbot call sites and tests already use; see that function
+    for the full rule. Kept as its own name so existing Bugbot callers do
+    not have to change, not because Bugbot follows a different rule than
+    any other `approved` / `declined` / `deferred` decision in this plugin.
+    """
+    return decision_reprompt_allowed(decision, same_run)
 
 
 def diff_module_sources(recorded: list[str], current: list[str]) -> dict[str, tuple[str, ...]]:
@@ -1996,10 +2019,14 @@ def parse_recorded_fingerprint(markdown_text: str) -> FingerprintField:
 class ValidationCheck:
     """One deterministic validation result.
 
-    `status` is one of "passed", "failed", "unresolved", or
-    "not_applicable". "unresolved" means the check could not be completed
-    (missing configuration, an inaccessible repository, or a parsing
-    failure) and must never be treated as passing.
+    `status` is one of "passed", "failed", "unresolved",
+    "not_applicable", or "external". "unresolved" means the check could
+    not be completed (missing configuration, an inaccessible repository,
+    or a parsing failure) and must never be treated as passing.
+    "external" is only for a well-formed Jira issue key that is not an
+    item in the proposal being validated. It is evidence the caller must
+    confirm, not a structural failure, and it does not by itself fail
+    the run.
     """
 
     name: str
@@ -2719,10 +2746,24 @@ def validate_generated_context(
 # decide whether a work item is semantically the right size, whether an
 # Epic is the correct parent, or how a Story should be written -- that
 # judgment stays in the skill's prose and the main chat's reasoning.
+#
+# `WORK_ITEM_TYPES` ("epic", "user-story", "task") is this plugin's own
+# conceptual planning model, not Jira's issue-type hierarchy. Standard Jira
+# places Story, Task, and Bug as peers directly under an Epic, with Subtask
+# under any of those three -- a Task does not take a Story as a Jira parent.
+# `validate_parent_reference` below validates only this plugin's own model;
+# it has no knowledge of a connected Jira site's real issue types, and
+# mapping a validated "task under user-story" relationship to an actual
+# Jira write is the skill's and `references/jira-integration.md`'s job,
+# not this module's. That mapping is a choice the Product Owner approves
+# (typically a Jira Subtask under the Story, or a Jira Task linked to the
+# Story). This module never turns a planning-model Task into a Subtask.
 
 WORK_ITEM_TYPES = frozenset({"epic", "user-story", "task"})
 
 PLAN_ITEM_ID_PATTERN = re.compile(r"^(?:[a-z0-9]+(?:-[a-z0-9]+)*|[A-Z][A-Z0-9]*-[0-9]+)$")
+
+JIRA_ISSUE_KEY_PATTERN = re.compile(r"^[A-Z][A-Z0-9]*-[0-9]+$")
 
 PLAN_ITEM_STATUSES = frozenset(
     {"drafted", "reviewed", "approved", "persisted", "blocked", "unavailable"}
@@ -2773,6 +2814,8 @@ def validate_parent_reference(
     - an epic must not declare a parent;
     - a user story's parent, when one is given, must be an epic;
     - a task's parent, when one is given, must be a user story or an epic;
+    - a parent type outside this planning model is a reason, not an exception;
+    - a parent id must be a local slug or a Jira issue key;
     - an item must not declare itself as its own parent;
     - a declared parent id requires a declared parent type, and vice versa.
 
@@ -2781,7 +2824,10 @@ def validate_parent_reference(
     recommended parent before it can be drafted. This never decides
     whether a specific Epic is the right Epic for a Story -- that is
     Product Owner judgment evaluated against real Jira evidence, not
-    something a type label alone can determine.
+    something a type label alone can determine. This also never checks
+    against a real Jira site's issue-type hierarchy, which this plugin's
+    own `"task"` under `"user-story"` relationship does not literally
+    match (see the module comment above `WORK_ITEM_TYPES`).
     """
     validate_work_item_type(item_type)
     has_parent_id = bool(parent_id)
@@ -2790,14 +2836,22 @@ def validate_parent_reference(
         return ("a declared parent requires both a parent type and a parent id",)
     if not has_parent_type:
         return ()
-    validate_work_item_type(parent_type)  # type: ignore[arg-type]
     reasons: list[str] = []
-    if item_type == "epic":
-        reasons.append("an epic must not declare a parent")
-    elif item_type == "user-story" and parent_type != "epic":
-        reasons.append("a user story's parent must be an epic")
-    elif item_type == "task" and parent_type not in {"user-story", "epic"}:
-        reasons.append("a task's parent must be a user story or an epic")
+    try:
+        validate_work_item_type(parent_type)  # type: ignore[arg-type]
+    except ValueError:
+        reasons.append(f"unsupported parent type: {parent_type!r}")
+    else:
+        if item_type == "epic":
+            reasons.append("an epic must not declare a parent")
+        elif item_type == "user-story" and parent_type != "epic":
+            reasons.append("a user story's parent must be an epic")
+        elif item_type == "task" and parent_type not in {"user-story", "epic"}:
+            reasons.append("a task's parent must be a user story or an epic")
+    try:
+        validate_plan_item_id(parent_id)  # type: ignore[arg-type]
+    except ValueError:
+        reasons.append(f"not a valid local id or Jira issue key: {parent_id!r}")
     if parent_id == item_id:
         reasons.append("an item must not declare itself as its own parent")
     return tuple(reasons)
@@ -2806,12 +2860,22 @@ def validate_parent_reference(
 def validate_dependency_graph(edges: dict[str, list[str]]) -> dict[str, tuple[str, ...]]:
     """Return per-item structural problems in a declared dependency graph.
 
-    `edges` maps each item's local id to the local ids it depends on. A
-    dependency id that is not also a key in `edges` is reported as
-    `"unknown dependency"` -- it may be a real external reference (an
-    existing Jira key this proposal never drafted), not necessarily an
-    error, so the caller decides what unknown means given its own
-    evidence. A dependency on the item's own id is always reported.
+    `edges` maps each item's local id to the local ids it depends on. Each
+    dependency id, and each item id, is checked against
+    `validate_plan_item_id` first; an id that is not a well-formed local
+    slug or Jira issue key is reported as `"not a valid local id or Jira
+    issue key"` and is not checked further as a dependency. A local slug
+    that is not also a key in `edges` is reported as `"unknown local
+    dependency"`: this proposal named an item it does not contain. A
+    well-formed Jira issue key that is not a key in `edges` is not a
+    structural problem here. It may be work that already exists in Jira.
+    `external_jira_dependencies` reports those keys separately, and the
+    caller confirms them with evidence instead of failing the graph. A
+    dependency on the item's own id is always reported. A dependency id
+    repeated more than once in the same item's list is reported as
+    `"duplicate dependency"` on its second and later occurrence;
+    repeating an edge is a structural proposal mistake even though it
+    never changes `topological_plan_order`'s result.
 
     Items with no problems are omitted from the result, so a caller can
     check `bool(result)` for "nothing to report."
@@ -2820,14 +2884,54 @@ def validate_dependency_graph(edges: dict[str, list[str]]) -> dict[str, tuple[st
     problems: dict[str, tuple[str, ...]] = {}
     for item_id, dependencies in edges.items():
         reasons: list[str] = []
+        try:
+            validate_plan_item_id(item_id)
+        except ValueError:
+            reasons.append(f"not a valid local id or Jira issue key: {item_id!r}")
+        seen: set[str] = set()
         for dependency_id in dependencies:
+            try:
+                validate_plan_item_id(dependency_id)
+            except ValueError:
+                reasons.append(
+                    f"not a valid local id or Jira issue key: {dependency_id!r}"
+                )
+                continue
             if dependency_id == item_id:
                 reasons.append(f"depends on itself: {dependency_id!r}")
-            elif dependency_id not in known:
-                reasons.append(f"unknown dependency: {dependency_id!r}")
+            elif dependency_id in seen:
+                reasons.append(f"duplicate dependency: {dependency_id!r}")
+            elif dependency_id not in known and not JIRA_ISSUE_KEY_PATTERN.fullmatch(
+                dependency_id
+            ):
+                reasons.append(f"unknown local dependency: {dependency_id!r}")
+            seen.add(dependency_id)
         if reasons:
             problems[item_id] = tuple(reasons)
     return problems
+
+
+def external_jira_dependencies(edges: dict[str, list[str]]) -> dict[str, tuple[str, ...]]:
+    """Return Jira issue keys each item depends on that are outside this proposal.
+
+    A key is external when it matches `JIRA_ISSUE_KEY_PATTERN` and is not
+    itself an item id in `edges`. These are not structural failures. The
+    caller confirms each key against Jira before publication. Malformed
+    ids, local slugs, self-dependencies, and duplicate edges are ignored
+    here; `validate_dependency_graph` reports those.
+    """
+    known = set(edges)
+    found: dict[str, list[str]] = {}
+    for item_id, dependencies in edges.items():
+        seen: set[str] = set()
+        for dependency_id in dependencies:
+            if dependency_id in seen or dependency_id == item_id or dependency_id in known:
+                seen.add(dependency_id)
+                continue
+            seen.add(dependency_id)
+            if JIRA_ISSUE_KEY_PATTERN.fullmatch(dependency_id):
+                found.setdefault(item_id, []).append(dependency_id)
+    return {item_id: tuple(keys) for item_id, keys in found.items()}
 
 
 def topological_plan_order(edges: dict[str, list[str]]) -> tuple[str, ...]:
@@ -2869,7 +2973,8 @@ def plan_outcome(item_statuses: dict[str, str]) -> str:
 
     Each value is one of: `"drafted"` (not yet reviewed), `"reviewed"`
     (independent review completed with no unresolved blocker), `"approved"`
-    (explicit publication approval given, not yet written), `"persisted"`
+    (the Product Owner approved the local plan, not yet written; this is
+    not Jira publication approval), `"persisted"`
     (the approved write happened and was re-read back), `"blocked"` (a
     blocking review finding or an approval boundary is unresolved), or
     `"unavailable"` (Jira or evidence needed for this item could not be
@@ -2917,15 +3022,242 @@ def jira_mutation_authorized(local_plan_approved: bool, jira_mutation_approved: 
     """Return whether a Jira write may proceed.
 
     Approving the local plan and approving a Jira mutation of that plan are
-    two distinct decisions; this function never derives the second from the
-    first. `local_plan_approved=True` with `jira_mutation_approved=False`
-    always returns `False`. A caller that already holds an explicit
-    `jira_mutation_approved` value does not strictly need this function --
-    it exists so that this specific boundary has one named, tested contract
-    instead of an inline boolean that a future edit could quietly collapse
-    into "local approval is enough."
+    two distinct decisions, and both are required; this function never
+    derives either one from the other and never substitutes for either.
+    `local_plan_approved=True` with `jira_mutation_approved=False` returns
+    `False` -- local approval alone never authorizes a Jira write.
+    `local_plan_approved=False` with `jira_mutation_approved=True` also
+    returns `False` -- a Jira mutation is never authorized for a plan that
+    was not itself approved locally, even if a mutation flag was somehow
+    set independently. Only `local_plan_approved=True` together with
+    `jira_mutation_approved=True` returns `True`. A caller that already
+    checks both values does not strictly need this function -- it exists
+    so that this specific boundary has one named, tested contract instead
+    of an inline boolean a future edit could quietly weaken to only one of
+    the two conditions.
     """
-    return bool(jira_mutation_approved)
+    return bool(local_plan_approved) and bool(jira_mutation_approved)
+
+
+def plan_validate_proposal(proposal: object) -> list[ValidationCheck]:
+    """Run every deterministic plan-work check against one staged proposal.
+
+    `proposal` must be a mapping with an `"items"` list. Each item must be
+    a mapping with:
+
+    - `"id"` (required): the item's local slug or Jira issue key. Ids are
+      unique within the proposal.
+    - `"type"` (required): `"epic"`, `"user-story"`, or `"task"`.
+    - `"parent_type"` / `"parent_id"` (optional, both or neither): the
+      declared parent's type and id. `parent_id` must itself be a local
+      slug or a Jira issue key. An unsupported `parent_type` is a failed
+      check, not an exception.
+    - `"dependencies"` (optional): a list of strings. A missing key means
+      no dependencies. A string is not a list, and it is not split into
+      characters. A local slug that is not an item in this proposal fails.
+      A Jira issue key that is not an item is reported with status
+      `"external"` and does not fail the run.
+    - `"status"` (required): one of `PLAN_ITEM_STATUSES`. An item with no
+      status fails. The combined outcome is never computed from the subset
+      of items that happened to include one.
+
+    A proposal that is not a mapping, an `items` value that is not a list,
+    or an item that is not a mapping becomes a failed or unresolved check.
+    This function does not raise for those shapes, and it does not raise
+    for an unsupported parent type.
+
+    This is read-only: it never writes the proposal anywhere and never
+    contacts Jira. It checks only structure. It never decides whether an
+    Epic or Story is the right one.
+
+    Run this after a proposal is drafted and before requesting independent
+    `product-reviewer` review (workflow step 7 in `plan-work`'s
+    `SKILL.md`), so a structural mistake is caught before it reaches
+    review or a Jira write, not after.
+    """
+    checks: list[ValidationCheck] = []
+    if not isinstance(proposal, dict):
+        checks.append(ValidationCheck("plan:proposal", "failed", "proposal must be a JSON object"))
+        return checks
+    raw_items = proposal.get("items")
+    if raw_items is None:
+        checks.append(ValidationCheck("plan:items", "unresolved", "proposal has no items"))
+        return checks
+    if not isinstance(raw_items, list):
+        checks.append(ValidationCheck("plan:items", "failed", "items must be a list"))
+        return checks
+    if not raw_items:
+        checks.append(ValidationCheck("plan:items", "unresolved", "proposal has no items"))
+        return checks
+
+    usable: list[dict] = []
+    shape_broken = False
+    for index, raw in enumerate(raw_items):
+        if not isinstance(raw, dict):
+            checks.append(ValidationCheck(f"plan:item:{index}", "failed", "item must be an object"))
+            shape_broken = True
+            continue
+        item_id = raw.get("id")
+        if not isinstance(item_id, str) or not item_id:
+            checks.append(
+                ValidationCheck(f"plan:item:{index}:id", "failed", "id must be a non-empty string")
+            )
+            shape_broken = True
+            continue
+        item_type = raw.get("type")
+        if not isinstance(item_type, str):
+            checks.append(ValidationCheck(f"plan:item:{item_id}:type", "failed", "type must be a string"))
+            shape_broken = True
+            continue
+        if "dependencies" in raw and raw["dependencies"] is not None:
+            dependencies = raw["dependencies"]
+            if not isinstance(dependencies, list) or not all(isinstance(item, str) for item in dependencies):
+                checks.append(
+                    ValidationCheck(
+                        f"plan:item:{item_id}:dependencies",
+                        "failed",
+                        "dependencies must be a list of strings",
+                    )
+                )
+                shape_broken = True
+                continue
+        else:
+            dependencies = []
+        status = raw.get("status") if "status" in raw else None
+        if "status" in raw and not isinstance(status, str):
+            checks.append(
+                ValidationCheck(f"plan:item:{item_id}:status", "failed", "status must be a string")
+            )
+            shape_broken = True
+            continue
+        parent_type = raw.get("parent_type")
+        parent_id = raw.get("parent_id")
+        if parent_type is not None and not isinstance(parent_type, str):
+            checks.append(
+                ValidationCheck(f"plan:item:{item_id}:parent", "failed", "parent_type must be a string")
+            )
+            shape_broken = True
+            continue
+        if parent_id is not None and not isinstance(parent_id, str):
+            checks.append(
+                ValidationCheck(f"plan:item:{item_id}:parent", "failed", "parent_id must be a string")
+            )
+            shape_broken = True
+            continue
+        usable.append(
+            {
+                "id": item_id,
+                "type": item_type,
+                "parent_type": parent_type,
+                "parent_id": parent_id,
+                "dependencies": list(dependencies),
+                "status": status,
+            }
+        )
+
+    seen_ids: set[str] = set()
+    duplicate_ids: list[str] = []
+    for item in usable:
+        if item["id"] in seen_ids:
+            duplicate_ids.append(item["id"])
+            checks.append(ValidationCheck(f"plan:item:{item['id']}:id", "failed", "duplicate item id"))
+        seen_ids.add(item["id"])
+
+    for item in usable:
+        item_id = item["id"]
+        check_name = f"plan:item:{item_id}"
+        try:
+            validate_work_item_type(item["type"])
+        except ValueError as error:
+            checks.append(ValidationCheck(f"{check_name}:type", "failed", str(error)))
+            continue
+        try:
+            validate_plan_item_id(item_id)
+        except ValueError as error:
+            checks.append(ValidationCheck(f"{check_name}:id", "failed", str(error)))
+        try:
+            parent_reasons = validate_parent_reference(
+                item["type"], item["parent_type"], item_id, item["parent_id"]
+            )
+        except ValueError as error:
+            checks.append(ValidationCheck(f"{check_name}:parent", "failed", str(error)))
+        else:
+            if parent_reasons:
+                checks.append(
+                    ValidationCheck(f"{check_name}:parent", "failed", "; ".join(parent_reasons))
+                )
+            else:
+                checks.append(ValidationCheck(f"{check_name}:parent", "passed", "structurally valid"))
+        if not isinstance(item["status"], str) or item["status"] == "":
+            checks.append(ValidationCheck(f"{check_name}:status", "failed", "status is required"))
+
+    if shape_broken or duplicate_ids:
+        checks.append(
+            ValidationCheck(
+                "plan:dependencies",
+                "unresolved",
+                "skipped because the proposal is not a usable graph",
+            )
+        )
+        checks.append(
+            ValidationCheck(
+                "plan:order",
+                "unresolved",
+                "skipped because the proposal is not a usable graph",
+            )
+        )
+        checks.append(
+            ValidationCheck(
+                "plan:outcome",
+                "failed" if duplicate_ids else "unresolved",
+                "duplicate item id" if duplicate_ids else "skipped because the proposal is not a usable graph",
+            )
+        )
+        return checks
+
+    edges = {item["id"]: item["dependencies"] for item in usable}
+    missing_status = [item["id"] for item in usable if not isinstance(item["status"], str) or item["status"] == ""]
+    dependency_problems = validate_dependency_graph(edges)
+    if dependency_problems:
+        for item_id, reasons in dependency_problems.items():
+            checks.append(
+                ValidationCheck(f"plan:dependencies:{item_id}", "failed", "; ".join(reasons))
+            )
+    else:
+        checks.append(ValidationCheck("plan:dependencies", "passed", "no structural problems"))
+    for item_id, keys in external_jira_dependencies(edges).items():
+        listed = ", ".join(repr(key) for key in keys)
+        checks.append(
+            ValidationCheck(
+                f"plan:external:{item_id}",
+                "external",
+                f"external Jira dependency {listed}; confirm it exists before publication",
+            )
+        )
+
+    try:
+        order = topological_plan_order(edges)
+        checks.append(ValidationCheck("plan:order", "passed", "order: " + ", ".join(order)))
+    except ValueError as error:
+        checks.append(ValidationCheck("plan:order", "failed", str(error)))
+
+    if missing_status:
+        checks.append(
+            ValidationCheck(
+                "plan:outcome",
+                "failed",
+                "missing status: " + ", ".join(missing_status),
+            )
+        )
+    else:
+        statuses = {item["id"]: item["status"] for item in usable}
+        try:
+            outcome = plan_outcome(statuses)
+            checks.append(ValidationCheck("plan:outcome", "passed", f"outcome: {outcome}"))
+        except ValueError as error:
+            checks.append(ValidationCheck("plan:outcome", "failed", str(error)))
+
+    return checks
 
 
 def cli_validate(argv: list[str]) -> int:
@@ -3013,8 +3345,70 @@ def cli_validate(argv: list[str]) -> int:
     return 0
 
 
+def cli_plan_validate(argv: list[str]) -> int:
+    """Command-line entry point: `context_tools.py plan-validate ...`.
+
+    Run from the plugin's own installation against a staged `plan-work`
+    proposal, before requesting independent review. Pass `-` to read the
+    proposal JSON from stdin, or pass a temporary file path that is not
+    inside the consumer repository. Do not write that file into the
+    consumer repository.
+
+    The JSON shape is documented on `plan_validate_proposal`. This never
+    writes to Jira or to the proposal file. Invalid input becomes a
+    failed or unresolved check. It does not print a traceback.
+
+    Exit code 1 means at least one check failed. That takes precedence
+    over an unresolved check. An `external` check does not change the
+    exit code. Exit code 2 means no check failed, but at least one is
+    unresolved, or the input could not be read as JSON. Exit code 0
+    means every check passed or was external. An incomplete run never
+    returns 0.
+    """
+    parser = argparse.ArgumentParser(prog="context_tools.py plan-validate")
+    parser.add_argument(
+        "proposal_path",
+        help="path to proposal JSON, or - to read stdin",
+    )
+    args = parser.parse_args(argv)
+
+    try:
+        if args.proposal_path == "-":
+            raw_text = sys.stdin.read()
+            source = "stdin"
+        else:
+            raw_text = Path(args.proposal_path).read_text(encoding="utf-8")
+            source = args.proposal_path
+        proposal = json.loads(raw_text)
+    except OSError as error:
+        print(f"error: cannot read proposal file {args.proposal_path}: {error}", file=sys.stderr)
+        return 2
+    except json.JSONDecodeError as error:
+        print(f"error: {source} is not valid JSON: {error}", file=sys.stderr)
+        return 2
+
+    try:
+        checks = plan_validate_proposal(proposal)
+    except Exception as error:
+        print(f"{'failed':14} {'plan:proposal':40} validator error: {error}")
+        return 1
+    failed = [c for c in checks if c.status == "failed"]
+    unresolved = [c for c in checks if c.status == "unresolved"]
+    for check in checks:
+        print(f"{check.status:14} {check.name:40} {check.detail}")
+
+    if failed:
+        return 1
+    if unresolved:
+        return 2
+    return 0
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "validate":
         raise SystemExit(cli_validate(sys.argv[2:]))
+    if len(sys.argv) > 1 and sys.argv[1] == "plan-validate":
+        raise SystemExit(cli_plan_validate(sys.argv[2:]))
     print("usage: context_tools.py validate <index-path> --root ID=PATH [...]", file=sys.stderr)
+    print("       context_tools.py plan-validate <proposal.json|->", file=sys.stderr)
     raise SystemExit(2)

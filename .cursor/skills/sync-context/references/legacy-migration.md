@@ -204,7 +204,7 @@ exactly three options:
 
 Call `retirement_decision_pending(recorded_decision, same_run)` in
 `scripts/context_tools.py` to decide whether to ask again, mirroring the
-existing `bugbot_reprompt_allowed` reprompt pattern:
+existing `decision_reprompt_allowed` reprompt pattern:
 
 - No recorded decision (`None`) → always ask.
 - A recorded `"defer"` → do not re-ask within the same run

@@ -418,6 +418,9 @@ def test_plan_work_contract_has_required_language() -> None:
     )
     story_template_flat = " ".join(story_template.split())
     reviewer = " ".join((ROOT / "agents" / "product-reviewer.md").read_text(encoding="utf-8").split())
+    jira = " ".join(
+        (ROOT / "references" / "jira-integration.md").read_text(encoding="utf-8").split()
+    )
 
     # Section 1/17: Epic, User Story, Task, Sprint Backlog hierarchy; Sprint
     # Backlog is a collection, not a fourth parent level.
@@ -469,23 +472,57 @@ def test_plan_work_contract_has_required_language() -> None:
     # criteria stay out of the description body.
     assert "jira-story-template.md" in skill
     assert "## Planning template" in skill
-    assert "bugbot_reprompt_allowed" in skill
+    assert "decision_reprompt_allowed" in skill
     assert "Do not copy them into the description" in skill
+    # Section 8 / review finding: the Jira format question is a publication
+    # step, not a drafting-time competitor to the Product Owner's questions.
+    assert "Apply this when preparing a User Story's Jira write payload, not earlier" in skill
+
+    # Review finding: plan-work must not force sync-context before any
+    # business-only planning, and must not run a proactive duplicate search.
+    assert "business-only planning" in skill
+    assert "Search Jira for an obvious exact duplicate" not in skill
+    assert "does not mean stop drafting" in skill
+    assert "hand off to `/sync-context` instead of rediscovering" not in skill
+    assert "Do not run a standalone duplicate search" in skill
+    assert "Search for duplicate work before proposing a new issue" not in update_existing
+    assert "duplicate-search boundaries" not in task
+
+    # Review finding: deterministic validators must be wired into a real,
+    # runnable step, resolved from this skill, not from the consumer repo.
+    assert "plan_validate_proposal" in skill
+    assert "plan-validate" in skill
+    assert "../../../scripts/context_tools.py" in skill
+    assert "Do not create `proposal.json` inside the consumer repository" in skill
+
+    # Review finding: this plugin's Epic/User-Story/Task model is not Jira's
+    # real issue-type hierarchy. A Task that supports a Story is not silently
+    # published as a Subtask.
+    assert "not Jira's issue-type hierarchy" in skill
+    assert "Do not silently change a Task into a Subtask" in skill
+    assert "Do not silently change a Task into a Subtask" in jira
+    assert "normally Jira's Subtask" not in jira
+
+    # The local-plan approval flag is a named state, distinct from review
+    # and from Jira publication approval.
+    assert "local_plan_approved" in skill
+    assert "jira_mutation_approved" in skill
+    assert "Offer the template only when preparing the Jira publication payload" in story_template_flat
+    assert "before a User Story description is drafted" not in story_template_flat
     assert "Author the description in Markdown" in story_template_flat
     assert "Acceptance criteria are not part of the description" in story_template_flat
     assert "#### 📋 Description" in story_template
     assert "h4." not in story_template
     assert "|| Question ||" not in story_template
-    jira = " ".join(
-        (ROOT / "references" / "jira-integration.md").read_text(encoding="utf-8").split()
-    )
     assert "Do not hand-write Jira wiki markup" in jira
     assert "write acceptance criteria only in that field" in jira
 
-    # Closing review is a Canvas when the host can open one, including for
-    # Cursor agents that must fall back to the same sections in chat.
+    # Closing review uses the host Canvas capability when available, with an
+    # equivalent chat fallback when the host cannot open one -- never a
+    # hardcoded claim about which hosts can or cannot open a Canvas.
     assert "canvas-review.md" in skill
-    assert "Cursor agents cannot open a Canvas today" in skill
+    assert "use the host Canvas capability when available" in skill
+    assert "Cursor agents cannot open a Canvas today" not in skill
 
 
 def test_canvas_review_is_the_closing_view() -> None:
@@ -500,9 +537,10 @@ def test_canvas_review_is_the_closing_view() -> None:
     assert "sync-context-result.canvas.tsx" in canvas
     assert "plan-work-result.canvas.tsx" in canvas
     assert "not a second source of truth" in canvas
-    assert "Cursor agents cannot open a Canvas today" in canvas
-    assert "no relevant changes still shows this closing result" in canvas
-    assert "genuinely improves review" not in sync
+    assert "Cursor agents cannot open a Canvas today" not in canvas
+    assert "illustrative, descriptive, kebab-case name, not a required literal filename" in canvas
+    assert "genuinely benefits from a visual, interactive, or structured view" in canvas
+    assert "do not open or refresh a Canvas just to report that nothing changed" in canvas
     assert "Stage 7 is still shown" in sync
     assert "canvas-review.md" in sync
 

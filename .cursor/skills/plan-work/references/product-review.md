@@ -2,7 +2,7 @@
 
 The product owner owns the draft. A draft becomes **ready for review** when the product owner finishes refining scope, exclusions, and acceptance criteria.
 
-Before requesting publication approval, the main chat must request an independent `product-reviewer` assessment through a supported agent facility. Give the reviewer the draft version, affected work, scoped context, duplicate candidates, and duplicate-search limits. The reviewer returns evidence-based blocking findings, optional improvements, open questions, and a readiness recommendation.
+Before requesting publication approval, the main chat must request an independent `product-reviewer` assessment through a supported agent facility. Give the reviewer the draft version, affected work, scoped context, the deterministic validation result, and any obvious duplicate noticed in passing while reading a candidate parent Epic — this skill does not run a dedicated duplicate search, so there are no search limits to report. The reviewer returns evidence-based blocking findings, optional improvements, open questions, and a readiness recommendation.
 
 The main chat records review as completed, unavailable, or pending. If independent delegation is unavailable, keep the requirement visible. A named human review or policy-permitted exception may satisfy it; otherwise publication stays blocked while drafting can continue.
 

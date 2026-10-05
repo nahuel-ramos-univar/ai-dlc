@@ -20,6 +20,9 @@ from context_tools import (  # noqa: E402
     classify_markdown_target,
     classify_repository_role,
     classify_repository_scope,
+    cli_plan_validate,
+    decision_reprompt_allowed,
+    external_jira_dependencies,
     diff_module_sources,
     find_live_section,
     cli_validate,
@@ -38,6 +41,7 @@ from context_tools import (  # noqa: E402
     repository_is_named_coordinator,
     normalize_remote,
     parse_project_references,
+    plan_validate_proposal,
     proposal_is_current,
     relocate_workspace_folder_path,
     resolve_placement,
@@ -3307,8 +3311,34 @@ def test_validate_dependency_graph_detects_self_and_unknown_dependencies() -> No
     assert "cancel-order" not in problems  # no problems: omitted, not an empty tuple
     assert any("depends on itself" in reason for reason in problems["self-dependency-check"])
 
-    unknown = validate_dependency_graph({"cancel-order": ["CTY-999-not-loaded"]})
-    assert unknown["cancel-order"] == ("unknown dependency: 'CTY-999-not-loaded'",)
+    # A well-formed Jira key that is not an item in this proposal is not a
+    # structural failure. A local slug that is missing from the proposal is.
+    external = validate_dependency_graph({"cancel-order": ["CTY-999"]})
+    assert "cancel-order" not in external
+    assert external_jira_dependencies({"cancel-order": ["CTY-999"]})["cancel-order"] == ("CTY-999",)
+    local_unknown = validate_dependency_graph({"cancel-order": ["missing-story"]})
+    assert local_unknown["cancel-order"] == ("unknown local dependency: 'missing-story'",)
+
+
+def test_validate_dependency_graph_detects_duplicate_and_malformed_edges() -> None:
+    # Review finding: a repeated edge in one item's dependency list was
+    # previously invisible -- {"a": ["b", "b"], "b": []} used to return {}.
+    duplicate = validate_dependency_graph({"a": ["b", "b"], "b": []})
+    assert duplicate == {"a": ("duplicate dependency: 'b'",)}
+
+    # A malformed id -- neither this plugin's local slug shape nor a real
+    # Jira issue key shape -- is reported instead of silently accepted as
+    # an "unknown dependency".
+    malformed = validate_dependency_graph({"cancel-order": ["not a valid id!"]})
+    assert malformed["cancel-order"] == (
+        "not a valid local id or Jira issue key: 'not a valid id!'",
+    )
+
+    # A malformed item id (the dict key itself) is reported too.
+    malformed_key = validate_dependency_graph({"Not Valid": []})
+    assert malformed_key["Not Valid"] == (
+        "not a valid local id or Jira issue key: 'Not Valid'",
+    )
 
 
 def test_topological_plan_order_orders_dependencies_before_dependents_and_raises_on_cycle() -> None:
@@ -3351,13 +3381,254 @@ def test_plan_outcome_combines_item_statuses_without_implying_atomicity() -> Non
         pass
 
 
-def test_jira_mutation_authorized_never_derives_from_local_plan_approval() -> None:
-    # Approving the local plan must never be mistaken for Jira
-    # authorization: only an explicit jira_mutation_approved=True allows it.
+def test_jira_mutation_authorized_requires_both_local_and_jira_approval() -> None:
+    # Review finding: the previous implementation ignored
+    # local_plan_approved entirely (`return bool(jira_mutation_approved)`),
+    # so a plan that was never locally approved could still "authorize" a
+    # Jira write. Both approvals are now required.
     assert jira_mutation_authorized(local_plan_approved=True, jira_mutation_approved=False) is False
-    assert jira_mutation_authorized(local_plan_approved=False, jira_mutation_approved=True) is True
+    assert jira_mutation_authorized(local_plan_approved=False, jira_mutation_approved=True) is False
     assert jira_mutation_authorized(local_plan_approved=True, jira_mutation_approved=True) is True
     assert jira_mutation_authorized(local_plan_approved=False, jira_mutation_approved=False) is False
+
+
+def test_decision_reprompt_allowed_same_shape_as_bugbot_reprompt() -> None:
+    # decision_reprompt_allowed is the generic contract; bugbot_reprompt_allowed
+    # is kept as a thin, same-behavior alias for existing Bugbot call sites.
+    for decision, same_run in (
+        ("declined", True),
+        ("declined", False),
+        ("deferred", True),
+        ("deferred", False),
+        ("approved", True),
+        ("approved", False),
+        ("", False),
+        ("unknown", False),
+    ):
+        assert decision_reprompt_allowed(decision, same_run) == bugbot_reprompt_allowed(
+            decision, same_run
+        )
+    assert decision_reprompt_allowed("deferred", same_run=False) is True
+    assert decision_reprompt_allowed("deferred", same_run=True) is False
+    assert decision_reprompt_allowed("declined", same_run=False) is False
+    assert decision_reprompt_allowed("approved", same_run=False) is False
+    assert decision_reprompt_allowed("", same_run=False) is True
+
+
+def test_plan_validate_proposal_runs_every_deterministic_check() -> None:
+    valid = plan_validate_proposal(
+        {
+            "items": [
+                {
+                    "id": "cancel-order",
+                    "type": "user-story",
+                    "parent_type": "epic",
+                    "parent_id": "CTY-100",
+                    "status": "reviewed",
+                    "dependencies": ["payment-refund-task"],
+                },
+                {
+                    "id": "payment-refund-task",
+                    "type": "task",
+                    "parent_type": "user-story",
+                    "parent_id": "cancel-order",
+                    "status": "reviewed",
+                    "dependencies": [],
+                },
+            ]
+        }
+    )
+    assert all(check.status == "passed" for check in valid)
+    outcome_checks = [c for c in valid if c.name == "plan:outcome"]
+    assert outcome_checks and "outcome: reviewed" in outcome_checks[0].detail
+    order_checks = [c for c in valid if c.name == "plan:order"]
+    assert order_checks and "payment-refund-task" in order_checks[0].detail
+
+    # A structurally broken proposal (bad parent, duplicate edge, no status
+    # anywhere) is reported as failed/unresolved, not silently passed.
+    broken = plan_validate_proposal(
+        {
+            "items": [
+                {"id": "a", "type": "task", "parent_type": "task", "parent_id": "b"},
+                {"id": "b", "type": "task", "dependencies": ["a", "a"]},
+            ]
+        }
+    )
+    statuses = {check.status for check in broken}
+    assert "failed" in statuses
+
+    empty = plan_validate_proposal({"items": []})
+    assert len(empty) == 1
+    assert empty[0].name == "plan:items"
+    assert empty[0].status == "unresolved"
+    assert empty[0].detail == "proposal has no items"
+
+
+def test_plan_validate_proposal_fail_closed_on_reported_shape_bugs() -> None:
+    # A persisted sibling must not make a plan with a status-less item look ready.
+    mixed = plan_validate_proposal(
+        {
+            "items": [
+                {"id": "a", "type": "epic", "status": "persisted"},
+                {"id": "b", "type": "epic"},
+            ]
+        }
+    )
+    outcome = next(check for check in mixed if check.name == "plan:outcome")
+    assert outcome.status == "failed"
+    assert "ready" not in outcome.detail
+    assert any(check.name == "plan:item:b:status" and check.status == "failed" for check in mixed)
+
+    # Duplicate ids must fail. They must not collapse to one passed item.
+    duplicates = plan_validate_proposal(
+        {
+            "items": [
+                {"id": "a", "type": "epic", "status": "drafted"},
+                {"id": "a", "type": "epic", "status": "persisted", "dependencies": ["a"]},
+            ]
+        }
+    )
+    assert any(check.status == "failed" and check.detail == "duplicate item id" for check in duplicates)
+    assert not any(
+        check.name == "plan:outcome" and check.status == "passed" and "ready" in check.detail
+        for check in duplicates
+    )
+
+    # An unsupported parent type is a failed check, not a traceback.
+    try:
+        unsupported = plan_validate_proposal(
+            {
+                "items": [
+                    {
+                        "id": "a",
+                        "type": "task",
+                        "parent_type": "subtask",
+                        "parent_id": "b",
+                        "status": "drafted",
+                    }
+                ]
+            }
+        )
+    except ValueError as error:
+        raise AssertionError(f"validator raised instead of failing closed: {error}") from error
+    assert any("unsupported parent type: 'subtask'" in check.detail for check in unsupported)
+
+    # A parent id that is not a slug or a Jira key fails the parent check.
+    bad_parent_id = plan_validate_proposal(
+        {
+            "items": [
+                {
+                    "id": "a",
+                    "type": "task",
+                    "parent_type": "epic",
+                    "parent_id": "this is not a valid id",
+                    "status": "drafted",
+                }
+            ]
+        }
+    )
+    assert any(
+        check.name == "plan:item:a:parent"
+        and check.status == "failed"
+        and "not a valid local id or Jira issue key" in check.detail
+        for check in bad_parent_id
+    )
+
+    # An external Jira key is evidence to confirm, not a structural failure.
+    external = plan_validate_proposal(
+        {
+            "items": [
+                {
+                    "id": "cancel-order",
+                    "type": "user-story",
+                    "status": "drafted",
+                    "dependencies": ["CTY-100"],
+                }
+            ]
+        }
+    )
+    assert all(check.status != "failed" for check in external)
+    assert any(
+        check.status == "external" and "CTY-100" in check.detail for check in external
+    )
+
+    # The proposal root, each item, and dependencies are shape-checked
+    # before any semantic validator can misread them.
+    assert plan_validate_proposal([])[0].detail == "proposal must be a JSON object"
+    hello = plan_validate_proposal({"items": ["hello"]})
+    assert any(check.detail == "item must be an object" for check in hello)
+    split_dependency = plan_validate_proposal(
+        {
+            "items": [
+                {
+                    "id": "a",
+                    "type": "epic",
+                    "status": "drafted",
+                    "dependencies": "CTY-100",
+                }
+            ]
+        }
+    )
+    assert any(check.detail == "dependencies must be a list of strings" for check in split_dependency)
+    assert "'C'" not in " ".join(check.detail for check in split_dependency)
+
+
+def test_cli_plan_validate_exit_codes_match_check_results() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        temp_path = Path(temp)
+        passing = temp_path / "passing.json"
+        passing.write_text(
+            '{"items": [{"id": "a", "type": "epic", "status": "persisted"}]}',
+            encoding="utf-8",
+        )
+        assert cli_plan_validate([str(passing)]) == 0
+
+        failing = temp_path / "failing.json"
+        failing.write_text(
+            '{"items": [{"id": "a", "type": "epic", "parent_type": "epic", '
+            '"parent_id": "b"}]}',
+            encoding="utf-8",
+        )
+        assert cli_plan_validate([str(failing)]) == 1
+
+        unresolved = temp_path / "unresolved.json"
+        unresolved.write_text('{"items": []}', encoding="utf-8")
+        assert cli_plan_validate([str(unresolved)]) == 2
+
+        missing = temp_path / "does-not-exist.json"
+        assert cli_plan_validate([str(missing)]) == 2
+
+        external = temp_path / "external.json"
+        external.write_text(
+            '{"items": [{"id": "cancel-order", "type": "user-story", '
+            '"status": "drafted", "dependencies": ["CTY-100"]}]}',
+            encoding="utf-8",
+        )
+        assert cli_plan_validate([str(external)]) == 0
+
+    script = ROOT / "scripts" / "context_tools.py"
+    stdin_result = subprocess.run(
+        [sys.executable, str(script), "plan-validate", "-"],
+        input='{"items": [{"id": "a", "type": "epic", "status": "persisted"}]}\n',
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert stdin_result.returncode == 0, stdin_result.stderr
+
+    crash_result = subprocess.run(
+        [sys.executable, str(script), "plan-validate", "-"],
+        input=(
+            '{"items": [{"id": "a", "type": "task", "parent_type": "subtask", '
+            '"parent_id": "b", "status": "drafted"}]}\n'
+        ),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert crash_result.returncode == 1
+    assert "Traceback" not in crash_result.stdout
+    assert "Traceback" not in crash_result.stderr
 
 
 if __name__ == "__main__":
@@ -3501,9 +3772,14 @@ if __name__ == "__main__":
         test_validate_plan_item_id_accepts_slug_and_jira_key_rejects_sentence,
         test_validate_parent_reference_hierarchy_rules,
         test_validate_dependency_graph_detects_self_and_unknown_dependencies,
+        test_validate_dependency_graph_detects_duplicate_and_malformed_edges,
         test_topological_plan_order_orders_dependencies_before_dependents_and_raises_on_cycle,
         test_plan_outcome_combines_item_statuses_without_implying_atomicity,
-        test_jira_mutation_authorized_never_derives_from_local_plan_approval,
+        test_jira_mutation_authorized_requires_both_local_and_jira_approval,
+        test_decision_reprompt_allowed_same_shape_as_bugbot_reprompt,
+        test_plan_validate_proposal_runs_every_deterministic_check,
+        test_plan_validate_proposal_fail_closed_on_reported_shape_bugs,
+        test_cli_plan_validate_exit_codes_match_check_results,
     ]
     for test in tests:
         test()

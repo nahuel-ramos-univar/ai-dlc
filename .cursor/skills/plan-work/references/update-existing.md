@@ -8,4 +8,4 @@ Show changes as a field-level diff:
 - proposed value;
 - reason and supporting evidence.
 
-Search for duplicate work before proposing a new issue. If a prior partial write is possible, identify the existing record by key and content before retrying.
+Do not run a standalone duplicate search. If an obvious duplicate is encountered incidentally while reading the current issue or an explicitly referenced issue, surface it. If a prior partial write is possible, identify the existing record by key and content before retrying. That re-read is write recovery, not a duplicate search.

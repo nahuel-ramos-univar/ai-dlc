@@ -413,6 +413,10 @@ def test_plan_work_contract_has_required_language() -> None:
     sprint_backlog = flat("references/sprint-backlog.md")
     update_existing = flat("references/update-existing.md")
     product_review = flat("references/product-review.md")
+    story_template = (plan_dir / "references" / "jira-story-template.md").read_text(
+        encoding="utf-8"
+    )
+    story_template_flat = " ".join(story_template.split())
     reviewer = " ".join((ROOT / "agents" / "product-reviewer.md").read_text(encoding="utf-8").split())
 
     # Section 1/17: Epic, User Story, Task, Sprint Backlog hierarchy; Sprint
@@ -461,6 +465,47 @@ def test_plan_work_contract_has_required_language() -> None:
     # Section 9: local plan approval never implies Jira mutation approval.
     assert "is never, by itself, approval to mutate Jira" in skill
 
+    # Story description template: Markdown, offered once, acceptance
+    # criteria stay out of the description body.
+    assert "jira-story-template.md" in skill
+    assert "## Planning template" in skill
+    assert "bugbot_reprompt_allowed" in skill
+    assert "Do not copy them into the description" in skill
+    assert "Author the description in Markdown" in story_template_flat
+    assert "Acceptance criteria are not part of the description" in story_template_flat
+    assert "#### 📋 Description" in story_template
+    assert "h4." not in story_template
+    assert "|| Question ||" not in story_template
+    jira = " ".join(
+        (ROOT / "references" / "jira-integration.md").read_text(encoding="utf-8").split()
+    )
+    assert "Do not hand-write Jira wiki markup" in jira
+    assert "write acceptance criteria only in that field" in jira
+
+    # Closing review is a Canvas when the host can open one, including for
+    # Cursor agents that must fall back to the same sections in chat.
+    assert "canvas-review.md" in skill
+    assert "Cursor agents cannot open a Canvas today" in skill
+
+
+def test_canvas_review_is_the_closing_view() -> None:
+    canvas = " ".join(
+        (ROOT / "references" / "canvas-review.md").read_text(encoding="utf-8").split()
+    )
+    sync = " ".join(
+        (ROOT / ".cursor" / "skills" / "sync-context" / "SKILL.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    assert "sync-context-result.canvas.tsx" in canvas
+    assert "plan-work-result.canvas.tsx" in canvas
+    assert "not a second source of truth" in canvas
+    assert "Cursor agents cannot open a Canvas today" in canvas
+    assert "no relevant changes still shows this closing result" in canvas
+    assert "genuinely improves review" not in sync
+    assert "Stage 7 is still shown" in sync
+    assert "canvas-review.md" in sync
+
 
 def test_manual_evaluation_and_shared_contracts_exist() -> None:
     assert (ROOT / "MANUAL_EVALUATION.md").is_file()
@@ -493,6 +538,7 @@ if __name__ == "__main__":
         test_release_workflow_files_exist,
         test_project_onboarding_is_conditionally_referenced,
         test_plan_work_contract_has_required_language,
+        test_canvas_review_is_the_closing_view,
         test_manual_evaluation_and_shared_contracts_exist,
     ]
     for test in tests:

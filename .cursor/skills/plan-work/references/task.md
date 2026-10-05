@@ -16,4 +16,4 @@ Propose:
 - validation expectations;
 - open questions.
 
-A Task does not require all three hierarchy levels above it. Keep the Jira mutation and duplicate-search boundaries defined in the main skill workflow.
+A Task does not require all three hierarchy levels above it. Do not publish a Task with the User Story description template. Keep the Jira mutation and duplicate-search boundaries defined in the main skill workflow.

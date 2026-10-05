@@ -17,4 +17,4 @@ Propose:
 - risks;
 - open questions.
 
-An initial set of likely Stories under this Epic may be proposed as candidates only, clearly labeled as not committed. Label ordering and dependency assumptions as proposals. Do not create issues until the user approves the exact Epic and Story payloads.
+An initial set of likely Stories under this Epic may be proposed as candidates only, clearly labeled as not committed. Label ordering and dependency assumptions as proposals. Do not publish an Epic with the User Story description template. Do not create issues until the user approves the exact Epic and Story payloads.

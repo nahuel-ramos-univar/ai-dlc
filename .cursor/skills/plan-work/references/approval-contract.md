@@ -3,6 +3,7 @@
 Before any external write, present the exact target and material changes:
 
 - Jira project, issue key, fields, links, comments, or newly created records;
+- description and acceptance criteria as separate fields when the issue type has an acceptance-criteria field;
 - Git branch and files for an optional intent PR;
 - duplicate check and any tool-documented idempotency behavior;
 - known partial-failure recovery behavior.

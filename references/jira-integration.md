@@ -16,6 +16,8 @@ Classify Jira results precisely:
 
 For reads, retrieve only the current issue fields and relationships needed for the workflow. For duplicate search, report the query limits. If Jira is unavailable, say that the search was unavailable; never report that no duplicates exist.
 
-Before a write, show the exact creation or update payload. Preserve unrelated fields. Re-read relevant fields before applying an approved update. If concurrent edits materially change the approved payload, show the revised diff and seek approval again.
+Before a write, show the exact creation or update payload. Author description and other rich-text fields as Markdown. Do not hand-write Jira wiki markup. The Atlassian MCP converts Markdown on write, and wiki input is stored as literal text or escaped markers. When the issue type has an acceptance-criteria field, write acceptance criteria only in that field. Discover the field from the issue type. Do not hardcode a custom field id, and do not also place those criteria in the description.
+
+Preserve unrelated fields. Re-read relevant fields before applying an approved update. If concurrent edits materially change the approved payload, show the revised diff and seek approval again.
 
 After an uncertain or partial write, read the target before retrying. Do not claim idempotency unless the available tool documents it. If a creation may have succeeded but no reliable record can be identified, stop and report the ambiguity. Confirmed writes must report their issue key and URL. Keep disconnected operations pending and resume them without restarting the intake.

@@ -75,8 +75,8 @@ evidence is not a successful no-op.
 
 - `"unavailable"` — no usable prior fingerprint. This is first-time
   generation or an incompatible baseline, not "no relevant changes."
-- `"unchanged"` — the source documents in change set A need no rewrite, no
-  Canvas, and no approval. This covers only `content_fingerprint`'s source
+- `"unchanged"` — the source documents in change set A need no rewrite and
+  no approval. The closing result is still shown. This covers only `content_fingerprint`'s source
   inputs; it says nothing about a pending `## Project references` update,
   which is also part of change set A but never enters that fingerprint
   (see below). Still evaluate pending work in set B (Bugbot and project

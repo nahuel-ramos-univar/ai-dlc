@@ -24,6 +24,11 @@ Accept natural language plus optional Jira key or URL and repository URL. Infer 
 ## Prerequisites
 Read current repository context. If it is missing or stale, provide a `/sync-context` handoff before proceeding; do not claim that it ran automatically. For existing work, read the current issue, linked work, and relevant implementation before proposing changes. Use the Jira integration contract to retrieve Jira data. If it is unavailable, request the issue content or produce a clearly labeled local-only proposal.
 
+## Story description template
+On the first `plan-work` run for an engagement, if `.ai-dlc-config.md` has no `## Planning template` decision, offer [jira-story-template.md](references/jira-story-template.md) before drafting a User Story description. The Product Owner may accept it, edit the headings, or decline it. Call `bugbot_reprompt_allowed` with the recorded decision so a later run reuses an approval and does not ask again after a decline or an in-run defer.
+
+The template is the description only. Acceptance criteria go in the issue type's acceptance-criteria field when Jira exposes one. Discover that field from the issue type. Do not hardcode a custom field id. If the field is missing, keep the criteria in the local proposal and say the Jira field was not found. Do not copy them into the description unless the Product Owner explicitly chooses that exception for this write.
+
 ## Workflow
 1. Classify the request's planning level from the user's words and explain the classification in one sentence.
 2. Ask only the small number of Product Owner questions that materially improve this specific item, drawn from what the request, synchronized context, and Jira evidence do not already answer. Do not ask a generic questionnaire, and do not re-ask something already supplied.
@@ -46,9 +51,9 @@ Act as a Product Owner planning the sprint, not drafting one isolated item. Dist
 Planning is dry-run by default. Canvas edits do not authorize external writes. Reviewer findings never replace PO approval. A Jira write must name the project, issue key or creation fields, issue links, and comments. Retry partial approved writes idempotently by reading the target record before retrying.
 
 ## Final review
-Show the proposed item or backlog, acceptance criteria, Epic relationship, dependencies, assumptions, open questions, Jira parent recommendation, reviewer findings, and any change already applied from review. If this workspace supports Canvas, reuse its established conventions for this review; Canvas must never become a second source of truth. Otherwise present the same review in chat.
+Show the ready-for-review draft, and the result after an approved write, with the shared [canvas review](../../../references/canvas-review.md). Cursor agents cannot open a Canvas today; the same sections then go in chat, and the reply says Canvas is unavailable. Include the proposed item or backlog, acceptance criteria, Epic relationship, dependencies, assumptions, open questions, Jira parent recommendation, reviewer findings, and any change already applied from review.
 
 ## Outputs
 Return the route, evidence sources, editable proposal, approval-ready Jira payload or update diff, assumptions, and unresolved questions. Do not create Story mirrors, empty subtasks, capacity commitments, sprint IDs, or priorities.
 
-Read only the routed reference, [epic-discovery.md](references/epic-discovery.md), [product-review.md](references/product-review.md), [approval-contract.md](references/approval-contract.md), [Jira integration](../../../references/jira-integration.md), and [skill composition](../../../references/skill-composition.md).
+Read only the routed reference, [jira-story-template.md](references/jira-story-template.md), [epic-discovery.md](references/epic-discovery.md), [product-review.md](references/product-review.md), [approval-contract.md](references/approval-contract.md), [canvas review](../../../references/canvas-review.md), [Jira integration](../../../references/jira-integration.md), and [skill composition](../../../references/skill-composition.md).

@@ -66,7 +66,8 @@ Delivery stays a developer step, not a skill. After validation says the change i
 - **Context:** `/sync-context` runs discover → detect changes → propose →
   validate/review → approve → apply → report. When nothing relevant changed
   since the last recorded fingerprint, it stops after detection: no file
-  rewrite, no Canvas, no approval prompt. Otherwise it stages a proposal
+  rewrite and no approval prompt. The closing result is still shown.
+  Otherwise it stages a proposal
   (affected module, evidence inspected, proposed diff) before writing
   anything, resolves placement as distributed-by-default or an
   explicitly-adopted coordinator, writes one short index under
@@ -87,7 +88,7 @@ Delivery stays a developer step, not a skill. After validation says the change i
 - **Git and delivery:** Skills may inspect the local Git root, branch, and diff. They do not commit, push, open a pull request, or merge. The developer does that delivery with normal tools after validation.
 - **Provider checks:** Remote checks and approvals are observed only when a verified provider integration shows them. `validate-change` records that evidence. It does not merge.
 - **Agents:** The plugin defines reviewer prompts, but does not expose a dispatch API. The main chat uses host-supported independent delegation when available. A host general-purpose subagent may receive a bounded reviewer prompt when named plugin-agent dispatch is unavailable; that is reported as general-purpose review, not native agent dispatch. Otherwise review remains visibly pending or requires a named human review or policy-permitted exception.
-- **Canvas and Bugbot:** Canvas has structured-chat fallback. Bugbot requires user invocation through `/review-bugbot`; its presence in chat does not prove it ran.
+- **Canvas and Bugbot:** `/sync-context` and `/plan-work` close in a Canvas when the host can open one. The Canvas is a view of the same proposal and written files, not a second copy. Cursor agents cannot open a Canvas today, so those runs use the same sections in chat and say Canvas is unavailable. Bugbot requires user invocation through `/review-bugbot`; its presence in chat does not prove it ran.
 
 The main chat drafts planning and refinement. Independent agents are used only for review or bounded implementation: `product-reviewer`, `refinement-reviewer`, `implementer`, `implementation-reviewer`, `validator`, and `context-reviewer`. `context-reviewer` checks generated or updated repository context against current source for `sync-context`; it does not replace deterministic validation and a clean result covers only the scope it reviewed. Reviewer agents declare `readonly: true`; Cursor must recognize that setting in the installed host for write restrictions to be enforced. This plugin does not provide an agent orchestration API.
 

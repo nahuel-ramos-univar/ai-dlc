@@ -21,3 +21,5 @@ Propose:
 - duplicate candidates and rationale.
 
 Do not invent behavior purely to make the acceptance criteria look complete; leave unresolved behavior as an explicit open question instead. Technical constraints should explain the impact in business language. Hand implementation details to `refine-story`.
+
+When a Jira description is needed, fill the approved shape in [jira-story-template.md](jira-story-template.md). Keep acceptance criteria out of that description.

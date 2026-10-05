@@ -109,8 +109,9 @@ evidence supports it. See [incremental-refresh.md](references/incremental-refres
 
 **If every affected scope classifies `unchanged` and there is no unresolved
 evidence gap, the source-document part of change set A needs no rewrite.**
-Do not rewrite any document, do not create a Canvas or report file for that
-part, and do not update a timestamp merely to show activity. An unchanged
+Do not rewrite any document and do not open an approval proposal for that
+part. Do not update a timestamp merely to show activity. The closing result
+in Stage 7 is still shown. An unchanged
 source fingerprint is not the whole of change set A, though: a pending,
 user-requested `## Project references` update (switching the configured
 Jira board, for example) is also part of set A, and it stays reachable even
@@ -166,16 +167,7 @@ evidence just gathered, and whether legacy migration items are present
 (change set C, [legacy-migration.md](references/legacy-migration.md)). Each
 set is prepared independently; none is bundled into set A's content.
 
-If the host supports an interactive Canvas for reviewing the proposal, use
-it when it genuinely improves review; otherwise present a clear table and
-diff in chat. Do not claim writing a `.tsx` file guarantees an interactive
-panel, and never let a Canvas become a second source of truth — reconcile
-any edit made there back into the proposal object before Stage 4. For a
-migration proposal specifically, the readable before/after content the
-Canvas (or its chat-section fallback) must show is detailed in
-[legacy-migration.md](references/legacy-migration.md), "Reviewing a
-migration in Canvas" — reuse these same conventions rather than inventing a
-separate presentation for migration.
+Show the proposal with the shared [canvas review](../../../references/canvas-review.md). Reconcile any edit made there back into the proposal object before Stage 4. For a migration proposal, the readable before/after content is detailed in [legacy-migration.md](references/legacy-migration.md), "Reviewing a migration in Canvas".
 
 ### 4. Validate and review
 Run deterministic validation through `validate_generated_context` in
@@ -250,7 +242,7 @@ separate step, after every precondition in that reference's "Checkout
 deletion preconditions" passes for that exact, named target.
 
 ### 7. Report
-Validate final outputs after writing. Summarize changes by repository.
+Close the run in the shared [canvas review](../../../references/canvas-review.md). Refresh it from the files just written when a write happened. Validate final outputs after writing. Summarize changes by repository.
 Report a partial failure clearly rather than folding it into an overall
 "done." State the outcome plainly: first-time generation, relevant updates
 applied, no relevant changes, partial verification, or blocked. If change
@@ -326,6 +318,7 @@ Read [artifact-home.md](references/artifact-home.md),
 [project-rules.md](references/project-rules.md),
 [legacy-migration.md](references/legacy-migration.md),
 [repository preflight](../../../references/repository-preflight.md),
+[canvas review](../../../references/canvas-review.md),
 [skill composition](../../../references/skill-composition.md), and
 [Jira integration](../../../references/jira-integration.md) for the required
 evidence shape.

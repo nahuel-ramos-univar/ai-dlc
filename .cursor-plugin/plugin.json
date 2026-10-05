@@ -1,6 +1,6 @@
 {
   "name": "simplified-ai-dlc-lifecycle",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "description": "A compact AI-DLC lifecycle for context, planning, scaffolding, refinement, implementation, validation, and end-to-end tests.",
   "keywords": [
     "ai-dlc",

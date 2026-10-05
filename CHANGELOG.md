@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.6.0 — 2026-10-05
+
+Bump: `minor`
+Compare: [v0.5.2...v0.6.0](https://github.com/nahuel-ramos-univar/ai-dlc/compare/v0.5.2...v0.6.0)
+
+### Added
+
+- feat: preserve architectural discovery in generated module context ([`4bdc51b`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/4bdc51bb43e1abda4a84026352051f749300c233))
+- feat: close planning and context runs in a canvas, with a story template ([`3c4379c`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/3c4379cd61758855622a1dc2eae416052d414e1e))
+- feat: turn plan-work into a Product Owner planning skill ([`87d3ce7`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/87d3ce7007c40fdd541bbf69e6bf487bf79066d0))
+
+### Fixed
+
+- fix: require a module-context envelope and honest review fallback ([`7b322d3`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/7b322d3ab5826c19420581f4572bf89369d67362))
+- fix: fail closed on plan validation and align plan-work contracts ([`e085c14`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/e085c14bb9e0c7681c6f5c5fa8350752c358d6ee))
+
+### Other
+
+- Merge pull request #10 from nahuel-ramos-univar/CTY-303 ([`4088dfb`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/4088dfb0c09e6edf00f5bd1ea1f408d0893efeae))
+
 ## 0.5.2 — 2026-10-05
 
 Bump: `patch`

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.2 — 2026-10-05
+
+Bump: `patch`
+Compare: [v0.5.1...v0.5.2](https://github.com/nahuel-ramos-univar/ai-dlc/compare/v0.5.1...v0.5.2)
+
+### Fixed
+
+- fix: reuse one Jira confirmation across a migration and keep debug output out of the report ([`edc4c17`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/edc4c17d99b899449ff5d84d7570b709d2d3f36d))
+- fix: reject pending as a migration disposition and surface missing Jira during migration ([`eb0c1de`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/eb0c1de108edde547f6264f6210dcdce788218bc))
+
+### Other
+
+- Merge pull request #9 from nahuel-ramos-univar/CTY-321-improvements ([`32bd875`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/32bd875412270abfda3543c6f0be59c97f05fc1d))
+
 ## 0.5.1 — 2026-10-02
 
 Bump: `patch`

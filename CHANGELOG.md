@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.6.2 — 2026-10-06
+
+Bump: `patch`
+Compare: [v0.6.1...v0.6.2](https://github.com/nahuel-ramos-univar/ai-dlc/compare/v0.6.1...v0.6.2)
+
+### Fixed
+
+- fix: propose distributed migration for a known legacy AI-DLC install ([`942f263`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/942f2632fb1fdc141aa94ae9e1436f5ff598da43))
+
+### Other
+
+- Merge pull request #12 from nahuel-ramos-univar/CTY-311-sync-context-review ([`e85e7a0`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/e85e7a0965be16e01b1044006588e1bf430b5c96))
+
 ## 0.6.1 — 2026-10-06
 
 Bump: `patch`

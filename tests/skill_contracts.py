@@ -731,6 +731,38 @@ def test_manual_evaluation_covers_context_quality_scenarios() -> None:
         assert hardening in manual
 
 
+def test_legacy_aidlc_migration_contract_is_specific() -> None:
+    legacy = " ".join(
+        (ROOT / ".cursor/skills/sync-context/references/legacy-migration.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    skill = (ROOT / ".cursor/skills/sync-context/SKILL.md").read_text(encoding="utf-8")
+    manual = (ROOT / "MANUAL_EVALUATION.md").read_text(encoding="utf-8")
+    for phrase in (
+        "Known legacy AI-DLC installation",
+        "This detection does not classify repository role.",
+        "detect_legacy_aidlc_installation",
+        "resolve_legacy_provenance",
+        "legacy_architecture_prompt_required",
+        "legacy_supporting_evidence",
+        "legacy_inventory_fingerprint",
+        "legacy_inventory_needs_approval",
+        "legacy_baseline_comparison",
+        "inspection-unavailable",
+        "historical_content_blocks_checkout_deletion",
+        "classify_legacy_ci_workflow",
+        "legacy_standard_file_treatment",
+        "retain-active-coordinator",
+        "does not publish to Jira",
+        "not a copy of the global map",
+        "If Jira cannot be inspected, report that verification as unavailable",
+    ):
+        assert phrase in legacy
+    assert "Known legacy AI-DLC installation" in skill
+    assert "The Python helpers do not execute this skill." in manual
+
+
 def test_manual_evaluation_and_shared_contracts_exist() -> None:
     assert (ROOT / "MANUAL_EVALUATION.md").is_file()
     for filename in (
@@ -765,6 +797,7 @@ if __name__ == "__main__":
         test_plan_work_contract_has_required_language,
         test_canvas_review_is_the_closing_view,
         test_manual_evaluation_covers_context_quality_scenarios,
+        test_legacy_aidlc_migration_contract_is_specific,
         test_manual_evaluation_and_shared_contracts_exist,
     ]
     for test in tests:

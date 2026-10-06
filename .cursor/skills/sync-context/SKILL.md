@@ -29,6 +29,17 @@ authorizes deleting a real checkout, changing a remote repository, or
 migrating the currently open engagement on its own — see
 [legacy-migration.md](references/legacy-migration.md).
 
+A confirmed legacy AI-DLC installation starts that same proposal without
+waiting for those phrases. Call `detect_legacy_aidlc_installation` and
+`resolve_legacy_provenance`. `"full"` is confirmed. `"partial"`, and
+`"absent"` when `legacy_supporting_evidence` is true, stay `"inspect"`
+until bounded inspection confirms provenance, rules the match out, or
+reports `"inspection-unavailable"`. Marker absence alone is not a verified
+absence and does not authorize deletion. A persisted
+`Placement: adopted-coordinator` is not the user's architectural choice.
+See [legacy-migration.md](references/legacy-migration.md),
+"Known legacy AI-DLC installation".
+
 ## Evidence contract
 Use local Git for the repository revision, branch, tracked changes, and direct file history. Run repository preflight before choosing a repository scope. When a Jira key or URL is supplied, follow the Jira integration contract. Never treat unavailable Jira data as evidence or silently substitute a guessed issue.
 

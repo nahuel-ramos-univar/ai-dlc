@@ -17,8 +17,187 @@ pipeline in [SKILL.md](../SKILL.md), applied to both sets in the same run,
 with the usual independent approval per set.
 
 **This reference describes a generic migration path for any engagement.**
-No project name, repository name, or prior engagement is hardcoded into this
-behavior; every example repository name below is illustrative.
+No product or repository name is hardcoded into this behavior; every example
+repository name below is illustrative. The one concrete installation this
+path recognizes is the legacy digital-ai-dlc framework, by the instruction
+markers below. Recognizing it selects the distributed proposal and the
+standard-file treatments in this file. It does not add a skill, a second
+pipeline, or a new archive format.
+
+## Known legacy AI-DLC installation
+
+Detect the installation with `detect_legacy_aidlc_installation` in
+`scripts/context_tools.py`. The caller passes evidence it actually read:
+
+- the full text of `.ai-dlc-project-type`, or nothing when the file is
+  missing — only a stripped `brownfield` or `greenfield` counts;
+- whether `prompts/discovery/prompt_01_codebase_discovery.md` exists;
+- whether `.cursor/rules/aidlc-context.mdc` exists.
+
+`"full"` means all three count. `"absent"` means none count. `"partial"`
+means some count. Discovery output is not a marker. A valid installation
+may never have run discovery, and a missing discovery prompt does not prove
+discovery never ran. Removed prompts or rules also do not prove the
+installation is gone: an operating-model table, discovery documents,
+framework scripts, or historical `aidlc-docs` outputs can remain.
+
+Pass the detection to `resolve_legacy_provenance`. Call
+`legacy_supporting_evidence` first. A directory name, an Operating Model
+heading whose rows were not read, or a discovery path whose document was
+not read does not set that flag and does not confirm provenance. Read
+framework content does.
+
+`"full"` is `"confirmed"`. `"partial"`, or `"absent"` with supporting
+evidence, returns `"inspect"` until the bounded inspection passes
+`"confirmed"`, `"ruled-out"`, or `"unavailable"`.
+`"inspection-unavailable"` means the inspection did not finish. It is not
+a verified absence, and it does not propose migration. `"absent"` without
+supporting evidence means there is nothing further to inspect. Do not keep
+inspecting, and do not propose migration. `"inspect"` authorizes neither
+the migration proposal nor any deletion. Detection and provenance do not
+classify repository role.
+
+This detection does not classify repository role. Call
+`classify_repository_role` separately. A shared methodology checkout and a
+product coordination repository can both carry these markers. They do not
+get the same permission to modify or delete. A shared methodology checkout
+remains ineligible for local checkout deletion.
+
+When provenance is `"confirmed"`, call
+`legacy_architecture_prompt_required`. Do not pass
+`Placement: adopted-coordinator` and do not pass a checkout disposition.
+If it returns true, prepare the distributed proposal in this same pipeline.
+The operating-model table is source evidence for which repositories and
+settings exist. It does not authorize adopting the coordinator as the new
+destination.
+
+Three decisions stay separate, and an older one does not approve a newer
+inventory:
+
+1. **Architecture.** `"migrate-distributed"` moves context to each product
+   repository. `"retain-active-coordinator"` keeps the coordinator active.
+   `"defer"` asks again on a later run, not twice in this run. Record
+   `"retain-active-coordinator"` only for that explicit choice. Do not pass
+   it to `retirement_decision_pending`.
+2. **Checkout disposition.** Options A, B, and C below.
+   `"retire-and-retain-checkout"` keeps the checkout as a historical copy.
+   It does not keep the coordinator active, and it does not approve files.
+3. **This run's file set.** Build it with `legacy_inventory_fingerprint`:
+   repository id, repository-relative path, action (`create`, `update`,
+   `move`, `delete`, or `preserve`), destination when the action is
+   `move`, and `before` / `after` content hashes or the literal `missing`.
+   Do not put absolute machine paths or file contents in that value.
+   Pass the result to `legacy_inventory_needs_approval` with `same_run`.
+   `"approved"` applies only to that exact fingerprint in the current run.
+   An earlier run's match returns `"needs-approval"`. An empty inventory
+   returns `"not-applicable"`: the second run is a no-op because nothing
+   needs writing, not because an old approval authorizes new writes.
+   `"retain-active-coordinator"` and `"defer"` are also
+   `"not-applicable"`. An unknown architecture raises. A checkout
+   disposition raises. `"approved"` still does not write: immediately
+   before each write, call `proposal_is_current` for that destination.
+   Do not persist a run-state file to remember this approval.
+
+Jira is the target source of truth for Epics, features, Stories, acceptance
+criteria, development refinement, QA refinement, and subtasks. This plugin
+does not generate per-story Markdown mirrors, mandatory implementation
+reports, sprint summaries, or run-state files to reproduce that workflow.
+`plan-work` and `refine-story` are still being developed. `sync-context`
+does not publish to Jira and does not migrate historical tickets into Jira.
+
+### Standard-file treatment
+
+The treatments below are guidance for an unmodified shipped file. A known
+path is not authorization to delete it. Compare the installed file with
+`legacy_baseline_comparison` against an identifiable revision of the legacy
+framework, or a verified original template already read in this run. Do not
+assume today's upstream copy is the version that was installed. Do not
+clone a repository just to obtain that baseline, and do not hardcode a
+local checkout path. A missing baseline is `"unavailable"`, never
+`"unchanged"`.
+
+Pass that comparison to `legacy_standard_file_treatment`. `"unchanged"`
+uses the table. `"differs"` keeps a `"preserve"` file until a review
+explicitly chooses another treatment. Any other difference, and any
+unavailable baseline, stays `"unresolved"` until `reviewed_treatment`
+records that bounded review and its rationale. One unresolved file does
+not block preparing distributed context for the engagement. A workspace
+`"reconcile"` moves the file; deleting the old copy is a separate
+inventory action after the replacement is verified. Customized
+requirements, rules, and independent executable controls stay until that
+review.
+
+| Standard file | Standard treatment | What that means |
+|---|---|---|
+| `prompts/discovery/prompt_01_codebase_discovery.md` and the other discovery prompts | Replace | `sync-context` covers repository context. Contrast discovery output with current code when writing that context. Do not copy the reports in unchanged. |
+| `prompts/design_stories/prompt_01_define_feature.md`, `prompt_01b_document_existing_feature.md`, `prompt_02_generate_stories.md`, `prompt_03_change_request.md` | Replace | `plan-work` is the intended replacement. It is still being developed. Do not implement Jira publishing here, and do not keep generating the Markdown those prompts wrote. |
+| `prompts/implementation/application/prompt_01_implement_story.md` | Replace | `implement-change`. |
+| `prompts/implementation/application/prompt_02_verify_story.md` | Replace | `validate-change`. Delivery (commit, push, pull request) stays with the developer. This plugin does not do that step. |
+| `prompts/defect_fixes/prompt_00_defect_create.md`, `prompt_01_defect_investigate.md`, `prompt_02_defect_fix.md` | Replace | `implement-change` Defect mode, then `validate-change`. The absence of a skill named for defects is not a missing capability. |
+| `prompts/implementation/testing/prompt_02_e2e_scaffold.md`, `prompt_04_e2e_test_implementation.md` | Replace | `create-e2e-tests`. |
+| `.cursor/rules/aidlc-define-feature.mdc`, `aidlc-generate-stories.mdc`, `aidlc-change-request.mdc`, `aidlc-document-existing-feature.mdc`, `aidlc-implement-story.mdc`, `aidlc-verify-story.mdc`, `aidlc-create-defect.mdc`, `aidlc-investigate-defect.mdc`, `aidlc-fix-defect.mdc` | Replace | The skill named on the matching prompt row. A customized rule is `"unresolved"` until the diff is reviewed. |
+| `prompts/sprint_summary/` and the requirement to write per-story implementation reports, sprint summaries, and run-state files | Retire | This simplification is intentional. Those Markdown generators are not a missing feature of this plugin. |
+| `.ai-dlc-project-type`, `aidlc-docs/.aidlc-run-state.md`, `aidlc-docs/.aidlc-run-state-history/` | Retire | Framework mechanism, after the approved migration has written its destinations. Not product knowledge. |
+| `aidlc-docs/prerequisites/templates/` (`user_story_template.md`, `jira_config.md`, `requirements.md`, and the other shipped templates) and `scripts/aidlc_*.sh` | Retire for the unmodified shipped file | A customized template or script is `"unresolved"` until the diff is reviewed. A script can still be a live control. State the existing limitation: an installed Git hook is per machine and is not verified by deleting the script from the repository. |
+| `*.code-workspace` | Reconcile | Migrate it. Preserve settings. Recalculate paths. Remove the original only after the replacement is verified. |
+| `aidlc-docs/discovery/output/{repo}/` technical profiles and `aidlc-docs/discovery/output/integration_map.md` | Reconcile | Evidence for current technical context. Each product repository gets its own `aidlc-docs/integration-map.md` containing the verified relationships that repository participates in, not a copy of the global map. |
+| `.ai-dlc-config.md` operating model, stack, testing, and design-source sections | Reconcile | Identity, sibling relationships, and technical settings move into each product repository's own config. Do not recreate the operating-model table. |
+| `aidlc-docs/design_stories/adrs/`, other architecture decision records | Preserve | Durable decisions stay in their own records. Link them when a module context needs them. Do not paste them into `AIDLC_CONTEXT.md`. |
+| `aidlc-docs/shipped_features/`, story reports, implementation plans, completion reports, `STREAM_SUMMARY_*.md`, `aidlc-docs/audit.md` | Preserve the information, do not auto-copy the corpus | See "Generators and historical outputs" below. |
+
+`.cursor/commands/` files that only launch a prompt named above take that
+prompt's treatment. A command or rule whose behavior is not one of those
+rows is `"unresolved"` until it is read.
+
+`AIDLC_CONTEXT.md` describes the repository or module and verified technical
+context. It is not a backlog, a Story mirror, or a sprint tracker.
+
+### Generators and historical outputs
+
+Retiring a generator does not dispose of the documents it already wrote.
+Those documents may hold a requirement, a decision, evidence, or unresolved
+work that exists nowhere else.
+
+Before proposing to drop a historical document, determine whether that
+information already exists in Jira or in another confirmed recoverable
+location. If Jira cannot be inspected, report that verification as
+unavailable. Do not treat an unavailable check as a clean result.
+
+Do not copy the historical corpus into the product repositories, do not
+turn it into `AIDLC_CONTEXT.md`, and do not publish it to Jira. Propose
+preservation, or one explicit destination, only where the content is unique
+and still needed. Do not create a new mandatory archive or historical-report
+system.
+
+Call `historical_content_blocks_checkout_deletion` for the checkout. An
+unresolved historical document blocks deletion of its only recoverable copy.
+It does not block preparing the new distributed context. Report context
+migration and legacy retirement as separate outcomes.
+
+### Legacy CI workflows
+
+Call `classify_legacy_ci_workflow` for each workflow after reading what it
+enforces. A missing workflow of the same name in this plugin is not a
+classification.
+
+- `"retire"` — the workflow only enforces Markdown artifacts this migration
+  retires. That retirement can be proposed.
+- `"review-control"` — the workflow enforces security, tests, or branch
+  protection, whether or not it also checks those Markdown artifacts.
+  Preserve it, replace the control, or present removal of the control as
+  its own decision.
+- `"inspect"` — the behavior is not established yet. Leave the workflow in
+  place.
+
+### Workspace references to the framework being replaced
+
+When the approved proposal relocates or updates a workspace file, remove
+folder entries that exist only to open the legacy framework: the product
+coordination repository being retired from the active workspace, and a
+shared methodology checkout referenced as that framework. This edit is part
+of the workspace change. It is not approval to delete the shared methodology
+checkout. Keep every other setting. Validate the recalculated paths before
+removing the old workspace file.
 
 ## Classify repository role before classifying components
 

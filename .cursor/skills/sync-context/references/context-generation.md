@@ -96,7 +96,10 @@ callers or dependencies, verified tests and commands, constraints, a
 coverage table against the dimensions in
 [architecture-discovery.md](architecture-discovery.md), material
 architecture details for the dimensions that actually matter, a canonical
-evidence catalog, freshness, and explicit unknowns. The Coverage table is
+evidence catalog, freshness, and explicit unknowns. It is verified
+technical context for that module. It is not a backlog, a Story mirror, or
+a sprint tracker. Durable architectural decisions stay in their own records
+and are linked when a module needs them. The Coverage table is
 a summary of what was considered; `## Material architecture details`
 preserves the discovered knowledge a downstream agent needs. `## Evidence
 and existing docs` is the canonical catalog of repository-relative local
@@ -161,7 +164,10 @@ Refresh only modules affected by changed paths, requested scope, or stale
 evidence. Preserve human-authored sections. If a safe merge is unclear, show a
 targeted diff. Current code and contracts override a stale summary. Create
 `integration-map.md` only for verified cross-module or cross-repository
-dependencies. Link existing ADRs when relevant; never invent one.
+dependencies. When a legacy solution-wide integration map is migrated, each
+repository's file includes only the verified relationships that repository
+participates in, not a copy of the whole map. Link existing ADRs when
+relevant; never invent one.
 
 Use [context-templates.md](context-templates.md) for generated structure and
 size budgets. Generated sections may refresh in place. Preserve human-authored

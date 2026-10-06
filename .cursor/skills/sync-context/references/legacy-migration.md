@@ -286,6 +286,28 @@ any reason is present. There is no default that skips a safety argument.
   checked (for example, a sibling repository that was not open in this
   window cannot be checked) rather than asserting no dependency exists, and
   do not pass false for a scope that was not actually inspected.
+- **`has_unrecovered_stash`** — a clean working tree does not prove there is
+  no stash. Run `git stash list` in the checkout before proposing deletion;
+  a non-empty result blocks deletion until that material is migrated,
+  explicitly retained, or the user explicitly accepts losing it. Treat a
+  failed or skipped stash inspection the same as "a stash was found" —
+  report `has_unrecovered_stash=True`, never `False`, when the check did
+  not actually run. Do not drop a stash automatically to clear this check.
+- **`has_dependent_worktrees`** — run `git worktree list --porcelain` from
+  the checkout before proposing deletion. More than one entry means this
+  checkout's Git common directory (`.git`) has at least one linked worktree
+  depending on it; deleting this checkout would break that worktree, so
+  this blocks deletion until the dependent worktree is itself resolved
+  (removed with its own approval, or migrated to point elsewhere). Treat a
+  failed or skipped worktree inspection the same as "a dependent worktree
+  exists." Do not remove another worktree automatically to clear this
+  check, and do not infer worktree state from whether a remote exists —
+  a pushed remote says nothing about local linked worktrees.
+
+A clean working tree and a pushed current branch are not, by themselves,
+proof that a checkout can be removed safely: both of the checks above exist
+specifically because `has_uncommitted_changes` and
+`has_unestablished_recovery` do not see a stash or a linked worktree at all.
 
 ## Preserving the workspace file before coordinator removal
 
@@ -322,6 +344,28 @@ its replacement is available.** If the destination for the relocated
 workspace file is not yet confirmed, keep the existing workspace file in
 place and report the relocation as pending, rather than removing the old one
 first.
+
+Parse and rewrite the workspace file as JSONC, not plain JSON: a
+`.code-workspace` file commonly carries comments and settings a strict JSON
+parser would discard, and this plugin's existing rule against writing
+absolute, machine-local paths applies to it the same as to any other
+portable generated document. `app` is a reasonable proposed destination for
+one particular product's workspace file; it is not a default folder name to
+reuse for every migration -- choose the destination from this product's own
+repository names and the user's confirmation. A workspace file that still
+points at the coordinator mid-migration is a pending step to finish, not by
+itself an error to report; do not call the migration's workspace step
+complete until the file's `folders[].path` entries resolve to the intended
+distributed checkouts and no approved legacy entry remains.
+
+Once each product repository's own distributed context exists, propose
+recording the confirmed sibling relationships as `Related repository`
+entries in each repository's own `## Context identities`, per
+[artifact-home.md](artifact-home.md), "Product membership." This replaces
+the old coordinator's operating-model table as the record of which
+repositories belong together; do not recreate that table anywhere, and do
+not copy one repository's full membership list into another's declaration
+without that other repository's own approval.
 
 ## Reviewing a migration in Canvas
 

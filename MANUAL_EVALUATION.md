@@ -84,6 +84,29 @@ Legacy-coordinator migration (instruction behavior; not proved by the Python tes
 - [ ] Confirm a repository whose only legacy evidence is a name match (for example containing `aidlc`) with no plugin manifest, no operating-model evidence, and no shared-methodology marker is reported as unresolved, and that nothing is deleted or retired for it on that basis alone.
 - [ ] Confirm a repository classified as a shared methodology checkout is never offered retirement option A (migrate and delete) in this workflow, even if the user asks to delete it.
 
+Multi-root workspace, sibling-context retrieval, and scaffold membership
+(instruction behavior; not proved by the Python tests). The deterministic
+helpers behind these scenarios -- `parse_related_repositories`,
+`match_related_repositories`, `detect_repository_id_collision`,
+`detect_canonical_remote_collision`, `resolve_related_context_index`,
+`checkout_deletion_readiness` -- are unit-tested as pure functions in
+`tests/context_tools_tests.py` against supplied inputs. That is a different
+claim from the one these checklist items make. A test asserting that
+`SKILL.md` references `context-retrieval.md` proves wiring exists in the
+instructions; it does not prove Cursor actually followed those instructions
+in a live run. Every item below is unproven until actually performed in
+Cursor, and none of it should be reported as passed on the strength of the
+Python test suite alone:
+
+- [ ] Open the same multi-root `.code-workspace` in the Cursor IDE and in a local Agents Window. Confirm the same set of intended repositories is available and discoverable in both.
+- [ ] In that workspace, run a context-consuming skill against one repository and confirm it actually reads the relevant sibling's context (not just this repository's own), per [context-retrieval.md](references/context-retrieval.md), "Resolving related repositories."
+- [ ] Repeat the same run with one declared sibling repository not open or unavailable this session. Confirm the agent reports that repository as unavailable and continues with the rest of the task, rather than blocking or inventing its content.
+- [ ] Open an unconfigured sibling repository alongside this one (no `Related repository` entry declared either way). Confirm the agent does not treat the mere presence of that sibling as an identity conflict.
+- [ ] Run `sync-context` a second time with no relevant source or declaration changes. Confirm it reports a true no-op and does not rewrite `.ai-dlc-config.md`, the repository index, or any module context file on disk.
+- [ ] Run `scaffold-project` for a brand-new, unrelated project in a directory that happens to sit next to an existing repository with a confirmed `Product` label. Confirm membership is not inferred from that adjacency alone, and that the proposal either states no product membership or asks one focused confirmation question instead of assuming it.
+- [ ] Approve a `scaffold-project` proposal and confirm the initial context artifacts it reports (repository index, module context) reflect the files actually created in that run, not a larger planned implementation that has not been written yet.
+- [ ] Review a legacy-coordinator migration proposal through the point where `sync-context` surfaces the mandatory retirement decision, and stop there without approving deletion. Confirm no checkout, stash, or worktree was removed, and that the report states the retirement decision is still pending.
+
 Jira discovery during migration (instruction behavior; not proved by the Python tests):
 
 - [ ] Run a distributed migration where `## Context identities` already exists and `## Project references` does not. Confirm onboarding is still considered, and identity alone is not treated as a confirmed Jira project.

@@ -36,6 +36,16 @@ SECRET_FILENAMES = {".env", "id_rsa", "id_ed25519"}
 ENV_TEMPLATE_FILENAMES = {".env.example", ".env.sample", ".env.template", ".env.dist"}
 REPOSITORY_ID_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 PROJECT_REFERENCE_HEADING = "## Project references"
+CONTEXT_IDENTITIES_HEADING = "## Context identities"
+RELATED_REPOSITORY_LABEL = "Related repository"
+RELATED_REPOSITORY_FIELDS = ("Repository ID", "Role", "Context index")
+# This plugin's identity layer (normalize_remote, stable_repository_id) only
+# ever recognizes github.com; a related-repository canonical remote is held
+# to that same, already-established scope on purpose -- this does not add
+# support for another Git host, it only validates against the one already
+# supported.
+CANONICAL_REMOTE_PATTERN = re.compile(r"^github\.com/[^/\s@:]+/[^/\s@:]+$")
+_WINDOWS_DRIVE_PATTERN = re.compile(r"^[A-Za-z]:")
 PROJECT_REFERENCE_FIELDS = (
     "Jira site",
     "Jira project",
@@ -134,11 +144,61 @@ def stable_repository_id(
 def detect_repository_id_collision(
     repo_id: str, canonical_identity: str, occupied: dict[str, str]
 ) -> str | None:
-    """Return the occupying identity when repo_id is already claimed."""
+    """Return the occupying canonical identity when `repo_id` is already claimed.
+
+    This checks exactly one direction: the same `Repository ID` persisted
+    for two different canonical remotes. It never checks the reverse
+    direction (the same canonical remote persisted under two different
+    repository IDs) -- see `detect_canonical_remote_collision` for that
+    check. The two are kept as separate functions on purpose, each with its
+    own narrow, correctly-named return value, instead of overloading one
+    function's return value to sometimes mean a canonical identity and
+    sometimes mean a repository ID depending on which direction fired.
+
+    `occupied` maps every already-persisted `repo_id` to its own
+    `canonical_identity`. Two checkouts that are genuinely the same
+    repository (same `repo_id`, same `canonical_identity` -- for example
+    two worktrees of one repository) are not a collision; this returns
+    `None` for that case, same as it always has.
+    """
     owner = occupied.get(repo_id)
     if owner is None or owner == canonical_identity:
         return None
     return owner
+
+
+def detect_canonical_remote_collision(
+    repo_id: str, canonical_identity: str, occupied: dict[str, str]
+) -> str | None:
+    """Return the conflicting repo_id when `canonical_identity` is already
+    persisted under a *different* repository ID.
+
+    This is the companion check for the direction
+    `detect_repository_id_collision` does not cover: the same canonical
+    remote recorded under two different `Repository ID` values, which means
+    two declarations disagree about one repository's own persisted
+    identity. It is a separate function, not a parameter added to the
+    existing one, so the existing function's return contract (always a
+    canonical identity string or `None`) never changes for any caller that
+    already relies on it.
+
+    Returns `None` when `repo_id` itself is the one already holding
+    `canonical_identity` (the ordinary, non-colliding case, including two
+    checkouts or worktrees of the same repository sharing one identity),
+    when no entry in `occupied` has this canonical identity at all, or when
+    the only entries sharing it are `repo_id` itself. A missing reciprocal
+    `Related repository` entry on one side is a different, non-colliding
+    situation (see [context-retrieval.md](../references/context-retrieval.md),
+    "Resolving related repositories") and is never classified as a
+    collision by this function; it only ever compares two IDs that are
+    both already persisted for the same canonical identity. It also never
+    compares display labels (such as a `Product` name) -- only the
+    canonical remote and the repository ID.
+    """
+    for other_id, other_identity in occupied.items():
+        if other_id != repo_id and other_identity == canonical_identity:
+            return other_id
+    return None
 
 
 def decision_reprompt_allowed(decision: str, same_run: bool) -> bool:
@@ -440,6 +500,8 @@ def checkout_deletion_readiness(
     retention_established: bool,
     repository_role: str,
     has_active_references: bool,
+    has_unrecovered_stash: bool,
+    has_dependent_worktrees: bool,
 ) -> tuple[str, ...]:
     """Return the reasons a local checkout deletion is blocked, or `()` when ready.
 
@@ -471,6 +533,32 @@ def checkout_deletion_readiness(
     - `has_active_references` must be false. The caller sets it when any
       inspected workspace file or repository reference still points at this
       checkout.
+    - `has_unrecovered_stash` must be false. A clean working tree does not
+      mean there is no stash: `git stash list` is a separate, easily
+      forgotten store of uncommitted work that a plain dirty/clean check
+      never sees. The caller sets this true when a stash exists and its
+      material is not established as migrated, retained elsewhere, or
+      explicitly accepted as discardable by the user -- and also when stash
+      inspection itself could not be completed. An inspection that did not
+      run is **not** the same as "no stash found"; report that as true
+      (blocking), never default it to false just because the check did not
+      happen.
+    - `has_dependent_worktrees` must be false. The caller sets this true
+      when this checkout is the repository's main working tree (or
+      otherwise holds the shared Git common directory, `.git`, that one or
+      more linked worktrees depend on) and at least one of those linked
+      worktrees still exists, since removing this checkout would break
+      them -- a pushed remote and a clean main worktree do not by
+      themselves prove no worktree depends on it. The same
+      inspection-failure rule applies: if worktree enumeration could not be
+      completed, report true, not false.
+
+    A remote repository's existence is evidence about committed history on
+    that remote. It is never evidence that a stash or a worktree's
+    local-only content has been preserved anywhere; `has_unrecovered_stash`
+    and `has_dependent_worktrees` must be set from actually inspecting this
+    checkout (`git stash list`, `git worktree list`), not inferred from
+    remote availability.
     """
     reasons: list[str] = []
     if not explicit_target:
@@ -495,6 +583,16 @@ def checkout_deletion_readiness(
         reasons.append("no recoverable retention or backup approach is established")
     if has_active_references:
         reasons.append("active workspace or repository references still point at this checkout")
+    if has_unrecovered_stash:
+        reasons.append(
+            "a stash exists (or stash inspection did not complete) with material not "
+            "established as recovered"
+        )
+    if has_dependent_worktrees:
+        reasons.append(
+            "a linked worktree depends on this checkout's Git common directory (or "
+            "worktree inspection did not complete)"
+        )
     return tuple(reasons)
 
 
@@ -1060,6 +1158,7 @@ def context_sync_outcome(
     project_rule_pending: bool,
     legacy_cleanup_pending: bool,
     project_reference_pending: bool = False,
+    membership_pending: bool = False,
 ) -> str:
     """Combine the three change sets into Stage 2's reachable outcome.
 
@@ -1076,6 +1175,19 @@ def context_sync_outcome(
     comparing the current confirmed configuration against what the user is
     now requesting, not from `classify_fingerprint_change`.
 
+    `membership_pending` is the same shape of input for a confirmed,
+    user-requested change to `## Context identities`'s product-membership
+    fields (`Product`, or a `Related repository` entry added, removed, or
+    corrected) — see
+    [artifact-home.md](../.cursor/skills/sync-context/references/artifact-home.md).
+    Membership metadata is not part of the source fingerprint either, so
+    adding or correcting it must stay reachable even when
+    `classify_fingerprint_change` reports `"unchanged"`. It is folded into
+    the same "is set A actually current" question as
+    `project_reference_pending`, not into `bugbot_pending` /
+    `project_rule_pending` / `legacy_cleanup_pending`, because membership
+    lives in change set A's own configuration, not in sets B or C.
+
     `bugbot_pending`, `project_rule_pending`, and `legacy_cleanup_pending`
     report whether change sets B and C each still have actionable,
     not-already-declined work; callers derive these from
@@ -1084,18 +1196,23 @@ def context_sync_outcome(
     already-applied proposal is not pending work in any of these inputs.
 
     Returns `"no_relevant_changes"` only when the source fingerprint is
-    `"unchanged"`, no project-reference update is pending, and no other set
-    has pending work: a full no-op, with no write and no new approval
-    question. Returns `"context_current_migration_pending"` when the source
-    fingerprint is `"unchanged"`, no project-reference update is pending,
-    but set B or C still has pending work: an unchanged source must never
-    make that pending work unreachable. Returns `"relevant_updates_found"`
-    for every other combination, including an `"unavailable"` or `"changed"`
-    source fingerprint, or a pending project-reference update on its own —
-    a configuration-only proposal is reachable even when the source
+    `"unchanged"`, no project-reference or membership update is pending,
+    and no other set has pending work: a full no-op, with no write and no
+    new approval question. Returns `"context_current_migration_pending"`
+    when the source fingerprint is `"unchanged"`, no project-reference or
+    membership update is pending, but set B or C still has pending work: an
+    unchanged source must never make that pending work unreachable. Returns
+    `"relevant_updates_found"` for every other combination, including an
+    `"unavailable"` or `"changed"` source fingerprint, or a pending
+    project-reference or membership update on its own — a
+    configuration-only proposal is reachable even when the source
     fingerprint is `"unchanged"`.
     """
-    source_unchanged = context_change == "unchanged" and not project_reference_pending
+    source_unchanged = (
+        context_change == "unchanged"
+        and not project_reference_pending
+        and not membership_pending
+    )
     other_sets_pending = bugbot_pending or project_rule_pending or legacy_cleanup_pending
     if source_unchanged and not other_sets_pending:
         return "no_relevant_changes"
@@ -1877,6 +1994,358 @@ def parse_project_references(markdown_text: str) -> ProjectReferences:
     if problems:
         return ProjectReferences("invalid", {}, "; ".join(problems))
     return ProjectReferences("ok", values)
+
+
+@dataclass(frozen=True)
+class RelatedRepository:
+    """One declared sibling repository, read from `## Context identities`.
+
+    `canonical_remote` is the join key: it is always required, because a
+    sibling's own persisted repository ID may not be known yet from this
+    side. `repository_id` is optional and only present once confirmed.
+    `role` and `context_index` are free-form confirmed values; this parser
+    does not validate what `role` says, only that it is well-formed.
+    `context_index` is a path relative to the *related* repository's own
+    root, not to this repository or to this document.
+    """
+
+    canonical_remote: str
+    repository_id: str | None = None
+    role: str | None = None
+    context_index: str | None = None
+
+
+@dataclass(frozen=True)
+class RelatedRepositories:
+    """Declared product-membership siblings, or why they cannot be read.
+
+    `status` is `"ok"`, `"missing"`, `"ambiguous"`, or `"invalid"`, the
+    same vocabulary as `ProjectReferences`. `"missing"` means no
+    `Related repository` entry is declared under a live
+    `## Context identities` heading. This is a valid, ordinary state: it
+    means product membership is unknown or unconfigured here, never proof
+    that this repository has no siblings. `"ambiguous"` means
+    `## Context identities` itself is duplicated, so no entry in it can be
+    read with confidence. `"invalid"` means at least one `Related
+    repository` entry is malformed (no parseable canonical remote, a
+    repository ID outside `[a-z0-9-]`, or the same canonical remote
+    declared more than once in this document); a malformed entry is
+    reported, never silently dropped or guessed, so it cannot disappear
+    and be mistaken for "no related repositories declared". `entries` is
+    populated only when at least one well-formed entry was found,
+    regardless of status, so a caller can still see and report the
+    well-formed entries that sit alongside a malformed one.
+    """
+
+    status: str
+    entries: tuple[RelatedRepository, ...] = ()
+    detail: str = ""
+
+
+def _top_level_bullets(lines: tuple[str, ...] | list[str]) -> list[tuple[str, list[str]]]:
+    """Split a section's bullet lines into top-level blocks with their bodies.
+
+    A line is top-level when it starts a `- ` bullet with no leading
+    indentation; every following line indented under it (until the next
+    top-level bullet) is that block's body. This lets a repeatable
+    top-level entry, like `Module:` or `Related repository:`, carry its
+    own nested fields without a generic Markdown outline parser: it only
+    ever needs to find where one block ends and the next begins.
+    """
+    blocks: list[tuple[str, list[str]]] = []
+    label: str | None = None
+    body: list[str] = []
+    for line in lines:
+        if not line.strip():
+            continue
+        indent = len(line) - len(line.lstrip(" "))
+        if indent == 0 and line.lstrip().startswith("- "):
+            if label is not None:
+                blocks.append((label, body))
+            label = line.strip()
+            body = []
+        elif label is not None:
+            body.append(line)
+    if label is not None:
+        blocks.append((label, body))
+    return blocks
+
+
+def _recognized_related_repository_field_occurrences(
+    lines: list[str],
+) -> dict[str, list[str]]:
+    """Group each recognized nested field name's raw value by occurrence.
+
+    This mirrors `_recognized_project_reference_occurrences` on purpose and
+    looks past the canonical backtick format: a recognized field name
+    (`Repository ID`, `Role`, `Context index`) written without backticks,
+    or repeated with a mix of canonical and malformed values, must still be
+    visible here so duplicate and malformed detection can see it. An
+    unrecognized field name is ignored, so an unrelated extension field in
+    the same block is preserved and never flagged.
+    """
+    occurrences: dict[str, list[str]] = {}
+    for line in lines:
+        match = PROJECT_REFERENCE_LINE_PATTERN.match(line.strip())
+        if match is None:
+            continue
+        name = match.group(1).strip()
+        if name not in RELATED_REPOSITORY_FIELDS:
+            continue
+        occurrences.setdefault(name, []).append(match.group(2).strip())
+    return occurrences
+
+
+def _canonical_remote_or_problem(raw: str) -> tuple[str | None, str | None]:
+    """Return `(normalized_remote, None)` or `(None, problem)` for `raw`.
+
+    Accepts the documented canonical form directly (`github.com/org/repo`,
+    `CANONICAL_REMOTE_PATTERN`), or a raw GitHub SSH/HTTPS remote that
+    `normalize_remote` can turn into that same form. It never passes an
+    already-canonical string into `normalize_remote`: that helper's regular
+    expressions only match a raw `git@github.com:...` or
+    `https://github.com/...` transport URL, so feeding it an
+    already-normalized `host/org/repo` string would silently fail and
+    return `None` for a value that was actually fine. Credentials embedded
+    in a raw transport remote are stripped by `normalize_remote` before the
+    result is used, and this function never echoes the raw input back in a
+    problem string, so a credential-bearing remote is never repeated into a
+    log or an error message. Any host other than `github.com`, or any
+    value neither helper recognizes, is reported as unsupported rather than
+    guessed into a canonical form; this intentionally does not add support
+    for another Git host.
+    """
+    if not raw or any(char.isspace() for char in raw):
+        return None, "must not be empty or contain whitespace"
+    if CANONICAL_REMOTE_PATTERN.fullmatch(raw):
+        return raw, None
+    normalized = normalize_remote(raw)
+    if normalized:
+        return normalized, None
+    return (
+        None,
+        "is not a recognized `github.com/org/repo` canonical remote or a "
+        "supported GitHub SSH/HTTPS remote",
+    )
+
+
+def _repository_relative_path_problem(value: str) -> str | None:
+    """Return why `value` cannot be a safe repository-relative path, or None.
+
+    This is syntax only. It never touches the filesystem, resolves a real
+    root, or follows a symlink -- a missing file or an unavailable
+    repository is a separate, later concern (see
+    `resolve_related_context_index`), not evidence that this declaration is
+    invalid. This rejects an empty value, a URL, a POSIX absolute path, a
+    Windows absolute or UNC path (checked by pattern so this still catches
+    them when the parser itself runs on a non-Windows host), and any
+    relative path whose normalized form climbs above the referenced
+    repository's own root (for example `../../private/context.md`, or a
+    deeper path that nets out the same way after `../` segments cancel).
+    """
+    if not value:
+        return "must not be empty"
+    if "://" in value:
+        return "must not be a URL"
+    if "\\" in value or value.startswith("//"):
+        return "must not use a Windows or UNC path form"
+    if _WINDOWS_DRIVE_PATTERN.match(value):
+        return "must not be an absolute path"
+    if value.startswith("/"):
+        return "must not be an absolute path"
+    normalized = posixpath.normpath(value)
+    if normalized == ".." or normalized.startswith("../"):
+        return "must not traverse outside the referenced repository"
+    return None
+
+
+def resolve_related_context_index(repository_root: Path, context_index: str) -> Path | None:
+    """Resolve a declared `Context index` against its own repository's root.
+
+    This reuses `_resolved_inside`'s existing containment check (resolve,
+    then verify the result is still under the resolved root) so a symlink
+    inside the related repository cannot be used to read outside it. This
+    is the filesystem-resolution step; `_repository_relative_path_problem`
+    is the earlier, syntax-only check that runs during parsing before any
+    repository is actually available to read. Call this only after
+    `_repository_relative_path_problem` has already accepted `context_index`
+    and the related checkout is confirmed open and authorized -- this
+    function does not check either of those on its own, and a `None`
+    result here (escape, or the final path simply does not exist) is not
+    proof that the original declaration was invalid.
+    """
+    return _resolved_inside(repository_root, context_index)
+
+
+def parse_related_repositories(markdown_text: str) -> RelatedRepositories:
+    """Read every `Related repository` entry under `## Context identities`.
+
+    This reads only this document's own declared membership. It does not
+    discover checkouts, resolve a declared remote against an available
+    directory, or decide that an absent reciprocal entry on the sibling's
+    side is a conflict — see `match_related_repositories` for resolving
+    against available checkouts, and
+    [context-retrieval.md](../references/context-retrieval.md) for why an
+    asymmetric declaration alone is not treated as a conflict here.
+
+    Each entry's own label line carries its canonical remote directly,
+    for example `` - Related repository: `github.com/example/payments-web` ``,
+    validated and normalized by `_canonical_remote_or_problem` (see that
+    function for why this never calls `normalize_remote` on an
+    already-canonical value). `Repository ID`, `Role`, and `Context index`
+    are optional nested fields read from that one block's own body by
+    `_recognized_related_repository_field_occurrences`, deliberately *not*
+    the shared `parse_labeled_fields` used elsewhere in this module: that
+    helper only ever sees a field written in the canonical backtick format
+    and silently skips anything else, which is exactly how a malformed
+    `Repository ID` (missing backticks) or a malformed duplicate used to
+    disappear instead of being reported. Changing `parse_labeled_fields`
+    itself would also change every other caller's behavior, so this uses a
+    small, focused helper instead. A `Role` declared for one related
+    repository is never confused with a `Role` declared for another, since
+    each block's body is read independently.
+
+    An entry whose canonical remote is unparseable, unsupported, or
+    duplicated, or whose `Repository ID` or `Context index` is present but
+    malformed or duplicated, is reported in `detail` and excluded from
+    `entries` entirely -- a partially valid entry is never fabricated from
+    an invalid declaration by silently keeping the fields that happened to
+    parse and dropping only the bad one, since picking which fields to keep
+    would be a guess this parser is not positioned to make.
+
+    A `Repository:` or `Module:` block in the same `## Context identities`
+    section is a different label and is skipped; this function never
+    treats this repository's own identity block as a related repository.
+    """
+    section = find_live_section(markdown_text, CONTEXT_IDENTITIES_HEADING)
+    if section.status in {"missing", "ambiguous"}:
+        return RelatedRepositories(section.status)
+
+    entries: list[RelatedRepository] = []
+    problems: list[str] = []
+    seen_remotes: set[str] = set()
+    for label_line, body in _top_level_bullets(section.lines):
+        loose = PROJECT_REFERENCE_LINE_PATTERN.match(label_line)
+        if loose is None or loose.group(1).strip() != RELATED_REPOSITORY_LABEL:
+            continue
+        raw_value = loose.group(2).strip()
+        canonical = CANONICAL_VALUE_PATTERN.match(raw_value)
+        raw_remote = canonical.group(1).strip() if canonical else ""
+        if not raw_remote:
+            problems.append("a `Related repository` entry has no canonical remote")
+            continue
+        remote, remote_problem = _canonical_remote_or_problem(raw_remote)
+        if remote_problem is not None:
+            problems.append(
+                f"a `Related repository` entry's canonical remote {remote_problem}"
+            )
+            continue
+        if remote in seen_remotes:
+            problems.append(f"`Related repository: `{remote}`` is declared more than once")
+            continue
+
+        occurrences = _recognized_related_repository_field_occurrences(body)
+        duplicate_fields = sorted(
+            name for name, values in occurrences.items() if len(values) > 1
+        )
+        if duplicate_fields:
+            problems.append(
+                f"`Related repository: `{remote}``: duplicate fields: {duplicate_fields}"
+            )
+            continue
+
+        field_problems: list[str] = []
+        values: dict[str, str] = {}
+        for name, raw_values in occurrences.items():
+            field_canonical = CANONICAL_VALUE_PATTERN.match(raw_values[0])
+            if field_canonical is None:
+                field_problems.append(f"{name} is not in the canonical backtick format")
+                continue
+            field_value = field_canonical.group(1).strip()
+            if not field_value:
+                field_problems.append(f"{name} is present but empty")
+                continue
+            values[name] = field_value
+        if field_problems:
+            problems.append(
+                f"`Related repository: `{remote}``: " + "; ".join(field_problems)
+            )
+            continue
+
+        repository_id = values.get("Repository ID")
+        if repository_id is not None and not REPOSITORY_ID_PATTERN.fullmatch(repository_id):
+            problems.append(
+                f"`Related repository: `{remote}``: Repository ID {repository_id!r} "
+                "must match [a-z0-9-]"
+            )
+            continue
+
+        context_index = values.get("Context index")
+        if context_index is not None:
+            path_problem = _repository_relative_path_problem(context_index)
+            if path_problem:
+                problems.append(
+                    f"`Related repository: `{remote}``: Context index {path_problem}"
+                )
+                continue
+
+        seen_remotes.add(remote)
+        entries.append(
+            RelatedRepository(
+                canonical_remote=remote,
+                repository_id=repository_id,
+                role=values.get("Role"),
+                context_index=context_index,
+            )
+        )
+    if problems:
+        return RelatedRepositories("invalid", tuple(entries), "; ".join(problems))
+    if not entries:
+        return RelatedRepositories(
+            "missing", detail="no `Related repository` entries declared"
+        )
+    return RelatedRepositories("ok", tuple(entries))
+
+
+def match_related_repositories(
+    declared_remotes: tuple[str, ...], available_remotes: dict[str, str]
+) -> dict[str, str]:
+    """Match declared canonical remotes against checkouts already inspected.
+
+    This does no Git I/O and discovers no directories or workspace roots;
+    it only compares strings the caller already gathered, per
+    [repository-preflight.md](../references/repository-preflight.md) and
+    `normalize_remote`. `available_remotes` maps a caller-chosen label for
+    a checkout already in scope (a workspace folder name, an authorized
+    root ID, or any other stable label the caller recognizes) to that
+    checkout's own normalized canonical remote. Both sides are expected in
+    the same representation: `parse_related_repositories` already
+    normalizes every declared remote through `_canonical_remote_or_problem`,
+    so a caller should populate `available_remotes` the same way (through
+    `normalize_remote` on each checkout's actual Git remote), not with a
+    raw SSH or HTTPS URL.
+
+    Returns, for each declared remote, the matching label when exactly one
+    available checkout has that remote, `"unavailable"` when none do (a
+    fact to report, not a reason to invent a competing context home), and
+    `"ambiguous"` when more than one checkout in scope shares that remote
+    (for example two local clones of the same repository). An unavailable
+    related repository never raises; the caller reports it and continues
+    with whatever is actually open.
+    """
+    labels_by_remote: dict[str, list[str]] = {}
+    for label, remote in available_remotes.items():
+        labels_by_remote.setdefault(remote, []).append(label)
+    result: dict[str, str] = {}
+    for remote in declared_remotes:
+        labels = labels_by_remote.get(remote, [])
+        if not labels:
+            result[remote] = "unavailable"
+        elif len(labels) == 1:
+            result[remote] = labels[0]
+        else:
+            result[remote] = "ambiguous"
+    return result
 
 
 def parse_labeled_fields(section: list[str]) -> LabeledFields:

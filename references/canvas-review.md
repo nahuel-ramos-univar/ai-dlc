@@ -17,12 +17,15 @@ Show:
 - the outcome: first-time generation, relevant updates applied, no relevant changes, partial verification, or blocked;
 - each repository and module, with its status;
 - files created, updated, unchanged, failed, or pending;
+- product membership: each declared `Related repository`, whether it was
+  available, unavailable, or ambiguous this session, and any `Product` or
+  workspace-file change proposed or applied;
 - evidence examined, and the unknowns;
 - the deterministic validation result;
 - the independent review result, or the skip or unavailable reason;
 - change sets A, B, and C: applied, proposed and pending approval, declined, or not applicable.
 
-When change set C is in play, also show the migration review content in [legacy-migration.md](../.cursor/skills/sync-context/references/legacy-migration.md).
+When change set C is in play, also show the migration review content in [legacy-migration.md](../.cursor/skills/sync-context/references/legacy-migration.md), including migration decisions made and the remaining retirement work.
 
 A run whose outcome is "no relevant changes" states that outcome in a short chat reply; it does not open or refresh a Canvas for it.
 

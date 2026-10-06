@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.6.1 — 2026-10-06
+
+Bump: `patch`
+Compare: [v0.6.0...v0.6.1](https://github.com/nahuel-ramos-univar/ai-dlc/compare/v0.6.0...v0.6.1)
+
+### Fixed
+
+- fix: normalize related remotes before matching a checkout ([`bd97b57`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/bd97b577c9137789eec2edc0c3e4939aa8b946cf))
+- fix: close deletion-readiness, parsing, membership, and collision gaps ([`171e23e`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/171e23ed9b4979213055fc1d0f8bd0e2c296cbf5))
+
+### Other
+
+- Merge pull request #11 from nahuel-ramos-univar/CTY-303-v2 ([`78defa8`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/78defa8b7b3e5737bc4ebcb65225f4439beb32de))
+
 ## 0.6.0 — 2026-10-05
 
 Bump: `minor`

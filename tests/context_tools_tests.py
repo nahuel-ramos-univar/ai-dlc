@@ -28,7 +28,9 @@ from context_tools import (  # noqa: E402
     find_live_section,
     cli_validate,
     content_fingerprint,
+    classify_legacy_ci_workflow,
     detect_canonical_remote_collision,
+    detect_legacy_aidlc_installation,
     detect_repository_id_collision,
     extract_table_column,
     find_duplicate_context_targets,
@@ -37,7 +39,14 @@ from context_tools import (  # noqa: E402
     find_stale_source_paths,
     GitDiscoveryError,
     git_output,
+    historical_content_blocks_checkout_deletion,
     is_declared_submodule,
+    legacy_architecture_prompt_required,
+    legacy_baseline_comparison,
+    legacy_inventory_fingerprint,
+    legacy_inventory_needs_approval,
+    legacy_standard_file_treatment,
+    legacy_supporting_evidence,
     match_related_repositories,
     migration_destination_placement,
     migration_outcome,
@@ -49,6 +58,7 @@ from context_tools import (  # noqa: E402
     plan_validate_proposal,
     proposal_is_current,
     relocate_workspace_folder_path,
+    resolve_legacy_provenance,
     resolve_placement,
     resolve_related_context_index,
     retirement_decision_pending,
@@ -3108,6 +3118,299 @@ def test_real_git_stash_and_worktree_inspection_feeds_the_readiness_booleans() -
         assert any("worktree" in reason for reason in blocked_by_worktree)
 
 
+def _legacy_detection_from_checkout(root: Path) -> str:
+    project_type = root / ".ai-dlc-project-type"
+    text = project_type.read_text(encoding="utf-8") if project_type.is_file() else None
+    return detect_legacy_aidlc_installation(
+        text,
+        (root / "prompts/discovery/prompt_01_codebase_discovery.md").is_file(),
+        (root / ".cursor/rules/aidlc-context.mdc").is_file(),
+    )
+
+
+def test_legacy_aidlc_fixture_selects_distributed_proposal_without_placement() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        (root / "prompts/discovery").mkdir(parents=True)
+        (root / ".cursor/rules").mkdir(parents=True)
+        (root / ".ai-dlc-project-type").write_text("brownfield\n", encoding="utf-8")
+        (root / "prompts/discovery/prompt_01_codebase_discovery.md").write_text(
+            "# discovery\n", encoding="utf-8"
+        )
+        (root / ".cursor/rules/aidlc-context.mdc").write_text("# rule\n", encoding="utf-8")
+        # Discovery output is corroboration, not a required marker.
+        (root / "aidlc-docs/discovery/output/api").mkdir(parents=True)
+        detection = _legacy_detection_from_checkout(root)
+        assert detection == "full"
+        provenance = resolve_legacy_provenance(detection, inspection="ruled-out")
+        assert provenance == "confirmed"
+        # Persisted Placement is not an argument. No recorded architecture
+        # means the distributed proposal is still required.
+        assert legacy_architecture_prompt_required(provenance, None, same_run=True) is True
+
+
+def test_partial_legacy_fixture_stays_inspect_until_provenance_is_established() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        (root / ".ai-dlc-project-type").write_text("brownfield\n", encoding="utf-8")
+        detection = _legacy_detection_from_checkout(root)
+        assert detection == "partial"
+        assert resolve_legacy_provenance(detection) == "inspect"
+        assert (
+            legacy_architecture_prompt_required("inspect", None, same_run=False) is False
+        )
+        assert resolve_legacy_provenance(detection, inspection="confirmed") == "confirmed"
+        assert resolve_legacy_provenance(detection, inspection="ruled-out") == "ruled-out"
+        assert (
+            resolve_legacy_provenance(detection, inspection="unavailable")
+            == "inspection-unavailable"
+        )
+        assert (
+            legacy_architecture_prompt_required(
+                "inspection-unavailable", None, same_run=False
+            )
+            is False
+        )
+
+
+def test_legacy_detection_rejects_unrecognized_project_type_and_discovery_output_alone() -> None:
+    assert detect_legacy_aidlc_installation("custom", False, False) == "absent"
+    assert detect_legacy_aidlc_installation("  greenfield  ", True, True) == "full"
+    assert detect_legacy_aidlc_installation(None, True, True) == "partial"
+    assert detect_legacy_aidlc_installation("", False, False) == "absent"
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        (root / "aidlc-docs/discovery/output/api").mkdir(parents=True)
+        (root / "aidlc-docs/discovery/output/api/repo_tech_profile.md").write_text(
+            "# profile\n", encoding="utf-8"
+        )
+        assert _legacy_detection_from_checkout(root) == "absent"
+        assert (
+            legacy_supporting_evidence(
+                name_matches_legacy_pattern=True,
+                operating_model_heading_only=True,
+                discovery_path_only=True,
+            )
+            is False
+        )
+        assert resolve_legacy_provenance("absent") == "absent"
+        assert (
+            resolve_legacy_provenance(
+                "absent",
+                supporting_evidence=legacy_supporting_evidence(
+                    inspected_framework_content=True
+                ),
+            )
+            == "inspect"
+        )
+        assert (
+            resolve_legacy_provenance(
+                "absent",
+                supporting_evidence=True,
+                inspection="confirmed",
+            )
+            == "confirmed"
+        )
+        assert (
+            resolve_legacy_provenance(
+                "absent",
+                supporting_evidence=True,
+                inspection="unavailable",
+            )
+            == "inspection-unavailable"
+        )
+        try:
+            resolve_legacy_provenance("absent", inspection="confirmed")
+        except ValueError as error:
+            assert "no marker or supporting evidence warranted" in str(error)
+        else:
+            raise AssertionError("unwarranted inspection confirmed provenance")
+
+
+def test_legacy_architecture_and_inventory_are_separate_approvals() -> None:
+    assert (
+        legacy_architecture_prompt_required("confirmed", "migrate-distributed", True)
+        is False
+    )
+    assert (
+        legacy_architecture_prompt_required(
+            "confirmed", "retain-active-coordinator", False
+        )
+        is False
+    )
+    assert legacy_architecture_prompt_required("confirmed", "defer", True) is False
+    assert legacy_architecture_prompt_required("confirmed", "defer", False) is True
+    try:
+        legacy_architecture_prompt_required("confirmed", "retire-and-delete", False)
+    except ValueError as error:
+        assert "checkout disposition" in str(error)
+    else:
+        raise AssertionError("checkout disposition was accepted as architecture")
+    try:
+        retirement_decision_pending("retain-active-coordinator", same_run=True)
+    except ValueError as error:
+        assert "architectural decision" in str(error)
+    else:
+        raise AssertionError("architecture decision was accepted as checkout disposition")
+    # An earlier checkout disposition cannot approve this inventory.
+    try:
+        legacy_inventory_needs_approval(
+            "retire-and-retain-checkout", None, None, same_run=True
+        )
+    except ValueError as error:
+        assert "does not approve" in str(error)
+    else:
+        raise AssertionError("checkout disposition approved an inventory")
+    try:
+        legacy_inventory_needs_approval(
+            "migrate-distributted", None, None, same_run=True
+        )
+    except ValueError as error:
+        assert "unknown legacy architecture" in str(error)
+    else:
+        raise AssertionError("unknown architecture was treated as not applicable")
+    assert (
+        legacy_inventory_needs_approval("retain-active-coordinator", None, None, True)
+        == "not-applicable"
+    )
+    assert legacy_inventory_needs_approval("defer", None, None, False) == "not-applicable"
+    assert legacy_inventory_needs_approval(None, None, None, False) == "not-applicable"
+
+
+def _inventory_entry(**overrides: str) -> dict[str, str]:
+    entry = {
+        "repository_id": "payments-api",
+        "relative_path": "aidlc-docs/repository-context.md",
+        "action": "create",
+        "before": "missing",
+        "after": "a" * 64,
+    }
+    entry.update(overrides)
+    return entry
+
+
+def test_legacy_inventory_fingerprint_is_scoped_and_order_independent() -> None:
+    first = _inventory_entry()
+    second = _inventory_entry(
+        repository_id="payments-app",
+        relative_path="docs/adr/0001.md",
+        action="preserve",
+        before="b" * 64,
+        after="b" * 64,
+    )
+    moved = _inventory_entry(
+        relative_path="old.code-workspace",
+        action="move",
+        before="c" * 64,
+        after="c" * 64,
+        destination_repository_id="payments-app",
+        destination_relative_path="old.code-workspace",
+    )
+    assert legacy_inventory_fingerprint([first, second]) == legacy_inventory_fingerprint(
+        [second, first]
+    )
+    original = legacy_inventory_fingerprint([first])
+    assert legacy_inventory_fingerprint(
+        [_inventory_entry(after="d" * 64)]
+    ) != original
+    assert legacy_inventory_fingerprint(
+        [_inventory_entry(action="update", before="a" * 64, after="a" * 64)]
+    ) != original
+    assert legacy_inventory_fingerprint([moved]) != original
+    assert legacy_inventory_fingerprint(
+        [_inventory_entry(repository_id="payments-app")]
+    ) != original
+    empty = legacy_inventory_fingerprint([])
+    assert (
+        legacy_inventory_needs_approval("migrate-distributed", empty, None, True)
+        == "not-applicable"
+    )
+    current = legacy_inventory_fingerprint([first, moved])
+    assert (
+        legacy_inventory_needs_approval("migrate-distributed", current, None, True)
+        == "needs-approval"
+    )
+    assert (
+        legacy_inventory_needs_approval("migrate-distributed", current, current, True)
+        == "approved"
+    )
+    assert proposal_is_current(current, current, "proposed text", "edited text") is False
+    try:
+        legacy_inventory_fingerprint(
+            [_inventory_entry(relative_path="/Users/nahuel/secrets.env")]
+        )
+    except ValueError as error:
+        assert "repository-relative" in str(error)
+    else:
+        raise AssertionError("absolute path was accepted into the inventory")
+    try:
+        legacy_inventory_fingerprint([first, dict(first)])
+    except ValueError as error:
+        assert "duplicate" in str(error)
+    else:
+        raise AssertionError("duplicate inventory entry was accepted")
+    conflict = dict(first)
+    conflict["after"] = "e" * 64
+    try:
+        legacy_inventory_fingerprint([first, conflict])
+    except ValueError as error:
+        assert "conflicting" in str(error)
+    else:
+        raise AssertionError("conflicting inventory entry was accepted")
+
+
+def test_prior_run_approval_does_not_authorize_current_writes() -> None:
+    fingerprint = legacy_inventory_fingerprint([_inventory_entry()])
+    assert (
+        legacy_inventory_needs_approval(
+            "migrate-distributed", fingerprint, fingerprint, same_run=False
+        )
+        == "needs-approval"
+    )
+    assert (
+        legacy_architecture_prompt_required("absent", None, same_run=False) is False
+    )
+
+
+def test_historical_content_blocks_only_deletion_of_the_only_copy() -> None:
+    assert historical_content_blocks_checkout_deletion(True, True) is True
+    assert historical_content_blocks_checkout_deletion(True, False) is False
+    assert historical_content_blocks_checkout_deletion(False, True) is False
+
+
+def test_legacy_ci_and_customized_files_are_not_classified_by_name() -> None:
+    assert classify_legacy_ci_workflow(True, False) == "retire"
+    assert classify_legacy_ci_workflow(True, True) == "review-control"
+    assert classify_legacy_ci_workflow(False, True) == "review-control"
+    assert classify_legacy_ci_workflow(False, False) == "inspect"
+    assert legacy_baseline_comparison(True, True) == "unchanged"
+    assert legacy_baseline_comparison(True, False) == "differs"
+    assert legacy_baseline_comparison(False, None) == "unavailable"
+    try:
+        legacy_baseline_comparison(False, True)
+    except ValueError as error:
+        assert "missing legacy baseline" in str(error)
+    else:
+        raise AssertionError("a missing baseline was recorded as a match")
+    assert legacy_standard_file_treatment("retire", "unchanged") == "retire"
+    assert legacy_standard_file_treatment("retire", "differs") == "unresolved"
+    assert legacy_standard_file_treatment("replace", "unavailable") == "unresolved"
+    assert legacy_standard_file_treatment("preserve", "differs") == "preserve"
+    assert (
+        legacy_standard_file_treatment("reconcile", "differs", "reconcile") == "reconcile"
+    )
+    assert legacy_standard_file_treatment("retire", "unavailable", "retire") == "retire"
+    assert (
+        historical_content_blocks_checkout_deletion(False, True) is False
+    )
+    try:
+        legacy_standard_file_treatment("delete", "unchanged")
+    except ValueError as error:
+        assert "unknown legacy file treatment" in str(error)
+    else:
+        raise AssertionError("unknown treatment was accepted")
+
+
 def test_retirement_decision_pending_mirrors_bugbot_reprompt_semantics() -> None:
     # No decision on record: always ask.
     assert retirement_decision_pending(None, same_run=False) is True
@@ -4612,6 +4915,14 @@ if __name__ == "__main__":
         test_checkout_deletion_readiness_failed_inspection_remains_blocked,
         test_checkout_deletion_readiness_fully_verified_checkout_still_passes,
         test_real_git_stash_and_worktree_inspection_feeds_the_readiness_booleans,
+        test_legacy_aidlc_fixture_selects_distributed_proposal_without_placement,
+        test_partial_legacy_fixture_stays_inspect_until_provenance_is_established,
+        test_legacy_detection_rejects_unrecognized_project_type_and_discovery_output_alone,
+        test_legacy_architecture_and_inventory_are_separate_approvals,
+        test_legacy_inventory_fingerprint_is_scoped_and_order_independent,
+        test_prior_run_approval_does_not_authorize_current_writes,
+        test_historical_content_blocks_only_deletion_of_the_only_copy,
+        test_legacy_ci_and_customized_files_are_not_classified_by_name,
         test_retirement_decision_pending_mirrors_bugbot_reprompt_semantics,
         test_migration_outcome_reports_partial_without_implying_atomicity,
         test_stale_proposal_does_not_match_a_newer_destination,

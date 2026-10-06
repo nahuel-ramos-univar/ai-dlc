@@ -5,11 +5,12 @@ Resolve the artifact home before generating context.
 - **Single repository:** default to the confirmed repository root.
 - **Nested tracked module:** default to its owning Git root. Preserve the
   requested module as analysis scope.
-- **Multi-repository engagement:** reuse the existing configured artifact
-  home. If none exists, apply the placement policy below: stay distributed
-  (each repository keeps its own artifact home) unless a coordinator is
-  already configured, or the user explicitly confirms one. Never choose a
-  shared location merely because it looks like the engagement home.
+- **Multi-repository engagement:** reuse an artifact home this skill
+  already persisted after an explicit placement choice. If none exists,
+  stay distributed (each repository keeps its own artifact home) unless
+  the user explicitly confirms a coordinator. An operating-model table is
+  not that confirmation. Never choose a shared location merely because it
+  looks like the engagement home.
 - **Read-only source:** analyze it, then use a separate authorized writable
   artifact home. Do not create a Git repository for artifacts.
 - **Unversioned tree:** permit discovery with baseline `unversioned`. Save only
@@ -243,14 +244,25 @@ context unless adoption is established. Call `resolve_placement` in
 `distributed`, and any other string raises instead of choosing a
 destination. A folder name is not an argument to that function.
 
-**Adopt a coordinator** only from persisted configuration already recorded
-here, or from unambiguous existing configuration in this repository — for
-example a structured operating-model table that names this repository's role
-and an explicit artifact-home path for a sibling repository. Never adopt a
-coordinator because a folder or repository name happens to end in a
-particular suffix; a name is not configuration. If no persisted or
-unambiguous configuration exists, stay distributed and say so rather than
-guessing.
+**Adopt a coordinator** only when the user has explicitly chosen to keep
+that architecture (`retain-active-coordinator` on
+`legacy_architecture_prompt_required`). Never adopt a coordinator because a
+folder or repository name happens to end in a particular suffix; a name is
+not configuration. A structured operating-model table names the current
+layout and the repositories that belong together. It does not record that
+choice, and it does not authorize writing `Placement: adopted-coordinator`.
+
+When `detect_legacy_aidlc_installation` returns `full`, or
+`resolve_legacy_provenance` returns `confirmed`, call
+`legacy_architecture_prompt_required`. Do not pass
+`Placement: adopted-coordinator` into it. If it returns true, prepare the
+distributed proposal instead of adopting the coordinator. A `partial` detection, and an `absent` detection that still has
+`legacy_supporting_evidence`, stays `inspect` until bounded inspection
+finishes. Do not adopt, and do not start the migration, from `"inspect"`,
+`"absent"`, `"ruled-out"`, or `"inspection-unavailable"`. A directory name,
+an unread Operating Model heading, or a discovery path alone does not
+confirm provenance. If there is no explicit choice and no confirmed legacy
+installation, stay distributed and say so rather than guessing.
 
 **In adopted-coordinator mode, module placement is policy, not a
 writability fallback.** Call `module_context_destination(placement,
@@ -309,16 +321,27 @@ is that repository, checked with `repository_is_named_coordinator`. See
 [legacy-migration.md](legacy-migration.md).
 
 **If the persisted configuration already explicitly selects
-`adopted-coordinator`**, do not silently override it with the distributed
+`adopted-coordinator`**, and this repository is not a confirmed legacy
+AI-DLC installation, do not silently override it with the distributed
 default. Explain the difference between the current adopted-coordinator
 placement and the proposed distributed destination in plain terms (where
 context currently lives versus where it would move), and include the
 placement change explicitly as part of the proposal the user approves — the
 same approval gate as any other change set A content. If the user chooses to
-keep the adopted-coordinator architecture, honor that choice: leave
+keep the adopted-coordinator architecture, record
+`retain-active-coordinator` and honor that choice: leave
 `Placement: adopted-coordinator` unchanged, and report plainly that
 distributed migration was not completed, rather than reporting partial
 completion or asking again later in the same run.
+
+**If it is a confirmed legacy AI-DLC installation**, that persisted
+placement is not the user's architectural decision. An earlier sync may
+have written it from the operating-model table. Follow
+[legacy-migration.md](legacy-migration.md), "Known legacy AI-DLC
+installation". `retain-active-coordinator` is the only recorded value that
+keeps the coordinator active. `retire-and-retain-checkout` keeps the
+checkout as a historical copy after migration; it is not that choice, and
+it does not approve a later file inventory.
 
 Preparing distributed outputs and the mandatory retirement decision for the
 legacy coordinator are both covered in

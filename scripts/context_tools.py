@@ -616,14 +616,459 @@ def retirement_decision_pending(recorded_decision: str | None, same_run: bool) -
 
     `None` or any other value always needs asking: this mandatory decision
     has no default and is never inferred from a generic approval.
+    `"retain-active-coordinator"` is not a checkout disposition and raises
+    `ValueError` rather than being treated as an answer to this question.
     """
     if recorded_decision is None:
         return True
     if recorded_decision == "defer":
         return not same_run
+    if recorded_decision == "retain-active-coordinator":
+        raise ValueError(
+            "'retain-active-coordinator' is an architectural decision, not a "
+            "checkout disposition; pass it to legacy_architecture_prompt_required"
+        )
     if recorded_decision in {"retire-and-delete", "retire-and-retain-checkout"}:
         return False
     return True
+
+
+LEGACY_AIDLC_PROJECT_TYPES = frozenset({"brownfield", "greenfield"})
+_CHECKOUT_DISPOSITIONS = frozenset(
+    {"retire-and-delete", "retire-and-retain-checkout"}
+)
+_LEGACY_PROVENANCE = frozenset(
+    {
+        "confirmed",
+        "inspect",
+        "absent",
+        "ruled-out",
+        "inspection-unavailable",
+    }
+)
+_LEGACY_INSPECTIONS = frozenset({"confirmed", "ruled-out", "unavailable"})
+_LEGACY_FILE_TREATMENTS = frozenset(
+    {"preserve", "reconcile", "replace", "retire", "unresolved"}
+)
+_LEGACY_FILE_COMPARISONS = frozenset({"unchanged", "differs", "unavailable"})
+_LEGACY_ARCHITECTURES = frozenset(
+    {"migrate-distributed", "retain-active-coordinator", "defer"}
+)
+_LEGACY_INVENTORY_ACTIONS = frozenset(
+    {"create", "update", "move", "delete", "preserve"}
+)
+_LEGACY_CONTENT_HASH = re.compile(r"^(?:missing|[0-9a-f]{64})$")
+_LEGACY_FINGERPRINT = re.compile(r"^[0-9a-f]{16}$")
+
+
+def detect_legacy_aidlc_installation(
+    project_type_text: str | None,
+    discovery_prompt_present: bool,
+    context_rule_present: bool,
+) -> str:
+    """Return how completely the known legacy AI-DLC instruction markers match.
+
+    The three markers are instruction files, not execution results:
+
+    - `project_type_text` is the full text of `.ai-dlc-project-type`, or
+      `None` when that file is absent. Only a stripped value of
+      `brownfield` or `greenfield` counts. Any other text does not count,
+      including an empty file.
+    - `discovery_prompt_present` is true only when
+      `prompts/discovery/prompt_01_codebase_discovery.md` exists. That file
+      is the discovery instruction. Its absence does not prove discovery
+      never ran, and a discovery output directory is not a marker here.
+    - `context_rule_present` is true only when
+      `.cursor/rules/aidlc-context.mdc` exists.
+
+    Returns `"full"` when all three count, `"absent"` when none count, and
+    `"partial"` otherwise. `"partial"` is not a confirmed installation and
+    is not proof that no legacy installation exists. This function does not
+    classify repository role and does not authorize deletion.
+    """
+    project_type_counts = (
+        project_type_text is not None
+        and project_type_text.strip() in LEGACY_AIDLC_PROJECT_TYPES
+    )
+    present = sum(
+        (
+            project_type_counts,
+            bool(discovery_prompt_present),
+            bool(context_rule_present),
+        )
+    )
+    if present == 3:
+        return "full"
+    if present == 0:
+        return "absent"
+    return "partial"
+
+
+def legacy_supporting_evidence(
+    *,
+    name_matches_legacy_pattern: bool = False,
+    operating_model_heading_only: bool = False,
+    discovery_path_only: bool = False,
+    inspected_framework_content: bool = False,
+) -> bool:
+    """True only when read content warrants a bounded legacy inspection.
+
+    A directory name, an Operating Model heading whose rows were not read,
+    or a discovery path whose document was not read does not count, alone
+    or together. `inspected_framework_content` means the caller read legacy
+    framework content beyond those labels: operating-model rows, discovery
+    documents, framework scripts or workflows, or historical `aidlc-docs`
+    outputs. This does not confirm provenance and does not authorize
+    deletion.
+    """
+    del (
+        name_matches_legacy_pattern,
+        operating_model_heading_only,
+        discovery_path_only,
+    )
+    return bool(inspected_framework_content)
+
+
+def resolve_legacy_provenance(
+    detection: str,
+    *,
+    supporting_evidence: bool = False,
+    inspection: str | None = None,
+) -> str:
+    """Turn marker detection plus inspection into provenance.
+
+    `detection` is the return value of `detect_legacy_aidlc_installation`.
+    `"absent"` means none of the three instruction markers counted. It does
+    not mean inspection proved that no legacy installation exists.
+
+    `supporting_evidence` comes from `legacy_supporting_evidence`. It opens
+    a bounded inspection. It does not confirm provenance by itself.
+
+    `inspection` is `None` until that inspection finishes, then
+    `"confirmed"`, `"ruled-out"`, or `"unavailable"`.
+
+    - `"full"` returns `"confirmed"`. A later inspection cannot downgrade a
+      complete marker match.
+    - `"partial"`, or `"absent"` with supporting evidence, returns
+      `"inspect"` until inspection finishes. `"confirmed"` and
+      `"ruled-out"` are the finished results. `"unavailable"` returns
+      `"inspection-unavailable"`, which is not a verified absence.
+    - `"absent"` without supporting evidence returns `"absent"`: there is
+      nothing further to inspect, and migration is not proposed. A
+      confirmed or ruled-out inspection in that state raises `ValueError`,
+      because nothing warranted it. `"unavailable"` still returns
+      `"inspection-unavailable"` rather than a verified absence.
+
+    Provenance does not classify repository role and does not authorize
+    deletion.
+    """
+    if detection not in {"full", "partial", "absent"}:
+        raise ValueError(f"unknown legacy detection: {detection!r}")
+    if inspection is not None and inspection not in _LEGACY_INSPECTIONS:
+        raise ValueError(f"unknown legacy inspection: {inspection!r}")
+    if detection == "full":
+        return "confirmed"
+    warranted = detection == "partial" or bool(supporting_evidence)
+    if not warranted:
+        if inspection in {"confirmed", "ruled-out"}:
+            raise ValueError(
+                "inspection cannot confirm or rule out legacy provenance "
+                "when no marker or supporting evidence warranted it"
+            )
+        if inspection == "unavailable":
+            return "inspection-unavailable"
+        return "absent"
+    if inspection is None:
+        return "inspect"
+    if inspection == "confirmed":
+        return "confirmed"
+    if inspection == "ruled-out":
+        return "ruled-out"
+    return "inspection-unavailable"
+
+
+def legacy_architecture_prompt_required(
+    provenance: str, recorded_architecture: str | None, same_run: bool
+) -> bool:
+    """True when this run must show the distributed-migration proposal.
+
+    `provenance` comes from `resolve_legacy_provenance`. Only `"confirmed"`
+    can require the proposal. `"inspect"` means inspection is still open.
+    `"absent"` means nothing warranted inspection. `"ruled-out"` is a
+    finished negative inspection. `"inspection-unavailable"` is an
+    incomplete inspection, not a verified absence. None of those four
+    require the proposal.
+
+    `recorded_architecture` is the explicit architectural choice, not a
+    checkout disposition and not `Placement: adopted-coordinator`:
+
+    - `None` or any unrecognized value — the proposal is still required.
+      A placement value written by an earlier run is not this argument.
+    - `"migrate-distributed"` — already chosen; do not ask again.
+    - `"retain-active-coordinator"` — the user kept the coordinator active.
+      This is not `"retire-and-retain-checkout"`, which keeps the checkout
+      only as a historical copy. Do not ask again.
+    - `"defer"` — do not ask again in this run; ask on a later run.
+
+    Passing a checkout disposition raises `ValueError`. That decision does
+    not answer, and must not be reused as, the architectural question.
+    """
+    if provenance not in _LEGACY_PROVENANCE:
+        raise ValueError(f"unknown legacy provenance: {provenance!r}")
+    if recorded_architecture in _CHECKOUT_DISPOSITIONS:
+        raise ValueError(
+            f"{recorded_architecture!r} is a checkout disposition, not an "
+            "architectural decision"
+        )
+    if provenance != "confirmed":
+        return False
+    if recorded_architecture in {None, ""}:
+        return True
+    if recorded_architecture == "migrate-distributed":
+        return False
+    if recorded_architecture == "retain-active-coordinator":
+        return False
+    if recorded_architecture == "defer":
+        return not same_run
+    return True
+
+
+def _legacy_relative_path(value: str, field: str) -> str:
+    if (
+        not value
+        or value.startswith(("/", "\\", "~"))
+        or "\\" in value
+        or re.match(r"^[A-Za-z]:", value)
+    ):
+        raise ValueError(f"{field} must be a repository-relative path")
+    parts = value.split("/")
+    if any(part in {"", ".", ".."} for part in parts):
+        raise ValueError(f"{field} must be a repository-relative path")
+    return value
+
+
+def legacy_inventory_fingerprint(entries: list[dict[str, str]]) -> str:
+    """Return a 16-hex identity for one proposed legacy file set.
+
+    Each entry has `repository_id`, `relative_path`, `action` (`create`,
+    `update`, `move`, `delete`, or `preserve`), `before`, and `after`.
+    `before` and `after` are a lowercase SHA-256 hex digest or the literal
+    `missing`. A `move` also has `destination_repository_id` and
+    `destination_relative_path`. Other actions must not carry a destination.
+
+    Equivalent entries produce the same value regardless of order. A change
+    of repository, path, action, destination, or either hash changes the
+    value. Duplicate or conflicting entries raise `ValueError`. Absolute
+    paths and `..` are rejected, so a machine path is not persisted. File
+    contents are represented only by hashes. An empty entry list is the
+    fingerprint of a run with nothing to write.
+
+    This identifies the set under approval. It does not replace
+    `proposal_is_current`, which the caller still uses immediately before
+    each write.
+    """
+    normalized: list[tuple[str, str, str, str, str, str, str]] = []
+    seen: dict[tuple[str, str, str], tuple[str, str, str, str]] = {}
+    for entry in entries:
+        repository_id = entry.get("repository_id", "")
+        if not REPOSITORY_ID_PATTERN.fullmatch(repository_id):
+            raise ValueError(f"invalid inventory repository id: {repository_id!r}")
+        relative_path = _legacy_relative_path(
+            entry.get("relative_path", ""), "relative_path"
+        )
+        action = entry.get("action", "")
+        if action not in _LEGACY_INVENTORY_ACTIONS:
+            raise ValueError(f"invalid inventory action: {action!r}")
+        before = entry.get("before", "")
+        after = entry.get("after", "")
+        if not _LEGACY_CONTENT_HASH.fullmatch(before) or not _LEGACY_CONTENT_HASH.fullmatch(after):
+            raise ValueError("inventory before/after must be a sha256 hex digest or 'missing'")
+        destination_repository_id = entry.get("destination_repository_id", "")
+        destination_relative_path = entry.get("destination_relative_path", "")
+        if action == "move":
+            if not REPOSITORY_ID_PATTERN.fullmatch(destination_repository_id):
+                raise ValueError("move requires a destination repository id")
+            destination_relative_path = _legacy_relative_path(
+                destination_relative_path, "destination_relative_path"
+            )
+        elif destination_repository_id or destination_relative_path:
+            raise ValueError("a destination is valid only for move")
+        if action == "create" and before != "missing":
+            raise ValueError("create requires before to be 'missing'")
+        if action == "delete" and after != "missing":
+            raise ValueError("delete requires after to be 'missing'")
+        if action == "update" and "missing" in {before, after}:
+            raise ValueError("update requires both content hashes")
+        key = (repository_id, relative_path, action)
+        payload = (destination_repository_id, destination_relative_path, before, after)
+        if key in seen:
+            raise ValueError(
+                "conflicting inventory entry"
+                if seen[key] != payload
+                else "duplicate inventory entry"
+            )
+        seen[key] = payload
+        normalized.append((repository_id, relative_path, action, *payload))
+    digest = hashlib.sha256()
+    for row in sorted(normalized):
+        digest.update("\0".join(row).encode("utf-8"))
+        digest.update(b"\0")
+    return digest.hexdigest()[:16]
+
+
+def legacy_inventory_needs_approval(
+    architecture: str | None,
+    inventory_fingerprint: str | None,
+    approved_inventory_fingerprint: str | None,
+    same_run: bool,
+) -> str:
+    """Return whether this run's file set still needs its own approval.
+
+    Returns `"needs-approval"`, `"approved"`, or `"not-applicable"`.
+    `"approved"` means this same run already approved this exact
+    `legacy_inventory_fingerprint`. It does not authorize the write:
+    call `proposal_is_current` immediately before each write. A matching
+    fingerprint from an earlier run returns `"needs-approval"`.
+
+    `"not-applicable"` means there is nothing to apply: architecture is
+    missing, `"retain-active-coordinator"`, or `"defer"`, or the inventory
+    fingerprint is the empty-entry fingerprint. It is not approval to write.
+
+    An unknown architecture raises `ValueError`. A checkout disposition
+    raises `ValueError` instead of approving files. A fingerprint that is
+    not 16 lowercase hex raises `ValueError`.
+    """
+    if architecture in _CHECKOUT_DISPOSITIONS:
+        raise ValueError(
+            f"{architecture!r} is a checkout disposition and does not approve "
+            "the current file inventory"
+        )
+    if architecture not in {None, ""} and architecture not in _LEGACY_ARCHITECTURES:
+        raise ValueError(f"unknown legacy architecture: {architecture!r}")
+    if architecture != "migrate-distributed":
+        return "not-applicable"
+    empty = legacy_inventory_fingerprint([])
+    for label, value in (
+        ("inventory_fingerprint", inventory_fingerprint),
+        ("approved_inventory_fingerprint", approved_inventory_fingerprint),
+    ):
+        if value is None:
+            continue
+        if not _LEGACY_FINGERPRINT.fullmatch(value):
+            raise ValueError(f"{label} must be a 16-hex legacy inventory fingerprint")
+    if inventory_fingerprint is None:
+        raise ValueError("inventory_fingerprint is required for migrate-distributed")
+    if inventory_fingerprint == empty:
+        return "not-applicable"
+    if (
+        same_run
+        and approved_inventory_fingerprint == inventory_fingerprint
+    ):
+        return "approved"
+    return "needs-approval"
+
+
+def historical_content_blocks_checkout_deletion(
+    unresolved_historical_content: bool, only_recoverable_copy: bool
+) -> bool:
+    """True when deletion would remove the only copy of unresolved history.
+
+    Unresolved historical documents do not block preparation of the new
+    distributed context. Report that preparation and this deletion block
+    separately. Both flags must be true. A recoverable copy elsewhere, or
+    a resolved document, does not block deletion through this helper.
+    """
+    return bool(unresolved_historical_content) and bool(only_recoverable_copy)
+
+
+def classify_legacy_ci_workflow(
+    enforces_only_retired_markdown: bool, enforces_independent_control: bool
+) -> str:
+    """Classify one legacy CI workflow by the checks it enforces.
+
+    A missing workflow of the same name is not an input and is not a
+    classification.
+
+    - An independent security, test, or branch-protection control returns
+      `"review-control"`, even when the same workflow also checks retired
+      Markdown artifacts. Preserve it, replace it, or present removal of
+      that control explicitly.
+    - Markdown-artifact enforcement with no independent control returns
+      `"retire"`.
+    - Neither flag returns `"inspect"`. Behavior is not established yet.
+    """
+    if enforces_independent_control:
+        return "review-control"
+    if enforces_only_retired_markdown:
+        return "retire"
+    return "inspect"
+
+
+def legacy_baseline_comparison(
+    baseline_available: bool, content_matches_baseline: bool | None
+) -> str:
+    """Compare one installed file with a trustworthy legacy baseline.
+
+    The baseline is an identifiable revision of the legacy framework, or a
+    verified original template the caller has already read. It is not the
+    current upstream tip, and this function does not fetch or clone a
+    repository. A missing baseline returns `"unavailable"` and never
+    `"unchanged"`. Claiming a match or a difference without a baseline
+    raises `ValueError`. An available baseline with no result also raises.
+    """
+    if not baseline_available:
+        if content_matches_baseline is not None:
+            raise ValueError(
+                "a missing legacy baseline cannot be recorded as a content match"
+            )
+        return "unavailable"
+    if content_matches_baseline is None:
+        raise ValueError("an available legacy baseline requires a comparison result")
+    return "unchanged" if content_matches_baseline else "differs"
+
+
+def legacy_standard_file_treatment(
+    standard_treatment: str,
+    comparison: str,
+    reviewed_treatment: str | None = None,
+) -> str:
+    """Return the treatment for one known legacy file.
+
+    `standard_treatment` is the table guidance for the unmodified shipped
+    file: `"preserve"`, `"reconcile"`, `"replace"`, `"retire"`, or
+    `"unresolved"`. A known path does not authorize deletion.
+
+    `comparison` comes from `legacy_baseline_comparison`: `"unchanged"`,
+    `"differs"`, or `"unavailable"`.
+
+    `"unchanged"` returns the table treatment. `"differs"` keeps
+    `"preserve"` until a review explicitly chooses another treatment, so a
+    customized requirement or control is not removed unread. Every other
+    differing file, and every file whose baseline is unavailable, stays
+    `"unresolved"` until `reviewed_treatment` records the bounded review.
+    That unresolved result applies only to this file. It does not block
+    preparing distributed context for the rest of the engagement.
+
+    Relocating a workspace file (`"reconcile"`) does not delete the old
+    copy. Deletion of that copy is a separate inventory action, and only
+    after the replacement is verified.
+    """
+    if standard_treatment not in _LEGACY_FILE_TREATMENTS:
+        raise ValueError(f"unknown legacy file treatment: {standard_treatment!r}")
+    if comparison not in _LEGACY_FILE_COMPARISONS:
+        raise ValueError(f"unknown legacy file comparison: {comparison!r}")
+    if (
+        reviewed_treatment is not None
+        and reviewed_treatment not in _LEGACY_FILE_TREATMENTS
+    ):
+        raise ValueError(f"unknown reviewed legacy treatment: {reviewed_treatment!r}")
+    if comparison == "unchanged":
+        return standard_treatment
+    if reviewed_treatment is not None:
+        return reviewed_treatment
+    if comparison == "differs" and standard_treatment == "preserve":
+        return "preserve"
+    return "unresolved"
 
 
 REPOSITORY_MIGRATION_STATES = frozenset(

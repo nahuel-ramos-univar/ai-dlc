@@ -220,11 +220,27 @@ services/
     AIDLC_CONTEXT.md
 ```
 
-Multi-repository workspace (two Git roots; keep one engagement artifact home
-when the user authorized it, even if that home is not itself a Git root):
+Multi-repository workspace (distributed; each Git root keeps its own index):
 
 ```text
-engagement/                       # authorized artifact home
+web/                              # Git root
+  aidlc-docs/
+    repository-context.md
+  apps/
+    storefront/
+      AIDLC_CONTEXT.md
+payments/                         # Git root
+  aidlc-docs/
+    repository-context.md
+  AIDLC_CONTEXT.md
+```
+
+Each repository's `aidlc-docs/repository-context.md` is that repository's own index. A sibling is reached through a `Related repository` entry, not through one shared index above both Git roots. If `payments/` is a behaviorful service (handlers, a payment client, persistence), create `payments/AIDLC_CONTEXT.md` even though it is a single-module repository. List it in `## Modules` only when that local context file exists.
+
+Existing shared artifact home (compatibility with a configuration the user already authorized; not the destination of a distributed migration):
+
+```text
+engagement/                       # existing authorized artifact home, not itself a Git root
   aidlc-docs/
     repository-context.md
     integration-map.md            # only after a verified web-to-payments contract
@@ -235,4 +251,4 @@ web/                              # Git root
 payments/                         # Git root
 ```
 
-If `payments/` is a behaviorful service (handlers, a payment client, persistence), create `payments/AIDLC_CONTEXT.md` even though it is a single-module repository. List it in `## Modules` only when that local context file exists.
+Keep this layout only when that shared home already exists and the user has authorized it. Do not propose it for a new multi-repository product, and do not use it as the destination when migrating away from a legacy coordinator.

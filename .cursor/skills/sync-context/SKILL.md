@@ -58,11 +58,16 @@ baseline. For an untracked tree, leave `git_root` unset and use baseline
 `unversioned`.
 
 Read existing `.ai-dlc-config.md` and repository index to learn configured
-placement, persisted identity, and related repositories, per
-[artifact-home.md](references/artifact-home.md). Note which related
-repositories are available in this window and which are not; an unavailable
-related repository is a fact to report, not a reason to invent a competing
-context home.
+placement and persisted identity, per [artifact-home.md](references/artifact-home.md).
+Also read any declared product membership there -- `Product` and
+`Related repository` entries (`parse_related_repositories`) -- and resolve
+them against the Git roots discovered above with `match_related_repositories`,
+following the shared procedure in
+[context-retrieval.md](../../../references/context-retrieval.md), "Resolving
+related repositories." Note which related repositories are available in this
+window and which are not; an unavailable related repository is a fact to
+report, not a reason to invent a competing context home, and a sibling that
+does not yet list this repository back is not by itself a conflict.
 
 For a multi-repository workspace, classify each repository's role from
 evidence before treating any of it as legacy — a plugin installation, a
@@ -131,8 +136,11 @@ source fingerprint is not the whole of change set A, though: a pending,
 user-requested `## Project references` update (switching the configured
 Jira board, for example) is also part of set A, and it stays reachable even
 when the fingerprint is `unchanged` — pass it to `context_sync_outcome` as
-`project_reference_pending`. This does not by itself end the run: still
-check whether change set B (a Bugbot or project-rule proposal,
+`project_reference_pending`. A confirmed, pending change to `Product` or a
+`Related repository` entry is the same shape of input, passed as
+`membership_pending`; adding or correcting membership is also change set A,
+even when nothing in the source fingerprint moved. This does not by itself
+end the run: still check whether change set B (a Bugbot or project-rule proposal,
 [bugbot-configuration.md](references/bugbot-configuration.md),
 [project-rules.md](references/project-rules.md)) or change set C (legacy
 migration cleanup, [legacy-migration.md](references/legacy-migration.md))
@@ -234,6 +242,30 @@ or a scoped project-policy rule (change set B,
 evidence just gathered, and whether legacy migration items are present
 (change set C, [legacy-migration.md](references/legacy-migration.md)). Each
 set is prepared independently; none is bundled into set A's content.
+
+Still within set A, propose any product-membership update that the evidence
+or the user's own words support: a `Related repository` entry for a sibling
+confirmed in this session but not yet declared, or a `Product` label the
+user states explicitly. Never infer a `Product` label from a checkout or
+workspace-folder name, and never add a `Related repository` entry merely
+because a folder happens to be open alongside this one -- an open folder is
+a candidate to ask about, not a confirmed sibling. Preserve every existing,
+still-valid membership entry unless the user is explicitly correcting it. A
+membership-only change never by itself reopens or rewrites an existing
+`BUGBOT.md` or project rule; set B's own fingerprint and recorded decisions
+decide that independently, per
+[bugbot-configuration.md](references/bugbot-configuration.md).
+When a local multi-root `.code-workspace` would help (several related
+repositories are open and no workspace file ties them together yet, or an
+existing one is missing a confirmed sibling), propose creating or updating
+it as part of this same change set, per
+[artifact-home.md](references/artifact-home.md) and
+[legacy-migration.md](references/legacy-migration.md), "Preserving the
+workspace file." Parse an existing `.code-workspace` as JSONC, not plain
+JSON, so hand-authored comments and unrelated settings survive untouched.
+Recompute only the `folders[].path` entries this proposal actually touches
+with `relocate_workspace_folder_path`; never rewrite a shared workspace file
+with an absolute, machine-local path to fit one checkout layout.
 
 Show the proposal with the shared [canvas review](../../../references/canvas-review.md). Reconcile any edit made there back into the proposal object before Stage 4. For a migration proposal, the readable before/after content is detailed in [legacy-migration.md](references/legacy-migration.md), "Reviewing a migration in Canvas".
 
@@ -389,10 +421,17 @@ independent review result (completed, skipped for a small factual update, or
 unavailable) and, when required independent review was unavailable, that
 quality assurance is partial, and the status of each relevant
 change set (A/B/C): applied, proposed and pending approval, declined, or not
-applicable. For a migration run, also return the per-repository migration
-outcome and each identified coordinator's retirement disposition.
+applicable. Return each declared `Related repository`'s resolution
+(available with its matched local path, unavailable, ambiguous, or declared
+but malformed -- see `parse_related_repositories`'s `"invalid"` status in
+[context-retrieval.md](../../../references/context-retrieval.md)) and any
+`Product` or local workspace-file change. For a migration run, also return
+the per-repository migration outcome and each identified coordinator's
+retirement disposition.
 
 Read [artifact-home.md](references/artifact-home.md),
+[context retrieval](../../../references/context-retrieval.md) for the
+related-repository resolution procedure,
 [context-generation.md](references/context-generation.md),
 [incremental-refresh.md](references/incremental-refresh.md),
 [context-templates.md](references/context-templates.md),

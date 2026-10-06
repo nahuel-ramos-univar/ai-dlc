@@ -13,6 +13,7 @@ ROOT = Path(__file__).parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from context_tools import (  # noqa: E402
+    _canonical_remote_or_problem,
     bugbot_reprompt_allowed,
     check_document_budget,
     checkout_deletion_readiness,
@@ -27,6 +28,7 @@ from context_tools import (  # noqa: E402
     find_live_section,
     cli_validate,
     content_fingerprint,
+    detect_canonical_remote_collision,
     detect_repository_id_collision,
     extract_table_column,
     find_duplicate_context_targets,
@@ -34,17 +36,21 @@ from context_tools import (  # noqa: E402
     find_duplicate_values,
     find_stale_source_paths,
     GitDiscoveryError,
+    git_output,
     is_declared_submodule,
+    match_related_repositories,
     migration_destination_placement,
     migration_outcome,
     module_context_destination,
     repository_is_named_coordinator,
     normalize_remote,
     parse_project_references,
+    parse_related_repositories,
     plan_validate_proposal,
     proposal_is_current,
     relocate_workspace_folder_path,
     resolve_placement,
+    resolve_related_context_index,
     retirement_decision_pending,
     context_sync_outcome,
     scope_verification_status,
@@ -631,6 +637,46 @@ def test_identity_normalization_and_persistence() -> None:
         )
         == "github.com/a-b/c"
     )
+
+
+def test_canonical_remote_collision_detects_reverse_direction() -> None:
+    # Reproduced defect: the same canonical remote persisted under two
+    # different repository IDs is a genuine identity collision that
+    # `detect_repository_id_collision` alone cannot see, because its own
+    # check only ever looks up `occupied.get(repo_id)` -- a different key
+    # entirely from the one that collides here.
+    assert (
+        detect_canonical_remote_collision(
+            "api-new", "github.com/example/api", {"api-old": "github.com/example/api"}
+        )
+        == "api-old"
+    )
+    # `detect_repository_id_collision` itself must not be changed to also
+    # report this direction -- its own return contract (a canonical
+    # identity string, or None) stays exactly as it always has been.
+    assert (
+        detect_repository_id_collision(
+            "api-new", "github.com/example/api", {"api-old": "github.com/example/api"}
+        )
+        is None
+    )
+
+
+def test_canonical_remote_collision_is_none_for_valid_shared_identity() -> None:
+    # Two checkouts or worktrees of the same repository, both already
+    # persisted under the same repository ID and the same canonical
+    # remote, are not a collision -- this is the ordinary case, not an
+    # edge case to special-case away.
+    occupied = {"payments-api": "github.com/example/payments-api"}
+    assert (
+        detect_canonical_remote_collision(
+            "payments-api", "github.com/example/payments-api", occupied
+        )
+        is None
+    )
+    # No entry at all sharing this canonical identity is also not a
+    # collision.
+    assert detect_canonical_remote_collision("brand-new", "github.com/example/new", {}) is None
 
 
 def test_document_budget_flags_documents_over_the_limit() -> None:
@@ -2798,6 +2844,8 @@ def test_checkout_deletion_readiness_blocks_until_every_precondition_passes() ->
             retention_established=True,
             repository_role="product-coordination-repository",
             has_active_references=False,
+            has_unrecovered_stash=False,
+            has_dependent_worktrees=False,
         )
         == ()
     )
@@ -2811,6 +2859,8 @@ def test_checkout_deletion_readiness_blocks_until_every_precondition_passes() ->
         retention_established=True,
         repository_role="product-coordination-repository",
         has_active_references=False,
+        has_unrecovered_stash=False,
+        has_dependent_worktrees=False,
     )
     assert len(mismatched) == 1 and "does not name this exact target" in mismatched[0]
     # Unmigrated content, local changes, unrecoverable commits, and missing
@@ -2824,6 +2874,8 @@ def test_checkout_deletion_readiness_blocks_until_every_precondition_passes() ->
         retention_established=False,
         repository_role="product-coordination-repository",
         has_active_references=False,
+        has_unrecovered_stash=False,
+        has_dependent_worktrees=False,
     )
     assert len(every_reason) == 4
 
@@ -2838,6 +2890,8 @@ def test_checkout_deletion_readiness_rejects_unsafe_targets() -> None:
         retention_established=True,
         repository_role="product-coordination-repository",
         has_active_references=False,
+        has_unrecovered_stash=False,
+        has_dependent_worktrees=False,
     )
     assert checkout_deletion_readiness(**ready) == ()
 
@@ -2872,6 +2926,186 @@ def test_checkout_deletion_readiness_rejects_unsafe_targets() -> None:
 
     referenced = checkout_deletion_readiness(**{**ready, "has_active_references": True})
     assert any("references still point" in reason for reason in referenced)
+
+
+def test_checkout_deletion_readiness_blocks_on_unrecovered_stash() -> None:
+    # Scenario: "Clean current worktree with an unrecovered stash." A clean
+    # working tree (has_uncommitted_changes=False) must not by itself prove
+    # readiness when a stash still holds unrecovered material.
+    ready = dict(
+        explicit_target="engagement/legacy-aidlc",
+        approved_target="engagement/legacy-aidlc",
+        migration_confirmed=True,
+        has_uncommitted_changes=False,
+        has_unestablished_recovery=False,
+        retention_established=True,
+        repository_role="product-coordination-repository",
+        has_active_references=False,
+        has_unrecovered_stash=False,
+        has_dependent_worktrees=False,
+    )
+    assert checkout_deletion_readiness(**ready) == ()
+
+    stashed = checkout_deletion_readiness(**{**ready, "has_unrecovered_stash": True})
+    assert any("stash" in reason for reason in stashed)
+    # A clean tree plus an unrecovered stash is still exactly one blocking
+    # reason; the stash check is independent of the dirty-tree check.
+    assert len(stashed) == 1
+
+
+def test_checkout_deletion_readiness_blocks_on_dependent_worktree() -> None:
+    # Scenario: "Main checkout whose removal would break a linked worktree."
+    # A pushed remote and clean main worktree (every other flag "ready")
+    # must not be enough when a linked worktree still depends on this
+    # checkout's Git common directory.
+    ready = dict(
+        explicit_target="engagement/legacy-aidlc",
+        approved_target="engagement/legacy-aidlc",
+        migration_confirmed=True,
+        has_uncommitted_changes=False,
+        has_unestablished_recovery=False,
+        retention_established=True,
+        repository_role="product-coordination-repository",
+        has_active_references=False,
+        has_unrecovered_stash=False,
+        has_dependent_worktrees=False,
+    )
+    assert checkout_deletion_readiness(**ready) == ()
+
+    dependent = checkout_deletion_readiness(**{**ready, "has_dependent_worktrees": True})
+    assert any("worktree" in reason for reason in dependent)
+    assert len(dependent) == 1
+
+
+def test_checkout_deletion_readiness_failed_inspection_remains_blocked() -> None:
+    # Scenario: "Failed inspection remains blocked." When stash or worktree
+    # inspection could not be completed, the caller reports that as the
+    # blocking value (True), per this function's own documented contract --
+    # an inspection failure must never silently resolve to an empty result.
+    ready = dict(
+        explicit_target="engagement/legacy-aidlc",
+        approved_target="engagement/legacy-aidlc",
+        migration_confirmed=True,
+        has_uncommitted_changes=False,
+        has_unestablished_recovery=False,
+        retention_established=True,
+        repository_role="product-coordination-repository",
+        has_active_references=False,
+        has_unrecovered_stash=False,
+        has_dependent_worktrees=False,
+    )
+    stash_inspection_failed = checkout_deletion_readiness(
+        **{**ready, "has_unrecovered_stash": True}
+    )
+    assert stash_inspection_failed != ()
+
+    worktree_inspection_failed = checkout_deletion_readiness(
+        **{**ready, "has_dependent_worktrees": True}
+    )
+    assert worktree_inspection_failed != ()
+
+
+def test_checkout_deletion_readiness_fully_verified_checkout_still_passes() -> None:
+    # Scenario: "A fully verified eligible checkout still passes the
+    # readiness contract." Every precondition, including the two added
+    # here, genuinely inspected and clear: deletion remains ready.
+    assert (
+        checkout_deletion_readiness(
+            explicit_target="engagement/legacy-aidlc",
+            approved_target="engagement/legacy-aidlc",
+            migration_confirmed=True,
+            has_uncommitted_changes=False,
+            has_unestablished_recovery=False,
+            retention_established=True,
+            repository_role="product-coordination-repository",
+            has_active_references=False,
+            has_unrecovered_stash=False,
+            has_dependent_worktrees=False,
+        )
+        == ()
+    )
+
+
+def test_real_git_stash_and_worktree_inspection_feeds_the_readiness_booleans() -> None:
+    # This test exercises actual `git stash list` / `git worktree list`
+    # output on a disposable repository, then feeds that real result into
+    # `checkout_deletion_readiness`. It is distinct from the pure-function
+    # tests above: those prove the readiness combination logic given
+    # already-supplied booleans; this one proves `git_output` actually
+    # surfaces a stash and a dependent worktree the way the caller
+    # instructions in legacy-migration.md assume. Neither proves the other.
+    with tempfile.TemporaryDirectory() as temp:
+        main = Path(temp) / "coordinator"
+        main.mkdir()
+        init_repo(main)
+        (main / "README.md").write_text("placeholder\n")
+        run(main, "git", "add", ".")
+        run(main, "git", "commit", "-qm", "feat: initial")
+
+        # No stash, no worktree yet: a real inspection reports both clear.
+        assert git_output(main, "stash", "list") == ""
+        worktrees_before = git_output(main, "worktree", "list", "--porcelain") or ""
+        assert worktrees_before.count("worktree ") == 1
+        assert (
+            checkout_deletion_readiness(
+                explicit_target=str(main),
+                approved_target=str(main),
+                migration_confirmed=True,
+                has_uncommitted_changes=False,
+                has_unestablished_recovery=False,
+                retention_established=True,
+                repository_role="product-coordination-repository",
+                has_active_references=False,
+                has_unrecovered_stash=bool(git_output(main, "stash", "list")),
+                has_dependent_worktrees=(
+                    (git_output(main, "worktree", "list", "--porcelain") or "").count(
+                        "worktree "
+                    )
+                    > 1
+                ),
+            )
+            == ()
+        )
+
+        # Create real uncommitted work, stash it: `git stash list` is now
+        # non-empty, independent of a clean `git status`.
+        (main / "README.md").write_text("changed\n")
+        run(main, "git", "stash", "push", "-qm", "wip")
+        assert git_output(main, "stash", "list") != ""
+        blocked_by_stash = checkout_deletion_readiness(
+            explicit_target=str(main),
+            approved_target=str(main),
+            migration_confirmed=True,
+            has_uncommitted_changes=False,
+            has_unestablished_recovery=False,
+            retention_established=True,
+            repository_role="product-coordination-repository",
+            has_active_references=False,
+            has_unrecovered_stash=bool(git_output(main, "stash", "list")),
+            has_dependent_worktrees=False,
+        )
+        assert any("stash" in reason for reason in blocked_by_stash)
+        run(main, "git", "stash", "drop", "-q")
+
+        # Add a real linked worktree: `git worktree list` now reports two
+        # entries for the same common Git directory.
+        linked = Path(temp) / "linked-worktree"
+        run(main, "git", "worktree", "add", "-q", str(linked), "-b", "linked-branch")
+        worktrees_after = git_output(main, "worktree", "list", "--porcelain") or ""
+        assert worktrees_after.count("worktree ") == 2
+        blocked_by_worktree = checkout_deletion_readiness(
+            explicit_target=str(main),
+            approved_target=str(main),
+            migration_confirmed=True,
+            has_uncommitted_changes=False,
+            has_unestablished_recovery=False,
+            retention_established=True,
+            repository_role="product-coordination-repository",
+            has_active_references=False,
+            has_unrecovered_stash=False,
+            has_dependent_worktrees=worktrees_after.count("worktree ") > 1,
+        )
+        assert any("worktree" in reason for reason in blocked_by_worktree)
 
 
 def test_retirement_decision_pending_mirrors_bugbot_reprompt_semantics() -> None:
@@ -3428,6 +3662,373 @@ def test_project_references_invalid_status_never_populates_values() -> None:
     assert unknown_role.values == {}
 
 
+def test_related_repositories_missing_when_no_entries_declared() -> None:
+    # No `## Context identities` heading at all, and a live heading with
+    # only a `Repository:`/`Module:` block and no `Related repository`
+    # entry, must both be "missing" -- not proof this repository has no
+    # siblings, just that membership is unconfigured here.
+    absent = parse_related_repositories("## Project references\n- Jira project: `PROJ`\n")
+    assert absent.status == "missing"
+    assert absent.entries == ()
+
+    identity_only = parse_related_repositories(
+        "## Context identities\n"
+        "- Repository: `payments-api`\n"
+        "  - Canonical remote: `github.com/example/payments-api`\n"
+        "- Module: `payments-api`\n"
+        "  - ID: `payments-api`\n"
+        "  - Source: `services/payments`\n"
+    )
+    assert identity_only.status == "missing"
+    assert identity_only.entries == ()
+
+
+def test_related_repositories_parses_role_and_context_index() -> None:
+    # The repository's own `Repository:`/`Module:` blocks sit alongside one
+    # or more `Related repository:` entries in the same section; only the
+    # `Related repository` blocks are read here, each keeping its own
+    # `Role` and `Context index` without leaking into a neighboring entry.
+    config = "\n".join(
+        [
+            "## Context identities",
+            "- Repository: `payments-api`",
+            "  - Canonical remote: `github.com/example/payments-api`",
+            "  - Product: `checkout-platform`",
+            "- Related repository: `github.com/example/payments-web`",
+            "  - Repository ID: `payments-web`",
+            "  - Role: `frontend`",
+            "  - Context index: `aidlc-docs/repository-context.md`",
+            "- Related repository: `github.com/example/payments-infra`",
+            "  - Role: `infrastructure`",
+            "",
+        ]
+    )
+    related = parse_related_repositories(config)
+    assert related.status == "ok"
+    assert len(related.entries) == 2
+    web, infra = related.entries
+    assert web.canonical_remote == "github.com/example/payments-web"
+    assert web.repository_id == "payments-web"
+    assert web.role == "frontend"
+    assert web.context_index == "aidlc-docs/repository-context.md"
+    # A `Related repository` entry with no confirmed `Repository ID` yet is
+    # still a valid, well-formed entry: the sibling's own ID may not be
+    # known from this side yet.
+    assert infra.repository_id is None
+    assert infra.context_index is None
+
+
+def test_related_repositories_requires_canonical_remote() -> None:
+    # A `Related repository` entry with no value on its own label line has
+    # no join key at all. It must be reported as "invalid", never dropped
+    # silently -- a malformed entry must not disappear and look like "no
+    # related repositories declared".
+    config = "## Context identities\n- Related repository:\n  - Role: `frontend`\n"
+    related = parse_related_repositories(config)
+    assert related.status == "invalid"
+    assert "canonical remote" in related.detail
+
+
+def test_related_repositories_rejects_invalid_repository_id() -> None:
+    config = (
+        "## Context identities\n"
+        "- Related repository: `github.com/example/payments-web`\n"
+        "  - Repository ID: `Payments_Web`\n"
+    )
+    related = parse_related_repositories(config)
+    assert related.status == "invalid"
+    assert "Repository ID" in related.detail
+
+
+def test_related_repositories_duplicate_remote_is_invalid() -> None:
+    # The same canonical remote declared twice in one document is a
+    # malformed entry, distinct from the identity-collision case that
+    # `detect_repository_id_collision` catches across *different*
+    # documents' declarations.
+    config = (
+        "## Context identities\n"
+        "- Related repository: `github.com/example/payments-web`\n"
+        "  - Role: `frontend`\n"
+        "- Related repository: `github.com/example/payments-web`\n"
+        "  - Role: `ui`\n"
+    )
+    related = parse_related_repositories(config)
+    assert related.status == "invalid"
+    assert "declared more than once" in related.detail
+    # The first well-formed occurrence is still reported, not withheld.
+    assert len(related.entries) == 1
+
+
+def test_related_repositories_valid_entry_survives_a_sibling_problem() -> None:
+    # One malformed entry must not hide a well-formed sibling entry; a
+    # caller inspecting `entries` on an "invalid" result still sees what
+    # was readable.
+    config = (
+        "## Context identities\n"
+        "- Related repository: `github.com/example/payments-web`\n"
+        "  - Role: `frontend`\n"
+        "- Related repository:\n"
+    )
+    related = parse_related_repositories(config)
+    assert related.status == "invalid"
+    assert len(related.entries) == 1
+    assert related.entries[0].canonical_remote == "github.com/example/payments-web"
+
+
+def test_related_repositories_rejects_non_remote_canonical_value() -> None:
+    # Reproduced defect A: a string with no remote shape at all (here it
+    # even fails on whitespace alone) must never be accepted as "ok".
+    config = "## Context identities\n- Related repository: `not a remote`\n"
+    related = parse_related_repositories(config)
+    assert related.status == "invalid"
+    assert related.entries == ()
+    assert "canonical remote" in related.detail
+
+
+def test_related_repositories_rejects_unsupported_host() -> None:
+    # A syntactically remote-shaped value on a host this plugin's identity
+    # layer does not support must be reported, not silently accepted as a
+    # new provider.
+    config = "## Context identities\n- Related repository: `gitlab.com/example/api`\n"
+    related = parse_related_repositories(config)
+    assert related.status == "invalid"
+    assert related.entries == ()
+
+
+def test_related_repositories_accepts_raw_ssh_remote_normalized_to_canonical() -> None:
+    # A raw SSH remote is a supported equivalent transport form; it is
+    # normalized through `normalize_remote`, not rejected outright.
+    config = "## Context identities\n- Related repository: `git@github.com:example/api.git`\n"
+    related = parse_related_repositories(config)
+    assert related.status == "ok"
+    assert related.entries[0].canonical_remote == "github.com/example/api"
+
+
+def test_canonical_and_transport_remotes_match_the_same_checkout() -> None:
+    # Parsing alone is not enough: the value stored from a declaration must
+    # be the same string `match_related_repositories` compares with a
+    # checkout remote that `normalize_remote` already produced.
+    available = {"api": "github.com/example/api"}
+    declarations = (
+        "https://github.com/example/api.git",
+        "github.com/example/api.git",
+        "github.com/example/api",
+        "git@github.com:example/api.git",
+    )
+    for raw in declarations:
+        related = parse_related_repositories(
+            f"## Context identities\n- Related repository: `{raw}`\n"
+        )
+        assert related.status == "ok", raw
+        remote = related.entries[0].canonical_remote
+        assert remote == "github.com/example/api", raw
+        matched = match_related_repositories((remote,), available)
+        assert matched[remote] == "api", raw
+
+
+def test_related_repositories_rejects_query_and_fragment_without_echoing_them() -> None:
+    # A query or fragment is not part of a repository identity. Accepting it
+    # would both miss the real checkout and persist a parameter that does
+    # not belong there. The problem text must not repeat that parameter.
+    for raw in (
+        "github.com/example/api?token=secret",
+        "github.com/example/api#readme",
+        "https://github.com/example/api.git?token=secret",
+    ):
+        related = parse_related_repositories(
+            f"## Context identities\n- Related repository: `{raw}`\n"
+        )
+        assert related.status == "invalid", raw
+        assert related.entries == (), raw
+        assert "secret" not in related.detail
+        assert "token=" not in related.detail
+        assert "readme" not in related.detail
+
+
+def test_related_repositories_rejects_context_index_path_traversal() -> None:
+    # Reproduced defect B: a `Context index` that climbs above the related
+    # repository's own root must never be accepted as "ok", regardless of
+    # how many `../` segments it takes to get there.
+    config = (
+        "## Context identities\n"
+        "- Related repository: `github.com/example/api`\n"
+        "  - Context index: `../../private/context.md`\n"
+    )
+    related = parse_related_repositories(config)
+    assert related.status == "invalid"
+    assert related.entries == ()
+    assert "Context index" in related.detail
+
+
+def test_related_repositories_rejects_absolute_and_windows_context_index() -> None:
+    for bad_path in (
+        "/etc/passwd",
+        "C:\\Windows\\System32\\config",
+        "\\\\server\\share\\context.md",
+        "https://example.invalid/context.md",
+        "",
+    ):
+        config = (
+            "## Context identities\n"
+            "- Related repository: `github.com/example/api`\n"
+            f"  - Context index: `{bad_path}`\n"
+        )
+        related = parse_related_repositories(config)
+        assert related.status == "invalid", bad_path
+        assert related.entries == (), bad_path
+
+
+def test_related_repositories_rejects_malformed_repository_id_without_backticks() -> None:
+    # Reproduced defect C: a recognized field present without the
+    # canonical backtick format must be reported as invalid, never
+    # silently treated as absent (`repository_id=None`).
+    config = (
+        "## Context identities\n"
+        "- Related repository: `github.com/example/api`\n"
+        "  - Repository ID: api\n"
+    )
+    related = parse_related_repositories(config)
+    assert related.status == "invalid"
+    assert related.entries == ()
+    assert "Repository ID" in related.detail
+
+
+def test_related_repositories_rejects_duplicate_repository_id_even_when_one_is_malformed() -> None:
+    # Reproduced defect D: `parse_labeled_fields` alone would only ever see
+    # the backtick-formatted occurrence and silently ignore the malformed
+    # duplicate. The dedicated occurrence helper must see both and report
+    # the duplicate instead of guessing which value is correct.
+    config = (
+        "## Context identities\n"
+        "- Related repository: `github.com/example/api`\n"
+        "  - Repository ID: `api`\n"
+        "  - Repository ID: other\n"
+    )
+    related = parse_related_repositories(config)
+    assert related.status == "invalid"
+    assert related.entries == ()
+    assert "duplicate fields" in related.detail
+    assert "Repository ID" in related.detail
+
+
+def test_related_repositories_absent_optional_field_is_distinct_from_invalid() -> None:
+    # An absent `Repository ID` is a valid, well-formed entry (the sibling's
+    # own ID may not be known yet); this must not be confused with a
+    # *present but malformed* `Repository ID`, which is invalid.
+    config = "## Context identities\n- Related repository: `github.com/example/api`\n"
+    related = parse_related_repositories(config)
+    assert related.status == "ok"
+    assert related.entries[0].repository_id is None
+
+
+def test_related_repositories_rejects_empty_optional_field_value() -> None:
+    config = (
+        "## Context identities\n"
+        "- Related repository: `github.com/example/api`\n"
+        "  - Role: ``\n"
+    )
+    related = parse_related_repositories(config)
+    assert related.status == "invalid"
+    assert "Role" in related.detail
+
+
+def test_canonical_remote_or_problem_never_echoes_credentials_in_problem() -> None:
+    normalized, problem = _canonical_remote_or_problem(
+        "https://user:secret-token@github.com/example/api.git"
+    )
+    assert normalized == "github.com/example/api"
+    assert problem is None
+    # And an unsupported credentials-bearing value must not echo the
+    # credential back into the problem string either.
+    _, problem = _canonical_remote_or_problem("https://user:secret-token@gitlab.com/example/api")
+    assert problem is not None
+    assert "secret-token" not in problem
+
+
+def test_resolve_related_context_index_blocks_symlink_escape() -> None:
+    # Filesystem-resolution time containment check: a symlink inside the
+    # related repository that points outside it must not be followed into
+    # a readable path, reusing the same containment logic as the rest of
+    # this module (`_resolved_inside`) rather than a bespoke check.
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp) / "repo"
+        outside = Path(temp) / "outside"
+        root.mkdir()
+        outside.mkdir()
+        secret = outside / "secret.md"
+        secret.write_text("do not read\n")
+        link = root / "escape.md"
+        link.symlink_to(secret)
+
+        escaped = resolve_related_context_index(root, "escape.md")
+        assert escaped is None
+
+        inside = root / "aidlc-docs"
+        inside.mkdir()
+        (inside / "repository-context.md").write_text("ok\n")
+        resolved = resolve_related_context_index(root, "aidlc-docs/repository-context.md")
+        assert resolved == (inside / "repository-context.md").resolve()
+
+
+def test_resolve_related_context_index_returns_a_missing_file_path() -> None:
+    # Containment and existence are different checks. A path that stays
+    # inside the repository is returned even when the file is not there;
+    # the caller must test existence before reading.
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp) / "repo"
+        root.mkdir()
+        resolved = resolve_related_context_index(root, "missing.md")
+        assert resolved == (root / "missing.md").resolve()
+        assert resolved is not None
+        assert not resolved.exists()
+
+
+def test_match_related_repositories_resolves_available_and_unavailable() -> None:
+    available = {
+        "app": "github.com/example/payments-web",
+        "api": "github.com/example/payments-api",
+    }
+    result = match_related_repositories(
+        ("github.com/example/payments-web", "github.com/example/payments-missing"),
+        available,
+    )
+    assert result["github.com/example/payments-web"] == "app"
+    assert result["github.com/example/payments-missing"] == "unavailable"
+
+
+def test_match_related_repositories_flags_ambiguous_duplicate_remote() -> None:
+    # Two checkouts already in scope that both normalize to the same
+    # canonical remote (for example two local clones) must be reported as
+    # ambiguous, never silently resolved to whichever happens to be first.
+    available = {
+        "app-clone-1": "github.com/example/payments-web",
+        "app-clone-2": "github.com/example/payments-web",
+    }
+    result = match_related_repositories(("github.com/example/payments-web",), available)
+    assert result["github.com/example/payments-web"] == "ambiguous"
+
+
+def test_context_sync_outcome_membership_pending_is_reachable() -> None:
+    # A pending, confirmed membership change (adding a `Related repository`
+    # entry, or a `Product` label) must stay reachable even though the
+    # source fingerprint is unchanged, the same guarantee already proven
+    # above for `project_reference_pending`.
+    outcome = context_sync_outcome("unchanged", False, False, False, membership_pending=True)
+    assert outcome == "relevant_updates_found"
+
+    # The default (no pending membership change) must not disturb the
+    # pre-existing no-op outcome.
+    assert context_sync_outcome("unchanged", False, False, False) == "no_relevant_changes"
+
+    # Membership pending alongside other set B/C work is still "relevant
+    # updates found", not the migration-pending outcome: set A itself has
+    # actionable work.
+    assert (
+        context_sync_outcome("unchanged", True, False, False, membership_pending=True)
+        == "relevant_updates_found"
+    )
+
+
 def test_validate_work_item_type_accepts_hierarchy_rejects_sprint_backlog() -> None:
     # Epic, user story, and task are the three planning levels this
     # function recognizes. Sprint Backlog is a collection of selected work
@@ -3903,6 +4504,8 @@ if __name__ == "__main__":
         test_fingerprint_reflects_working_tree_not_the_staged_git_index,
         test_corrupt_index_makes_staged_comparison_unavailable,
         test_identity_normalization_and_persistence,
+        test_canonical_remote_collision_detects_reverse_direction,
+        test_canonical_remote_collision_is_none_for_valid_shared_identity,
         test_document_budget_flags_documents_over_the_limit,
         test_resolve_markdown_links_across_multiple_authorized_repositories,
         test_resolve_markdown_links_rejects_symlink_escape_from_authorized_root,
@@ -4004,6 +4607,11 @@ if __name__ == "__main__":
         test_relocate_workspace_folder_path_recomputes_relative_paths,
         test_checkout_deletion_readiness_blocks_until_every_precondition_passes,
         test_checkout_deletion_readiness_rejects_unsafe_targets,
+        test_checkout_deletion_readiness_blocks_on_unrecovered_stash,
+        test_checkout_deletion_readiness_blocks_on_dependent_worktree,
+        test_checkout_deletion_readiness_failed_inspection_remains_blocked,
+        test_checkout_deletion_readiness_fully_verified_checkout_still_passes,
+        test_real_git_stash_and_worktree_inspection_feeds_the_readiness_booleans,
         test_retirement_decision_pending_mirrors_bugbot_reprompt_semantics,
         test_migration_outcome_reports_partial_without_implying_atomicity,
         test_stale_proposal_does_not_match_a_newer_destination,
@@ -4027,6 +4635,29 @@ if __name__ == "__main__":
         test_project_references_empty_live_section_is_reported_as_missing,
         test_project_references_preserve_fences_and_unrelated_lines,
         test_project_references_invalid_status_never_populates_values,
+        test_related_repositories_missing_when_no_entries_declared,
+        test_related_repositories_parses_role_and_context_index,
+        test_related_repositories_requires_canonical_remote,
+        test_related_repositories_rejects_invalid_repository_id,
+        test_related_repositories_duplicate_remote_is_invalid,
+        test_related_repositories_valid_entry_survives_a_sibling_problem,
+        test_related_repositories_rejects_non_remote_canonical_value,
+        test_related_repositories_rejects_unsupported_host,
+        test_related_repositories_accepts_raw_ssh_remote_normalized_to_canonical,
+        test_canonical_and_transport_remotes_match_the_same_checkout,
+        test_related_repositories_rejects_query_and_fragment_without_echoing_them,
+        test_related_repositories_rejects_context_index_path_traversal,
+        test_related_repositories_rejects_absolute_and_windows_context_index,
+        test_related_repositories_rejects_malformed_repository_id_without_backticks,
+        test_related_repositories_rejects_duplicate_repository_id_even_when_one_is_malformed,
+        test_related_repositories_absent_optional_field_is_distinct_from_invalid,
+        test_related_repositories_rejects_empty_optional_field_value,
+        test_canonical_remote_or_problem_never_echoes_credentials_in_problem,
+        test_resolve_related_context_index_blocks_symlink_escape,
+        test_resolve_related_context_index_returns_a_missing_file_path,
+        test_match_related_repositories_resolves_available_and_unavailable,
+        test_match_related_repositories_flags_ambiguous_duplicate_remote,
+        test_context_sync_outcome_membership_pending_is_reachable,
         test_validate_work_item_type_accepts_hierarchy_rejects_sprint_backlog,
         test_validate_plan_item_id_accepts_slug_and_jira_key_rejects_sentence,
         test_validate_parent_reference_hierarchy_rules,

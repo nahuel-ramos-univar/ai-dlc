@@ -106,6 +106,117 @@ for that validation run. Its own links and source paths report `unresolved`,
 not silently `ok`; report this to the user as a workspace configuration gap,
 not as a passing check.
 
+## Product membership: `Product` and `Related repository`
+
+`Root` above is for the coordinator and shared-package case: a repository
+whose own validation run must read directly into a sibling's files. Most
+multi-repository products do not work that way -- three or four independent
+Git repositories can each own their own distributed context with no shared
+read access and no coordinator at all, and still belong to the same product.
+`Product` and `Related repository` record that membership. Both are
+optional. Omit them entirely when membership is not yet confirmed; a missing
+entry means **unknown or unconfigured**, never proof that this repository
+has no siblings, and never a reason to block unrelated work.
+
+```markdown
+## Context identities
+- Repository: `payments-api`
+  - Canonical remote: `github.com/example/payments-api`
+  - Placement: `distributed`
+  - Product: `checkout-platform`
+  - Artifact home: `.`
+  - Root: `.`
+- Module: `payments-api`
+  - ID: `payments-api`
+  - Source: `services/payments`
+- Related repository: `github.com/example/payments-web`
+  - Repository ID: `payments-web`
+  - Role: `frontend`
+  - Context index: `aidlc-docs/repository-context.md`
+```
+
+**`Product`** is a confirmed, free-text label on the `Repository:` block,
+read by `parse_labeled_fields` the same way `Placement` is. Write only a
+label the user actually confirmed. Do not derive it from the checkout
+directory name, from an open-workspace folder name, or from this
+repository's own name or prefix -- a repository named `payments-web` is not
+thereby forced into a product labeled `payments`, and a renamed checkout
+must not silently relabel the product.
+
+**`Related repository`** is a repeatable top-level entry, parsed by
+`parse_related_repositories` in `scripts/context_tools.py`, with the same
+`"ok"` / `"missing"` / `"ambiguous"` / `"invalid"` vocabulary as
+`ProjectReferences`. Its own label line carries the sibling's **canonical
+remote** directly, not a repository ID -- the ID a sibling will eventually
+persist for itself may not be known yet from this side, and a canonical
+remote is always determinable without guessing. That canonical remote must
+be the documented `host/org/repo` form (currently `github.com/...` only, the
+same host this plugin's identity layer already supports) or a raw GitHub
+SSH/HTTPS remote normalized to it. A trailing `.git` on that form is removed
+so it matches the checkout's normalized remote. A query string or fragment
+is invalid and is not kept as part of the identity. Anything else, including
+a value that is not remote-shaped at all, is reported as invalid rather than
+accepted.
+Nested fields are all optional, but when present must be well-formed -- a
+recognized field written without the canonical backtick format, left empty,
+or duplicated, is reported as invalid, never silently treated as absent or
+resolved by picking one of the duplicates:
+
+- `Repository ID` -- the sibling's own persisted ID, once confirmed. Must
+  match `[a-z0-9-]`. Do not invent one; leave it absent until it is known.
+- `Role` -- a confirmed, free-text description (for example `frontend`,
+  `api`, `infrastructure`). This plugin does not define a fixed role enum.
+- `Context index` -- a path to the sibling's own
+  `aidlc-docs/repository-context.md` (or equivalent), relative to **that
+  sibling repository's own root**, not to this document or to this
+  repository. Must be a nonempty relative path that does not escape that
+  root (no absolute path, no URL, no `../` that climbs above the root, and
+  no Windows or UNC form). This is a syntax check only.
+  `resolve_related_context_index` then checks that the resolved path stays
+  inside the sibling root, including through a symlink. It does not check
+  that the file exists. The caller checks existence before reading it.
+
+Declaring a `Related repository` does not add it to `authorized_roots` and
+grants no read access by itself; it is a membership fact, not a
+capability. Resolving a declared entry against a checkout actually open in
+this session -- matching by canonical remote, never by directory or
+workspace-folder name -- is `match_related_repositories`, called with
+whatever the host already has in scope. See
+[context-retrieval.md](../../../../references/context-retrieval.md) for the
+full repository-resolution procedure, and
+[legacy-migration.md](legacy-migration.md) for how this metadata is
+proposed during a distributed migration.
+
+**Membership differences are not automatically conflicts.** Repository A
+listing repository B, with B not (yet) listing A back, is normal and
+expected during a gradual rollout -- report it as unconfirmed on B's side,
+not as a contradiction. The two precise, mechanical conflicts this plugin
+checks are a genuine identity collision, in either direction:
+
+- The same `Repository ID` persisted for two different canonical remotes --
+  `detect_repository_id_collision`.
+- The same canonical remote persisted under two different `Repository ID`
+  values -- `detect_canonical_remote_collision`, the companion check for the
+  direction the first function does not cover. These are deliberately two
+  small functions, not one function overloaded to sometimes return a
+  canonical identity and sometimes return a repository ID depending on which
+  direction fired.
+
+Reuse whichever of these two matches the shape of the mismatch once both
+declarations are actually available in this session; do not invent a third
+collision function. Two checkouts or worktrees that are genuinely the same
+repository (same `Repository ID`, same canonical remote) are not a
+collision under either check. Do not treat an absent reciprocal entry, or a
+different display label (such as two different `Product` names), as either
+kind of collision. Everything else -- whether a difference is stale,
+incomplete, or a genuine disagreement worth asking the user about -- is for
+the agent to read and explain, not for a deterministic check to decide.
+
+Do not add a separate `single-repository` / `multi-repository` flag on top
+of this. Whether a repository has related repositories is already visible
+from whether any `Related repository` entry exists; a redundant flag could
+disagree with the entries themselves.
+
 ## Placement: distributed or adopted coordinator
 
 Record the placement mode explicitly once it is established:

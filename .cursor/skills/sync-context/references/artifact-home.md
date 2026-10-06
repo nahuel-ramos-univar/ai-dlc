@@ -152,8 +152,11 @@ persist for itself may not be known yet from this side, and a canonical
 remote is always determinable without guessing. That canonical remote must
 be the documented `host/org/repo` form (currently `github.com/...` only, the
 same host this plugin's identity layer already supports) or a raw GitHub
-SSH/HTTPS remote normalized to it; anything else, including a value that is
-not remote-shaped at all, is reported as invalid rather than accepted.
+SSH/HTTPS remote normalized to it. A trailing `.git` on that form is removed
+so it matches the checkout's normalized remote. A query string or fragment
+is invalid and is not kept as part of the identity. Anything else, including
+a value that is not remote-shaped at all, is reported as invalid rather than
+accepted.
 Nested fields are all optional, but when present must be well-formed -- a
 recognized field written without the canonical backtick format, left empty,
 or duplicated, is reported as invalid, never silently treated as absent or
@@ -168,9 +171,10 @@ resolved by picking one of the duplicates:
   sibling repository's own root**, not to this document or to this
   repository. Must be a nonempty relative path that does not escape that
   root (no absolute path, no URL, no `../` that climbs above the root, and
-  no Windows or UNC form). This is a syntax check only; resolving it against
-  the sibling's actual files, with the same symlink-escape containment check
-  as the rest of this module, is `resolve_related_context_index`.
+  no Windows or UNC form). This is a syntax check only.
+  `resolve_related_context_index` then checks that the resolved path stays
+  inside the sibling root, including through a symlink. It does not check
+  that the file exists. The caller checks existence before reading it.
 
 Declaring a `Related repository` does not add it to `authorized_roots` and
 grants no read access by itself; it is a membership fact, not a

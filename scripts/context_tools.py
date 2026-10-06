@@ -2101,24 +2101,37 @@ def _canonical_remote_or_problem(raw: str) -> tuple[str | None, str | None]:
 
     Accepts the documented canonical form directly (`github.com/org/repo`,
     `CANONICAL_REMOTE_PATTERN`), or a raw GitHub SSH/HTTPS remote that
-    `normalize_remote` can turn into that same form. It never passes an
-    already-canonical string into `normalize_remote`: that helper's regular
-    expressions only match a raw `git@github.com:...` or
-    `https://github.com/...` transport URL, so feeding it an
+    `normalize_remote` can turn into that same form. A supported `.git`
+    suffix on the canonical form is removed before the value is returned,
+    so `github.com/example/api.git` and `https://github.com/example/api.git`
+    both become `github.com/example/api` and can match the same checkout.
+    It never passes an already-canonical string into `normalize_remote`:
+    that helper's regular expressions only match a raw `git@github.com:...`
+    or `https://github.com/...` transport URL, so feeding it an
     already-normalized `host/org/repo` string would silently fail and
-    return `None` for a value that was actually fine. Credentials embedded
-    in a raw transport remote are stripped by `normalize_remote` before the
-    result is used, and this function never echoes the raw input back in a
-    problem string, so a credential-bearing remote is never repeated into a
-    log or an error message. Any host other than `github.com`, or any
-    value neither helper recognizes, is reported as unsupported rather than
-    guessed into a canonical form; this intentionally does not add support
-    for another Git host.
+    return `None` for a value that was actually fine. A query string or a
+    fragment is rejected, not stored as part of the identity. Credentials
+    embedded in a raw transport remote are stripped by `normalize_remote`
+    before the result is used, and this function never echoes the raw input
+    back in a problem string, so a credential-bearing remote is never
+    repeated into a log or an error message. Any host other than
+    `github.com`, or any value neither helper recognizes, is reported as
+    unsupported rather than guessed into a canonical form; this
+    intentionally does not add support for another Git host.
     """
     if not raw or any(char.isspace() for char in raw):
         return None, "must not be empty or contain whitespace"
+    if "?" in raw or "#" in raw:
+        return None, "must not include a query string or fragment"
     if CANONICAL_REMOTE_PATTERN.fullmatch(raw):
-        return raw, None
+        candidate = raw[:-4] if raw.endswith(".git") else raw
+        if CANONICAL_REMOTE_PATTERN.fullmatch(candidate):
+            return candidate, None
+        return (
+            None,
+            "is not a recognized `github.com/org/repo` canonical remote or a "
+            "supported GitHub SSH/HTTPS remote",
+        )
     normalized = normalize_remote(raw)
     if normalized:
         return normalized, None
@@ -2133,15 +2146,17 @@ def _repository_relative_path_problem(value: str) -> str | None:
     """Return why `value` cannot be a safe repository-relative path, or None.
 
     This is syntax only. It never touches the filesystem, resolves a real
-    root, or follows a symlink -- a missing file or an unavailable
-    repository is a separate, later concern (see
-    `resolve_related_context_index`), not evidence that this declaration is
-    invalid. This rejects an empty value, a URL, a POSIX absolute path, a
-    Windows absolute or UNC path (checked by pattern so this still catches
-    them when the parser itself runs on a non-Windows host), and any
-    relative path whose normalized form climbs above the referenced
-    repository's own root (for example `../../private/context.md`, or a
-    deeper path that nets out the same way after `../` segments cancel).
+    root, or follows a symlink. A missing file or an unavailable repository
+    is a separate, later concern. `resolve_related_context_index` only
+    checks that a resolved path stays inside the repository; the caller
+    checks whether that file exists before reading it. A missing file is
+    not evidence that this declaration is invalid. This rejects an empty
+    value, a URL, a POSIX absolute path, a Windows absolute or UNC path
+    (checked by pattern so this still catches them when the parser itself
+    runs on a non-Windows host), and any relative path whose normalized
+    form climbs above the referenced repository's own root (for example
+    `../../private/context.md`, or a deeper path that nets out the same way
+    after `../` segments cancel).
     """
     if not value:
         return "must not be empty"
@@ -2160,19 +2175,26 @@ def _repository_relative_path_problem(value: str) -> str | None:
 
 
 def resolve_related_context_index(repository_root: Path, context_index: str) -> Path | None:
-    """Resolve a declared `Context index` against its own repository's root.
+    """Resolve a declared `Context index` to a path inside its repository.
 
-    This reuses `_resolved_inside`'s existing containment check (resolve,
+    This only checks containment. It reuses `_resolved_inside` (resolve,
     then verify the result is still under the resolved root) so a symlink
-    inside the related repository cannot be used to read outside it. This
-    is the filesystem-resolution step; `_repository_relative_path_problem`
+    inside the related repository cannot be used to read outside it. It
+    does not check that the final path exists, and it does not open the
+    file. A missing file still returns that contained path; `None` means
+    the path escaped the repository, not that the file is absent.
+
+    The caller must check that the returned path exists and is a file
+    before reading it. A missing file is a gap to report. It is not an
+    invalid membership declaration, and it is not a reason to read a
+    different path.
+
+    This is the filesystem-resolution step. `_repository_relative_path_problem`
     is the earlier, syntax-only check that runs during parsing before any
-    repository is actually available to read. Call this only after
-    `_repository_relative_path_problem` has already accepted `context_index`
-    and the related checkout is confirmed open and authorized -- this
-    function does not check either of those on its own, and a `None`
-    result here (escape, or the final path simply does not exist) is not
-    proof that the original declaration was invalid.
+    repository is actually available to read. Call this only after that
+    check has already accepted `context_index` and the related checkout is
+    confirmed open and authorized -- this function does not check either of
+    those on its own.
     """
     return _resolved_inside(repository_root, context_index)
 

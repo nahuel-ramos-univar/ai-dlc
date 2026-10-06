@@ -3804,6 +3804,47 @@ def test_related_repositories_accepts_raw_ssh_remote_normalized_to_canonical() -
     assert related.entries[0].canonical_remote == "github.com/example/api"
 
 
+def test_canonical_and_transport_remotes_match_the_same_checkout() -> None:
+    # Parsing alone is not enough: the value stored from a declaration must
+    # be the same string `match_related_repositories` compares with a
+    # checkout remote that `normalize_remote` already produced.
+    available = {"api": "github.com/example/api"}
+    declarations = (
+        "https://github.com/example/api.git",
+        "github.com/example/api.git",
+        "github.com/example/api",
+        "git@github.com:example/api.git",
+    )
+    for raw in declarations:
+        related = parse_related_repositories(
+            f"## Context identities\n- Related repository: `{raw}`\n"
+        )
+        assert related.status == "ok", raw
+        remote = related.entries[0].canonical_remote
+        assert remote == "github.com/example/api", raw
+        matched = match_related_repositories((remote,), available)
+        assert matched[remote] == "api", raw
+
+
+def test_related_repositories_rejects_query_and_fragment_without_echoing_them() -> None:
+    # A query or fragment is not part of a repository identity. Accepting it
+    # would both miss the real checkout and persist a parameter that does
+    # not belong there. The problem text must not repeat that parameter.
+    for raw in (
+        "github.com/example/api?token=secret",
+        "github.com/example/api#readme",
+        "https://github.com/example/api.git?token=secret",
+    ):
+        related = parse_related_repositories(
+            f"## Context identities\n- Related repository: `{raw}`\n"
+        )
+        assert related.status == "invalid", raw
+        assert related.entries == (), raw
+        assert "secret" not in related.detail
+        assert "token=" not in related.detail
+        assert "readme" not in related.detail
+
+
 def test_related_repositories_rejects_context_index_path_traversal() -> None:
     # Reproduced defect B: a `Context index` that climbs above the related
     # repository's own root must never be accepted as "ok", regardless of
@@ -3927,6 +3968,19 @@ def test_resolve_related_context_index_blocks_symlink_escape() -> None:
         (inside / "repository-context.md").write_text("ok\n")
         resolved = resolve_related_context_index(root, "aidlc-docs/repository-context.md")
         assert resolved == (inside / "repository-context.md").resolve()
+
+
+def test_resolve_related_context_index_returns_a_missing_file_path() -> None:
+    # Containment and existence are different checks. A path that stays
+    # inside the repository is returned even when the file is not there;
+    # the caller must test existence before reading.
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp) / "repo"
+        root.mkdir()
+        resolved = resolve_related_context_index(root, "missing.md")
+        assert resolved == (root / "missing.md").resolve()
+        assert resolved is not None
+        assert not resolved.exists()
 
 
 def test_match_related_repositories_resolves_available_and_unavailable() -> None:
@@ -4590,6 +4644,8 @@ if __name__ == "__main__":
         test_related_repositories_rejects_non_remote_canonical_value,
         test_related_repositories_rejects_unsupported_host,
         test_related_repositories_accepts_raw_ssh_remote_normalized_to_canonical,
+        test_canonical_and_transport_remotes_match_the_same_checkout,
+        test_related_repositories_rejects_query_and_fragment_without_echoing_them,
         test_related_repositories_rejects_context_index_path_traversal,
         test_related_repositories_rejects_absolute_and_windows_context_index,
         test_related_repositories_rejects_malformed_repository_id_without_backticks,
@@ -4598,6 +4654,7 @@ if __name__ == "__main__":
         test_related_repositories_rejects_empty_optional_field_value,
         test_canonical_remote_or_problem_never_echoes_credentials_in_problem,
         test_resolve_related_context_index_blocks_symlink_escape,
+        test_resolve_related_context_index_returns_a_missing_file_path,
         test_match_related_repositories_resolves_available_and_unavailable,
         test_match_related_repositories_flags_ambiguous_duplicate_remote,
         test_context_sync_outcome_membership_pending_is_reachable,

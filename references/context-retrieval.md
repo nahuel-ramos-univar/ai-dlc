@@ -76,7 +76,10 @@ consuming skill uses, instead of inventing a one-off scan:
    onto a path by hand — that function reuses the same symlink-escape
    containment check (`_resolved_inside`) the rest of this module relies
    on, instead of a one-off path join that a crafted symlink inside the
-   sibling could escape.
+   sibling could escape. It returns a contained path even when the file
+   is missing. Check that the returned path exists and is a file before
+   reading it. A missing file is a gap to report, not an invalid
+   membership declaration, and not a path to replace with a guess.
 6. Verify an important or stale-looking claim against current source in that
    sibling, the same way this file already requires for the active
    repository; a summary from another repository's index is not

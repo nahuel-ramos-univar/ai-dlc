@@ -4,7 +4,7 @@ Use this template for the Jira technical item `refine-story` proposes or updates
 
 Omit a section that has no real content for this change. Do not fill a section with generic boilerplate just to appear complete, and do not require every section for trivial work. Do not invent a file path, an API, an architecture decision, or a test command that was not actually read or run. Leave an open question open rather than promising implementation will never need clarification.
 
-The fenced block below is description content. Technical acceptance criteria are not part of the description.
+The fenced block below is description content. When the issue type has an acceptance-criteria field, technical acceptance criteria stay out of this block.
 
 ```markdown
 #### 🎯 Objective
@@ -49,7 +49,13 @@ The fenced block below is description content. Technical acceptance criteria are
 
 ## Technical acceptance criteria
 
-Put technical acceptance criteria in the issue type's acceptance-criteria field when that field exists. Do not also place them in the description. Discover the field from the issue type. Do not hardcode a custom field id. If the field is missing, keep the criteria in the local proposal and say the field was not found.
+Discover the issue type's acceptance-criteria field. Do not hardcode a custom field id.
+
+- When the field exists, write the technical criteria only there. Do not also place them in the description.
+- When the field is missing, offer to store them as a `Technical acceptance criteria` section in the description, inside the same approved payload. Do not leave them only in the chat.
+- When neither location is approved, keep publication pending. Keep the criteria in the proposal. Do not declare the handoff complete.
+
+After the write, re-read the issue and confirm the criteria are stored in the field or in that description section. If they are not, say so and do not treat the handoff as complete.
 
 ```markdown
 - [Observable, verifiable result. Supplements the business source's acceptance criteria; does not replace them.]

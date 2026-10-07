@@ -759,6 +759,11 @@ def test_refine_story_contract_has_required_language() -> None:
     assert "does not replace them" in template
     assert "Do not invent a file path" in template
     assert "Technical acceptance criteria" in template
+    assert "keep publication pending" in template
+    assert "Do not leave them only in the chat" in template
+    assert "A missing parent is not the same as missing approval" in skill
+    assert "technical acceptance criteria were persisted" in skill
+    assert "description section named Technical acceptance criteria" in implement_change
 
     # implement-change can consume a refined technical item, not only a
     # Story, and follows the recorded business source rather than assuming

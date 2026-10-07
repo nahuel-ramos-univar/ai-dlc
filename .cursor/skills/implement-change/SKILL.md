@@ -13,7 +13,7 @@ Follow the shared [compact response style](../../../references/response-style.md
 Use [context retrieval](../../../references/context-retrieval.md). Read selected module context, then current source, tests, and contracts before editing or delegating.
 
 ## Prerequisites
-Require approved scope and acceptance criteria. Run repository preflight, then read the Story through Jira MCP when available. Revalidate it against affected code, contracts, dependencies, and local modifications immediately before edits. If material drift needs refinement, provide the user with a `/refine-story` handoff; do not claim it ran automatically.
+Require approved scope and acceptance criteria. Run repository preflight, then read the Story, or the refined technical Task or Subtask, through Jira MCP when available. When the input is a technical item, read its identified business source and that source's acceptance criteria. The Jira parent is not assumed to be that source: a Task may sit under an Epic while the business source is a linked Story. A Subtask's parent is the Story, Task, or Bug it sits under. Do not treat every dependency link as the business source, and the technical item supplements them, it does not replace them. Also read relevant dependencies. Revalidate the item against affected code, contracts, dependencies, and local modifications immediately before edits. If the business source, a dependency, or the baseline materially changed since refinement, or if material drift needs refinement, provide the user with a `/refine-story` handoff; do not claim it ran automatically.
 
 ## Workflow
 1. Confirm the requested working directory, actual Git root, intended remote and branch, baseline, and unrelated staged, unstaged, and untracked modifications to preserve.

@@ -651,7 +651,13 @@ def test_plan_work_contract_has_required_language() -> None:
     assert "do not suggest a number" in jira
     assert "human estimate" in jira
     assert "Never invent a sprint, a start or end date, or team capacity" in jira
-    assert "plain-language relationship between draft identifiers" in flat("references/approval-contract.md")
+    approval_contract = " ".join(
+        (ROOT / "references" / "approval-contract.md").read_text(encoding="utf-8").split()
+    )
+    assert "plain-language relationship between draft identifiers" in approval_contract
+    assert "Shared by every skill that writes to Jira" in approval_contract
+    assert "Approval must come from the role the calling skill authorizes" in approval_contract
+    assert "does not itself name that role" in approval_contract
     assert "say what is missing" in feature_or_epic
 
     # Review finding: this plugin's Epic/User-Story/Task model is not Jira's
@@ -685,6 +691,111 @@ def test_plan_work_contract_has_required_language() -> None:
     assert "canvas-review.md" in skill
     assert "use the host Canvas capability when available" in skill
     assert "Cursor agents cannot open a Canvas today" not in skill
+
+
+def test_refine_story_contract_has_required_language() -> None:
+    """Structural checks only: required phrases are present in the skill and
+    its references. This does not prove Cursor follows the workflow, that
+    the challenge step produces a real finding, or that a Jira write
+    succeeds — see MANUAL_EVALUATION.md for the scenarios that require an
+    actual run."""
+    refine_dir = ROOT / ".cursor" / "skills" / "refine-story"
+
+    def flat(relative: str) -> str:
+        return " ".join((refine_dir / relative).read_text(encoding="utf-8").split())
+
+    skill = flat("SKILL.md")
+    template = flat("references/technical-task-template.md")
+    reviewer = " ".join(
+        (ROOT / "agents" / "refinement-reviewer.md").read_text(encoding="utf-8").split()
+    )
+    approval_contract = " ".join(
+        (ROOT / "references" / "approval-contract.md").read_text(encoding="utf-8").split()
+    )
+    implement_change = " ".join(
+        (ROOT / ".cursor" / "skills" / "implement-change" / "SKILL.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+
+    # Input accepts a Jira key/URL and routes by the supplied issue's type;
+    # an Epic can be refined directly, not forced through an artificial Story.
+    assert "Jira key or URL" in skill
+    assert "Epic" in skill and "refine it directly" in skill
+    assert "artificial intermediate Story" in skill
+    assert "Do not invent a root cause" in skill
+
+    # The technical discussion/challenge step always runs, independent of
+    # the fast/standard/deep review-profile selection, and must not invent
+    # an objection to satisfy itself.
+    assert "always runs" in skill
+    assert "regardless of the review profile" in skill
+    assert "Do not invent an objection" in skill
+    assert "This selection governs only the independent" in skill
+
+    # Work breakdown defaults to one coherent item; a split needs a stated
+    # reason, and the DevOps-task-split rule is project-specific, not a
+    # universal plugin policy baked in here.
+    assert "Prefer one coherent technical item" in skill
+    assert "this is a default, not a hard limit" in skill
+    assert "do not assume every project this skill runs in has that policy" in skill
+    assert "do not embed it here as a universal rule for every consumer" in skill
+
+    # Approval authority: the shared contract defers the role to the calling
+    # skill; refine-story names the developer for technical scope and routes
+    # a business-scope change back to the Product Owner through /plan-work.
+    assert "Approval must come from the role the calling skill authorizes" in approval_contract
+    assert "allows the authorized developer to approve technical implementation content" in approval_contract
+    assert "An authorized developer may approve the technical Jira change set" in skill
+    assert "requires Product Owner approval through `/plan-work`" in skill
+
+    # Independent review is reused, not reinvented, and is never self-review.
+    assert "refinement-reviewer" in skill and "refinement-reviewer" in reviewer
+    assert "Never present the main chat's own refinement as an independent review" in skill
+    assert "Do not alter the Story, requirements, source code, Jira records, or Git state" in reviewer
+
+    # The technical template supplements, never replaces, business acceptance
+    # criteria, and bans fabricated completeness.
+    assert "does not replace them" in template
+    assert "Do not invent a file path" in template
+    assert "Technical acceptance criteria" in template
+
+    # implement-change can consume a refined technical item, not only a
+    # Story, and follows the recorded business source rather than assuming
+    # the Jira parent holds the requirements.
+    assert "or the refined technical Task or Subtask" in implement_change
+    assert "the technical item supplements them, it does not replace them" in implement_change
+    assert "The Jira parent is not assumed to be that source" in implement_change
+    assert "Do not treat every dependency link as the business source" in implement_change
+
+    # Review readiness gates publication. A fast skip is legitimate.
+    # Standard or deep review that cannot run stays pending.
+    assert "required review stays pending" in skill
+    assert "Developer approval of the payload does not waive required review" in skill
+    assert "review that affected scope again before publication" in skill
+
+    # Business source is distinct from the Jira parent, and a Subtask is
+    # never parented under an Epic.
+    assert "Do not treat every dependency link as the business source" in skill
+    assert "Do not parent a Subtask under an Epic" in template
+    assert "Business source" in template
+    drift = flat("references/modes-and-drift.md")
+    assert "Before publication" in drift
+    assert "Do not rescan the entire repository because an unrelated file changed" in drift
+
+    # Shared Jira instructions defer the approver to the calling skill.
+    jira = " ".join(
+        (ROOT / "references" / "jira-integration.md").read_text(encoding="utf-8").split()
+    )
+    assert "the approver the calling skill authorizes" in jira
+    assert "the payload the Product Owner approves" not in jira
+
+    # refine-story uses the shared Canvas contract.
+    assert "canvas-review.md" in skill
+    canvas = " ".join(
+        (ROOT / "references" / "canvas-review.md").read_text(encoding="utf-8").split()
+    )
+    assert "/refine-story`" in canvas or "`/refine-story`" in canvas
 
 
 def test_canvas_review_is_the_closing_view() -> None:
@@ -791,8 +902,11 @@ def test_manual_evaluation_and_shared_contracts_exist() -> None:
         "response-style.md",
         "context-retrieval.md",
         "project-onboarding.md",
+        "approval-contract.md",
+        "canvas-review.md",
     ):
         assert (ROOT / "references" / filename).is_file()
+    assert not (ROOT / ".cursor" / "skills" / "plan-work" / "references" / "approval-contract.md").exists()
 
 
 if __name__ == "__main__":
@@ -814,6 +928,7 @@ if __name__ == "__main__":
         test_release_workflow_files_exist,
         test_project_onboarding_is_conditionally_referenced,
         test_plan_work_contract_has_required_language,
+        test_refine_story_contract_has_required_language,
         test_canvas_review_is_the_closing_view,
         test_manual_evaluation_covers_context_quality_scenarios,
         test_legacy_aidlc_migration_contract_is_specific,

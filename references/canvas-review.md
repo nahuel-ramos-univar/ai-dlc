@@ -1,6 +1,6 @@
 # Canvas review
 
-`/sync-context` and `/plan-work` close with the host's Canvas capability when the current host can open one beside the chat. Follow the host's own canvas skill for whether Canvas is available on this host, where the file lives, and its exact format; this contract does not hardcode a canvas path, and it does not restate Cursor's own file-naming or linking rules. When Canvas is available, the host creates the file and places the reference in the chat reply; when the host cannot open a Canvas, present the same sections in chat instead and say Canvas is unavailable on this host. Do not assume either way without checking — host support for Canvas changes over time, and this contract must not freeze in an assumption about which hosts can or cannot open one. Do not claim that writing a `.tsx` file opened a panel on a host that cannot render one.
+`/sync-context`, `/plan-work`, and `/refine-story` close with the host's Canvas capability when the current host can open one beside the chat. Follow the host's own canvas skill for whether Canvas is available on this host, where the file lives, and its exact format; this contract does not hardcode a canvas path, and it does not restate Cursor's own file-naming or linking rules. When Canvas is available, the host creates the file and places the reference in the chat reply; when the host cannot open a Canvas, present the same sections in chat instead and say Canvas is unavailable on this host. Do not assume either way without checking — host support for Canvas changes over time, and this contract must not freeze in an assumption about which hosts can or cannot open one. Do not claim that writing a `.tsx` file opened a panel on a host that cannot render one.
 
 The Canvas is a view of the proposal and of the files actually written. It is not a second source of truth. An edit in the Canvas is not approval. After a write, refresh the Canvas from the files or the Jira record just read back. Do not restate the earlier proposal as if it were the saved result.
 
@@ -43,3 +43,19 @@ Show:
 - after a write, the issue key and URL from the record just read, or a pending write.
 
 A Task or an Epic uses its own fields. Do not force either into the User Story description skeleton.
+
+## refine-story
+
+Show the approval-ready proposal, and refresh it from the Jira record just read back after a write:
+
+- the routed issue type (Epic, Story, Task, or Bug);
+- the identified business source, distinct from the Jira parent when they differ, and the business acceptance criteria the technical content must preserve;
+- the challenge-and-response from the always-on technical discussion step, or a short "nothing material found" result;
+- the proposed technical item(s) using [technical-task-template.md](../.cursor/skills/refine-story/references/technical-task-template.md), and the reason for a split when more than one item is proposed;
+- dependencies, as the plain-language relationships that will become Jira links;
+- review readiness: fast skip with its reason, completed independent review, or required review still pending;
+- reviewer findings and how each blocking finding was resolved, or a visible "no findings" result;
+- the exact Jira change set: items to create or update, actual issue types, parent or link relationships, and remaining blockers;
+- after a write, the issue key and URL from the record just read, or a pending write.
+
+A short status with nothing new to show does not open a Canvas.

@@ -17,4 +17,6 @@ Propose:
 - risks;
 - open questions.
 
+Before treating the draft as ready, check that it states the problem, the expected outcome, and the scope. If the request did not supply enough context for one of those, say what is missing. Do not fill the gap with a guessed detail.
+
 An initial set of likely Stories under this Epic may be proposed as candidates only, clearly labeled as not committed. Label ordering and dependency assumptions as proposals. Do not publish an Epic with the User Story description template. Do not create issues until the user approves the exact Epic and Story payloads.

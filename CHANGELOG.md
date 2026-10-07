@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.0 — 2026-10-07
+
+Bump: `minor`
+Compare: [v0.6.2...v0.7.0](https://github.com/nahuel-ramos-univar/ai-dlc/compare/v0.6.2...v0.7.0)
+
+### Added
+
+- feat: publish approved dependencies as Jira issue links ([`988cd31`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/988cd31ba218d26fd17b2ce7704e372c06852937))
+
+### Other
+
+- Merge pull request #13 from nahuel-ramos-univar/CTY-303-feedback ([`2176c1c`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/2176c1c8b57d67290897a735ee1edfe7e80e5c77))
+
 ## 0.6.2 — 2026-10-06
 
 Bump: `patch`

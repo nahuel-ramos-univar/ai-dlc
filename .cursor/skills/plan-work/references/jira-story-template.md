@@ -66,6 +66,8 @@ When filling the skeleton:
 - **Risk:** [What could block delivery.]
 ```
 
+This prose line is human-readable context, not the operative relationship. An approved dependency is also created as a real Jira issue link at publication time — see [Jira integration](../../../../references/jira-integration.md), "Dependencies as issue links." The two are not duplicates: the link is what Jira actually tracks, this text explains it in the story's own words.
+
 ## Acceptance criteria field
 
 Put this content in the acceptance-criteria field, not under Description:

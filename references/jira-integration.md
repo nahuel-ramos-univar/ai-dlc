@@ -22,6 +22,28 @@ Jira's own issue-type hierarchy is not the same shape as this plugin's Epic → 
 
 A recommended parent in this plugin is a logical relationship, for example "this Task supports Story X". It does not by itself choose the Jira issue type. When a Task supports a Story, put the exact issue type in the payload the Product Owner approves, after discovering what the site allows. Typical options are: create a Jira Subtask under that Story, or create a Jira Task and link it to that Story. Do not silently change a Task into a Subtask because a Story was recommended as its parent. If the site's hierarchy configuration cannot be discovered, say so and ask which issue type to use rather than guessing.
 
+## Dependencies as issue links
+A dependency drafted in a proposal is prose until it is approved for publication. At publication, create it as a real Jira issue link, not only text in a description. Discover which Jira tools are available in this session before calling them. A tool name in this contract is not proof that this session can call it.
+
+Approve the relationship in plain language, using the draft's own identifiers, for example "Story A blocks Story B". A new issue has no Jira key yet, so do not wait for both keys before asking. One confirmation covers the issues, the relationships, and any optional fields below. Do not ask again only because the keys were missing at approval time.
+
+After that confirmation:
+
+1. Create the authorized issues and record the keys Jira returns.
+2. Discover the site's link types with `listJiraIssueLinkTypes`. Map the approved sentence onto one discovered type using that type's own inward and outward labels. Do not apply one type's orientation to every type. A site can configure Blocks and Depends so the same dependency points opposite ways. When the discovered type is Blocks, the verified mapping on this organization's Jira is inward = the blocker and outward = the blocked issue. For any other type, use the labels just read.
+3. Call `createJiraIssueLink` with the keys from step 1.
+4. Re-read both issues' links. A successful create response does not prove the direction. If the stored relationship does not mean the approved sentence, delete that link, stop, and ask. Do not flip the keys and continue.
+5. If the destination issue or the meaning of the relationship changes after approval, ask again before creating the link.
+
+## Optional suggested fields
+When preparing a Jira write payload, the Product Owner may also want Priority, Labels, Fix Version, Sprint, or Story Points filled in. Offer a value only when real evidence supports it, and label it as a suggestion. Present every offered value in the same confirmation as the rest of the payload. The Product Owner can accept, edit, or skip any of them in that one reply. Do not ask once per field. Do not invent a value with no evidence behind it, and do not write a skipped or unconfirmed value.
+
+- **Priority** — base it on urgency or risk the Product Owner already stated in this draft, not a default.
+- **Labels** — reuse labels already used by the parent Epic or already common in this project; do not invent a new taxonomy.
+- **Fix Version** — offer only a version that already exists in the project, confirmed with a Jira read; never invent a release name or date.
+- **Sprint** — offer only a sprint that already exists, active or explicitly named, confirmed with a Jira read (for example `listJiraBoardSprints`). Never invent a sprint, a start or end date, or team capacity. This is one item's field value, not Sprint Backlog mode's capacity planning.
+- **Story Points** — suggest a number only from already-pointed issues that share this item's team, estimation convention, and a similar scope. Show those issues as the basis. If you cannot confirm that the comparison is on the same scale, do not suggest a number. A number the Product Owner supplies is a human estimate: label it that way, and do not present it as the result of a comparison.
+
 Preserve unrelated fields. Re-read relevant fields before applying an approved update. If concurrent edits materially change the approved payload, show the revised diff and seek approval again.
 
 After an uncertain or partial write, read the target before retrying. Do not claim idempotency unless the available tool documents it. If a creation may have succeeded but no reliable record can be identified, stop and report the ambiguity. Confirmed writes must report their issue key and URL. Keep disconnected operations pending and resume them without restarting the intake.

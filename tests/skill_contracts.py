@@ -635,6 +635,25 @@ def test_plan_work_contract_has_required_language() -> None:
     assert "../../../scripts/context_tools.py" in skill
     assert "Do not create `proposal.json` inside the consumer repository" in skill
 
+    # Dependencies become real Jira issue links at publication, not only
+    # prose, and optional fields (Priority, Labels, Fix Version, Sprint,
+    # Story Points) are evidence-based suggestions the Product Owner must
+    # approve, edit, or skip individually — never invented.
+    assert "Approve each dependency as a plain-language relationship between draft identifiers" in skill
+    assert "Optional suggested fields" in skill
+    assert "never substitutes for this capacity rule" in skill
+    assert "included in the same publication confirmation" in skill
+    assert "Dependencies as issue links" in jira
+    assert "createJiraIssueLink" in jira
+    assert "listJiraIssueLinkTypes" in jira
+    assert "Do not apply one type's orientation to every type" in jira
+    assert "A successful create response does not prove the direction" in jira
+    assert "do not suggest a number" in jira
+    assert "human estimate" in jira
+    assert "Never invent a sprint, a start or end date, or team capacity" in jira
+    assert "plain-language relationship between draft identifiers" in flat("references/approval-contract.md")
+    assert "say what is missing" in feature_or_epic
+
     # Review finding: this plugin's Epic/User-Story/Task model is not Jira's
     # real issue-type hierarchy. A Task that supports a Story is not silently
     # published as a Subtask.

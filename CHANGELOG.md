@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.8.0 — 2026-10-08
+
+Bump: `minor`
+Compare: [v0.7.0...v0.8.0](https://github.com/nahuel-ramos-univar/ai-dlc/compare/v0.7.0...v0.8.0)
+
+### Added
+
+- feat: refine a Jira item into an evidence-based technical proposal ([`5a6b92e`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/5a6b92e57d9f097191f0f7b3abf1a262e8934b68))
+
+### Fixed
+
+- fix: persist technical criteria when Jira has no acceptance field ([`1eef36f`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/1eef36ff45019287c65572430529ed78f6ff348a))
+
+### Other
+
+- Merge pull request #14 from nahuel-ramos-univar/CTY-305-refine-story ([`532d12d`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/532d12ded6cb8b5dd402173497608d92fc0e2ada))
+
 ## 0.7.0 — 2026-10-07
 
 Bump: `minor`

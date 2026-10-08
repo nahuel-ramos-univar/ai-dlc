@@ -78,6 +78,15 @@ points nowhere. Each generated index has one `## Scope` and one
 Those four headings are the deterministic structural envelope. Runtime
 flows and `## Material architecture details` are not mechanically required.
 
+A Git working tree whose `HEAD` does not resolve to a commit uses baseline
+`no-commit` in this same field. That is not `unversioned`: a `.git` marker
+is present, and file discovery stays Git-based. Do not invent a SHA. The
+validator compares the fingerprint, not the baseline token, so `no-commit`
+needs no second format. The module `Baseline and fingerprint` field uses the
+same three tokens: a git revision, `no-commit`, or `unversioned`. A directory
+without Git records `unversioned` there too. Do not put `no-commit` on a tree
+that has no Git root.
+
 ```markdown
 # Repository context
 
@@ -89,7 +98,7 @@ flows and `## Material architecture details` are not mechanically required.
 - Repository ID: `<persisted-id>`
 - Repository root: `<portable workspace-relative path>`
 - Artifact home: `<portable workspace-relative path>`
-- Baseline: `<git revision or unversioned>`
+- Baseline: `<git revision, no-commit, or unversioned>`
 - Fingerprint: `<fingerprint>`
 - Examined: `<paths and boundaries>`
 
@@ -181,7 +190,7 @@ fails structural validation.
 - Repository ID: `<persisted-id>`
 - Module ID: `<stable-id>`
 - Source: `<repository-relative directory>`
-- Baseline and fingerprint: `<git revision>` / `<fingerprint>`
+- Baseline and fingerprint: `<git revision, no-commit, or unversioned>` / `<fingerprint>`
 - Examined: `<source, contracts, tests>`
 
 ## Responsibility

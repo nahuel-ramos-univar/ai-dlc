@@ -898,6 +898,125 @@ def test_legacy_aidlc_migration_contract_is_specific() -> None:
     assert "The Python helpers do not execute this skill." in manual
 
 
+def test_scaffold_project_contract_has_required_language() -> None:
+    skill = " ".join(
+        (ROOT / ".cursor" / "skills" / "scaffold-project" / "SKILL.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    foundation = " ".join(
+        (
+            ROOT
+            / ".cursor"
+            / "skills"
+            / "scaffold-project"
+            / "references"
+            / "foundation-and-review.md"
+        )
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    reviewer = " ".join(
+        (ROOT / "agents" / "implementation-reviewer.md").read_text(encoding="utf-8").split()
+    )
+    manual = (ROOT / "MANUAL_EVALUATION.md").read_text(encoding="utf-8")
+    for phrase in (
+        "directory without a Git root",
+        "Git repository without a remote",
+        "established identity",
+        "Never fabricate a remote",
+        "do not initialize Git to satisfy context validation",
+        "whether HEAD resolves to a commit",
+        "no-commit",
+        "If it returns false",
+        "Once, before applying the approved change set",
+        "do not compare the evolving source tree",
+        "approved writes are expected",
+        "must still be absent",
+        "already applied",
+        "do not claim the writes were atomic",
+        "minimal entrypoint",
+        "safe example values",
+        "A library does not need an application server",
+        "documentation-only foundation",
+        "Do not run it blindly",
+        "narrowly scoped edit",
+        "validate_generated_context",
+        "mechanically valid context",
+        "source-supported prose",
+        "not executable",
+        "implementation-reviewer",
+        "documented review skip",
+        "do not label a self-review as independent",
+        "A generated file tree alone does not prove the foundation works",
+        "Review completion does not replace executable validation",
+        "references/foundation-and-review.md",
+    ):
+        assert phrase in skill, phrase
+    for phrase in (
+        "Directory without a Git root",
+        "Git repository without a remote",
+        "Established identity",
+        "content_fingerprint",
+        "stable_repository_id",
+        "no-commit",
+        "Record that revision only when it resolves",
+        "expected unborn HEAD",
+        "broken or inaccessible",
+        "Do not classify that working tree as a directory without Git",
+        "Do not ask for a new one merely because no remote exists",
+        "Evaluate each proposed `Related repository` entry",
+        "referenced repository's canonical remote",
+        "payments-api",
+        "Defer only the entry whose target remote cannot be established",
+        "proposal_is_current",
+        "do not compare the evolving source tree",
+        "Creating an approved source file changes `content_fingerprint`",
+        "must still be absent",
+        "already applied",
+        "do not claim the writes were atomic",
+        "Mechanically valid",
+        "Source-supported prose",
+        "Not executable",
+        "documented review skip",
+        "general-purpose independent review",
+        "missing entrypoint",
+    ):
+        assert phrase in foundation, phrase
+    templates = (
+        ROOT
+        / ".cursor"
+        / "skills"
+        / "sync-context"
+        / "references"
+        / "context-templates.md"
+    ).read_text(encoding="utf-8")
+    assert "Baseline and fingerprint: `<git revision, no-commit, or unversioned>`" in templates
+    assert "Do not put `no-commit` on a tree" in templates
+    assert "Scaffolding review mode" in reviewer
+    assert "Do not modify code, tests, Jira, Git state" in reviewer
+    assert "missing entrypoint" in reviewer
+    assert "Do not request speculative architecture" in reviewer
+    assert reviewer.count("Do not modify code, tests, Jira, Git state") >= 1
+    for scenario in (
+        "Empty directory without a Git root",
+        "Existing Git repository without a remote",
+        "Git working tree without commits and without a remote",
+        "Git working tree without commits but with a configured remote",
+        "New project without a remote referencing a confirmed sibling",
+        "Referenced repository whose remote is unavailable",
+        "Existing persisted repository identity remains unchanged",
+        "Bounded addition to an existing monorepo",
+        "Approved creation then an approved manifest edit",
+        "External edit before the manifest write",
+        "Path expected to be absent already exists",
+        "Partial apply reported honestly",
+        "Independent reviewer unavailable",
+        "Real defect caught during review",
+    ):
+        assert scenario in manual, scenario
+
+
 def test_manual_evaluation_and_shared_contracts_exist() -> None:
     assert (ROOT / "MANUAL_EVALUATION.md").is_file()
     for filename in (
@@ -934,6 +1053,7 @@ if __name__ == "__main__":
         test_project_onboarding_is_conditionally_referenced,
         test_plan_work_contract_has_required_language,
         test_refine_story_contract_has_required_language,
+        test_scaffold_project_contract_has_required_language,
         test_canvas_review_is_the_closing_view,
         test_manual_evaluation_covers_context_quality_scenarios,
         test_legacy_aidlc_migration_contract_is_specific,

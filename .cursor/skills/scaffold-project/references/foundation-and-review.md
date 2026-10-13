@@ -21,6 +21,18 @@ Do not add authentication, databases, containers, continuous integration, deploy
 
 Approval of a prose project rule does not authorize dependency installation or execution of a project generator. If a generator initializes Git or does anything else outside the approved scope, use a supported way to disable that action, or propose a safe alternative. Do not run it blindly.
 
+## Repository organization and workspace
+
+Resolve organization (single repository, monorepo, or multiple related repositories) and the optional local workspace as two separate decisions, per `SKILL.md` steps 3 and 3a. Neither decision infers membership from an adjacent folder, a similar directory name, or an enclosing Git repository.
+
+A recommendation is about the confirmed product's needs, not the presence of multiple technical layers. A product with a frontend, a backend, and infrastructure still fits comfortably in one monorepo; recommend separate repositories only when a confirmed need actually calls for independent versioning, independent deployment, or a separate team boundary — state that reason plainly.
+
+For a confirmed multi-repository product, track three distinct sets so the proposal never conflates them: repositories that already exist (with their own identity, resolved per [Git identity](#git-identity) below), project directories this run will actually create, and components that stay planned or deferred because this run does not scaffold them. A proposal describing three repositories when only one is being scaffolded now must say so plainly — the same separation [the usable foundation](#usable-foundation) and `## Related repository entries` already require for context generation and sibling references.
+
+This skill scaffolds one destination per run. A new multi-repository product needs one approved run per repository; state that limit instead of writing files across several repository roots in one pass. Creating a project directory, including one later confirmed to be a monorepo module or a sibling repository's folder, is never itself proof that a Git repository exists there — `classify_repository_scope` still reports `unversioned` or `untracked-tree` for that folder until a real `.git` root is discovered or that destination is explicitly confirmed as a module of one. Say explicitly that Git setup (`git init`, a remote, a hosted repository) is a developer step this skill does not perform, for every repository this run did not already find with a Git root.
+
+For the optional workspace, reuse the exact JSONC, path, and bounded-write rules already defined in [repository preflight](../../../../references/repository-preflight.md) under "`.code-workspace` writes" — this section does not restate them. A workspace is a local Cursor convenience; it never substitutes for the repository-organization decision, and recommending one is never a reason to skip asking the organization question first.
+
 ## Git identity
 
 Classify the destination with [repository preflight](../../../../references/repository-preflight.md), then establish these four facts separately with read-only Git. Never fabricate a remote, a revision, or a claim that an identity was verified. Never run `git init`, create a commit, or invent a SHA to make validation pass. A missing commit does not block the approved scaffold.

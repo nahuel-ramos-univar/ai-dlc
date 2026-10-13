@@ -65,7 +65,10 @@ references into a consumer repository.
 create, update, or relocate exactly one `.code-workspace` file when it is
 part of an explicitly approved proposal, at a destination the proposal
 itself names and the user approved -- never an arbitrary or unapproved
-path. Read and write it as JSONC, not plain JSON, so hand-authored comments
+path. This is a local IDE convenience for opening folders together in
+Cursor; it does not create, configure, or imply a Cloud Agent environment,
+and it never controls cloud repository cloning or any remote execution
+environment. Read and write it as JSONC, not plain JSON, so hand-authored comments
 and unrelated settings, tasks, and extension configuration survive
 untouched; change only the fields the approved proposal actually touches.
 Recalculate `folders[].path` entries relative to the new location when

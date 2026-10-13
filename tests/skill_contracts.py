@@ -231,6 +231,7 @@ def test_context_generation_contract_has_required_examples() -> None:
     assert "Context-discovery writes" in preflight
     assert "Scaffold-project writes follow the approved proposal" in preflight
     assert "does not use the enclosing checkout's ignore rules" in preflight
+    assert "does not create, configure, or imply a Cloud Agent environment" in preflight
     assert "freshness fingerprint" in refresh
     assert "does not use the enclosing repository's exclude rules" in refresh
     assert "does not use the enclosing repository's exclude rules" in generation
@@ -965,6 +966,18 @@ def test_scaffold_project_contract_has_required_language() -> None:
         "Give the reviewer the confirmed purpose and the scaffolding boundary",
         "When the requested outcome includes real business behavior beyond a technical foundation",
         "/plan-work",
+        "How would you like to organize this project?",
+        "One application in one repository.",
+        "A monorepo containing multiple components.",
+        "Multiple related repositories.",
+        "Do not assume that having a frontend, a backend, and infrastructure by itself requires separate repositories",
+        "do not ask again",
+        "This skill scaffolds one destination safely per run",
+        "Creating a project directory is not creating a Git repository",
+        "Would you like a `.code-workspace` file to open these project folders together in Cursor locally?",
+        "do not claim a deferred or not-yet-created folder is ready to open",
+        "do not introduce a Cloud Agent environment or claim it controls cloud repository cloning",
+        "which repositories or directories already exist versus which this run will create",
     ):
         assert phrase in skill, phrase
     for phrase in (
@@ -1008,6 +1021,11 @@ def test_scaffold_project_contract_has_required_language() -> None:
         "report freshness as unresolved",
         "explicitly named shared file",
         "Membership in the monorepo does not authorize an arbitrary edit at the repository root",
+        "Repository organization and workspace",
+        "track three distinct sets",
+        "state that limit instead of writing files across several repository roots in one pass",
+        "is never itself proof that a Git repository exists there",
+        "this section does not restate them",
     ):
         assert phrase in foundation, phrase
     templates = (
@@ -1078,6 +1096,11 @@ def test_scaffold_project_contract_has_required_language() -> None:
         "Standalone folder inside an unrelated parent Git repository",
         "Explicitly requested new module inside an existing monorepo",
         "New module plus an approved root workspace manifest",
+        "Organization already specified",
+        "Organization unspecified",
+        "Existing multi-repo product offers a workspace",
+        "New multi-repo product separates directories from Git setup",
+        "Monorepo does not require a workspace",
     ):
         assert scenario in manual, scenario
 

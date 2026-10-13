@@ -484,6 +484,112 @@ def test_generated_context_does_not_change_source_fingerprint() -> None:
         assert after_update == initial
 
 
+def test_root_fingerprint_can_go_stale_while_module_fingerprint_does_not() -> None:
+    # Mirrors a real scaffold shape: a root-level file (README, a manifest)
+    # edited after the repository index was written leaves each module's own
+    # fingerprint unchanged while the index-level fingerprint drifts. This is
+    # exactly the `index:fingerprint failed` / `modules:fingerprint passed`
+    # split `validate_generated_context` reports, which is why finalization
+    # order refreshes the index once after every write, not only per module.
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp) / "repo"
+        module = root / "backend"
+        module.mkdir(parents=True)
+        (module / "app.py").write_text("print('hi')\n")
+        (root / "README.md").write_text("# repo\n")
+
+        root_before, _ = content_fingerprint(root)
+        module_before, _ = content_fingerprint(module)
+
+        (root / "README.md").write_text("# repo\n\nUpdated after the index was written.\n")
+
+        root_after, _ = content_fingerprint(root)
+        module_after, _ = content_fingerprint(module)
+
+        assert root_after != root_before
+        assert module_after == module_before
+
+
+def test_project_rule_file_changes_fingerprint_but_bugbot_file_does_not() -> None:
+    # `is_generated_artifact` excludes `.cursor/BUGBOT.md` by name, so writing
+    # it never requires a refresh. A `.cursor/rules/<slug>.mdc` project-rule
+    # file has no matching exclusion -- writing one approved during scaffold
+    # finalization genuinely changes the index-level fingerprint, which is
+    # exactly why that write must happen before the final refresh, not after.
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        (root / "src").mkdir()
+        (root / "src" / "app.ts").write_text("export const app = 1;\n")
+        baseline, _ = content_fingerprint(root)
+
+        (root / ".cursor").mkdir()
+        (root / ".cursor" / "BUGBOT.md").write_text("Review focus.\n")
+        after_bugbot, _ = content_fingerprint(root)
+        assert after_bugbot == baseline
+
+        (root / ".cursor" / "rules").mkdir()
+        (root / ".cursor" / "rules" / "project-policy.mdc").write_text(
+            "# Project policy\n"
+        )
+        after_rule, _ = content_fingerprint(root)
+        assert after_rule != baseline
+
+
+def _replace_recorded_fingerprint(index: Path, value: str) -> None:
+    current = index.read_text(encoding="utf-8")
+    start = current.index("- Fingerprint: `") + len("- Fingerprint: `")
+    end = current.index("`", start)
+    index.write_text(current[:start] + value + current[end:], encoding="utf-8")
+
+
+def test_readme_change_fails_validation_until_content_fingerprint_is_restored() -> None:
+    # Full cycle the hash-only tests do not cover: write context, change a
+    # root README, see the real validator fail the index while the module
+    # still passes, then store content_fingerprint again and see it pass.
+    # destination_freshness is a different hash and must not be written into
+    # Fingerprint:, or the same validator fails on current prose.
+    with tempfile.TemporaryDirectory() as temp:
+        web = Path(temp) / "web"
+        module = web / "apps" / "storefront"
+        module.mkdir(parents=True)
+        (module / "index.ts").write_text("export const x = 1;\n")
+        (web / "README.md").write_text("# store\n")
+        _write_valid_module(module, "web", "storefront", "apps/storefront")
+        (web / "aidlc-docs").mkdir()
+        index = web / "aidlc-docs" / "repository-context.md"
+        _write_valid_index(index, web)
+        module_check = "modules:fingerprint:../apps/storefront/AIDLC_CONTEXT.md"
+
+        def statuses() -> dict[str, str]:
+            return {
+                check.name: check.status
+                for check in validate_generated_context(
+                    index, {"web": web}, index_repository_id="web"
+                )
+            }
+
+        initial = statuses()
+        assert initial["index:fingerprint"] == "passed"
+        assert initial[module_check] == "passed"
+
+        (web / "README.md").write_text("# store\n\nUpdated after the index was written.\n")
+        stale = statuses()
+        assert stale["index:fingerprint"] == "failed"
+        assert stale[module_check] == "passed"
+
+        content_hash, _paths = content_fingerprint(web)
+        _state, freshness_hash = destination_freshness(web)
+        assert freshness_hash != content_hash
+
+        _replace_recorded_fingerprint(index, freshness_hash)
+        assert statuses()["index:fingerprint"] == "failed"
+
+        _replace_recorded_fingerprint(index, content_hash)
+        restored = statuses()
+        assert restored["index:fingerprint"] == "passed"
+        assert restored[module_check] == "passed"
+
+
 def test_skill_source_changes_invalidate_fingerprint() -> None:
     with tempfile.TemporaryDirectory() as temp:
         root = Path(temp)
@@ -5371,6 +5477,9 @@ if __name__ == "__main__":
         test_absent_destination_freshness_is_not_an_empty_directory_hash,
         test_fingerprint_detects_changes_and_excludes_generated_output,
         test_generated_context_does_not_change_source_fingerprint,
+        test_root_fingerprint_can_go_stale_while_module_fingerprint_does_not,
+        test_project_rule_file_changes_fingerprint_but_bugbot_file_does_not,
+        test_readme_change_fails_validation_until_content_fingerprint_is_restored,
         test_skill_source_changes_invalidate_fingerprint,
         test_parent_fingerprint_skips_nested_git_repository,
         test_fingerprint_includes_symlink_scope_root,

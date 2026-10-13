@@ -264,3 +264,10 @@ Real-world smoke evaluation (not executed in this change; do not treat these as 
 - [ ] REST/backend service — compare generated context quality against previous shallow outputs.
 - [ ] Terraform/infrastructure repository — same comparison.
 - [ ] Frontend or small behaviorful service — same comparison.
+
+README onboarding (not executed in this change; do not treat these as passed until a person follows them in Cursor):
+
+- [ ] **Fresh unversioned project.** Create an empty directory that is not inside a Git repository. Follow the README `/scaffold-project` example. Confirm the proposal comes before any write, the destination is not given another repository's identity, and ignored local files are not required for the foundation.
+- [ ] **Existing monorepo.** Open a repository root that already contains more than one component. Run `/sync-context` from the README path. Confirm meaningful modules are discovered inside that one Git root and context is proposed before it is written.
+- [ ] **Multi-repo workspace with an unavailable sibling.** Open a local `.code-workspace` that includes one cloned repository and names another that is not on disk. Run `/sync-context`. Confirm the missing sibling is reported unavailable, is not described as verified, and the available repository can still be documented.
+- [ ] **First-time user from install to approval.** Follow the README from Team Marketplace or the documented local install through reload, the starting-point table, and one approved `/sync-context` or `/scaffold-project` run. Confirm the slash command is visible and nothing is written before approval.

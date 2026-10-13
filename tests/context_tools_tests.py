@@ -1021,14 +1021,151 @@ def test_valid_git_worktree_fingerprint_includes_tracked_files() -> None:
         assert paths == ("a.ts",)
 
 
-def test_unversioned_tree_still_uses_the_filesystem_walk() -> None:
+def test_unversioned_tree_respects_local_gitignore() -> None:
     with tempfile.TemporaryDirectory() as temp:
         root = Path(temp) / "plain"
         root.mkdir()
-        (root / ".gitignore").write_text("a.ts\n")
+        (root / "private").mkdir()
+        (root / "src").mkdir()
+        ignored = root / "private" / "customer-data.txt"
+        ignored.write_text("not-for-fingerprint\n")
+        os.chmod(ignored, 0)
         (root / "a.ts").write_text("export const a = 1;\n")
-        _fingerprint, paths = content_fingerprint(root)
-        assert "a.ts" in paths
+        (root / ".env").write_text("TOKEN=hidden\n")
+        (root / ".env.local").write_text("LOCAL=hidden\n")
+        (root / ".env.example").write_text("TOKEN=\n")
+        (root / "src" / "skip.tmp").write_text("skip\n")
+        (root / "src" / "keep.py").write_text("keep\n")
+        (root / "visible.txt").write_text("visible\n")
+        (root / ".gitignore").write_text("private/\na.ts\n.env*\n!.env.example\n")
+        (root / "src" / ".gitignore").write_text("*.tmp\n")
+        try:
+            _fingerprint, paths = content_fingerprint(root)
+        finally:
+            os.chmod(ignored, 0o644)
+        assert "private/customer-data.txt" not in paths
+        assert "a.ts" not in paths
+        assert ".env" not in paths
+        assert ".env.local" not in paths
+        assert ".env.example" in paths
+        assert "src/skip.tmp" not in paths
+        assert "src/keep.py" in paths
+        assert "visible.txt" in paths
+        assert ".gitignore" in paths
+
+
+def test_unreadable_excluded_directory_does_not_block_fingerprint() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp) / "plain"
+        root.mkdir()
+        private = root / "private"
+        private.mkdir()
+        (private / "customer-data.txt").write_text("not-for-fingerprint\n")
+        modules = root / "node_modules"
+        modules.mkdir()
+        (modules / "pkg.js").write_text("module.exports = 1;\n")
+        (root / "visible.txt").write_text("visible\n")
+        (root / ".gitignore").write_text("private/\n")
+        os.chmod(private, 0)
+        os.chmod(modules, 0)
+        try:
+            _fingerprint, paths = content_fingerprint(root)
+        finally:
+            os.chmod(private, 0o755)
+            os.chmod(modules, 0o755)
+        assert paths == (".gitignore", "visible.txt")
+
+
+def test_absent_destination_freshness_survives_first_unrelated_commit() -> None:
+    # Regression: `_destination_tracking_evidence` used to encode an unborn
+    # HEAD as `head:unborn`, distinct from a born HEAD whose tree has no
+    # record for this path (`head:` with no entries). Both mean "HEAD has no
+    # record of this destination," so an unrelated first commit elsewhere
+    # must not change an absent destination's freshness.
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp) / "repo"
+        root.mkdir()
+        init_repo(root)
+        new_app = root / "new-app"
+        assert not new_app.exists()
+        unborn_state, unborn = destination_freshness(new_app)
+        assert unborn_state == "absent"
+
+        other = root / "other.py"
+        other.write_text("print('unrelated')\n")
+        run(root, "git", "add", "other.py")
+        run(root, "git", "commit", "-qm", "feat: first unrelated commit")
+        born_state, born = destination_freshness(new_app)
+        assert born_state == "absent"
+        assert born == unborn
+        assert not new_app.exists()
+
+
+def test_absent_destination_tracking_change_is_scoped() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp) / "repo"
+        root.mkdir()
+        init_repo(root)
+        app = root / "app"
+        app.mkdir()
+        (app / "a.py").write_text("print('a')\n")
+        run(root, "git", "add", "app/a.py")
+        shutil.rmtree(app)
+        assert not app.exists()
+        state, first = destination_freshness(app)
+        assert state == "absent"
+        assert classify_repository_scope(app).kind == "nested-tracked"
+        assert not app.exists()
+
+        other = root / "other"
+        other.mkdir()
+        (other / "c.py").write_text("print('c')\n")
+        run(root, "git", "add", "other/c.py")
+        unrelated_state, unrelated = destination_freshness(app)
+        assert unrelated_state == "absent"
+        assert unrelated == first
+
+        app.mkdir()
+        (app / "a.py").write_text("print('a')\n")
+        (app / "b.py").write_text("print('b')\n")
+        run(root, "git", "add", "app/a.py", "app/b.py")
+        shutil.rmtree(app)
+        changed_state, changed = destination_freshness(app)
+        assert changed_state == "absent"
+        assert changed != first
+        assert not app.exists()
+
+        committed = Path(temp) / "committed"
+        committed.mkdir()
+        init_repo(committed)
+        tracked = committed / "app"
+        tracked.mkdir()
+        (tracked / "a.py").write_text("print('a')\n")
+        (committed / "README.md").write_text("parent\n")
+        run(committed, "git", "add", "app/a.py", "README.md")
+        run(committed, "git", "commit", "-qm", "feat: app")
+        shutil.rmtree(tracked)
+        committed_state, committed_fingerprint = destination_freshness(tracked)
+        assert committed_state == "absent"
+        (committed / "notes.txt").write_text("elsewhere\n")
+        run(committed, "git", "add", "notes.txt")
+        run(committed, "git", "commit", "-qm", "chore: notes")
+        _after_notes, after_notes = destination_freshness(tracked)
+        assert after_notes == committed_fingerprint
+        tracked.mkdir()
+        (tracked / "a.py").write_text("print('changed')\n")
+        run(committed, "git", "add", "app/a.py")
+        run(committed, "git", "commit", "-qm", "fix: app content")
+        shutil.rmtree(tracked)
+        _head_state, after_head = destination_freshness(tracked)
+        assert after_head != committed_fingerprint
+        assert not tracked.exists()
+
+        empty = root / "empty-now"
+        empty.mkdir()
+        present_state, present = destination_freshness(empty)
+        assert present_state == "present"
+        assert present != changed
 
 
 def test_identity_normalization_and_persistence() -> None:
@@ -5250,7 +5387,10 @@ if __name__ == "__main__":
         test_git_fingerprint_accepts_a_symlink_scope_root,
         test_broken_git_metadata_is_not_fingerprinted_as_an_unversioned_tree,
         test_valid_git_worktree_fingerprint_includes_tracked_files,
-        test_unversioned_tree_still_uses_the_filesystem_walk,
+        test_unversioned_tree_respects_local_gitignore,
+        test_unreadable_excluded_directory_does_not_block_fingerprint,
+        test_absent_destination_freshness_survives_first_unrelated_commit,
+        test_absent_destination_tracking_change_is_scoped,
         test_fingerprint_reflects_working_tree_not_the_staged_git_index,
         test_corrupt_index_makes_staged_comparison_unavailable,
         test_identity_normalization_and_persistence,

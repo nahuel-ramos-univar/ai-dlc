@@ -35,7 +35,9 @@ call it untracked, offer `git init`, or expand the analysis scope by default.
 
 For a **nested repository, submodule, or worktree**, use its own Git root and
 never silently use the parent identity or revision. For an **unversioned tree**,
-permit discovery and use baseline `unversioned`. Record enclosing Git discovery
+permit discovery and use baseline `unversioned`. Apply that tree's own
+`.gitignore` with a temporary Git check that is not created in the
+destination. If Git cannot apply those rules, freshness is unresolved. Record enclosing Git discovery
 only as a warning; do not use the parent `git_root` or commit SHA as identity
 or freshness. File discovery for an untracked tree does not use the enclosing checkout's ignore rules.
 List that tree's own files, then still drop generated

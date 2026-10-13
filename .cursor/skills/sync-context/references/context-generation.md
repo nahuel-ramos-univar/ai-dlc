@@ -134,13 +134,19 @@ and its examined paths. Use `scripts/context_tools.py`:
    exclude (`git ls-files --others --exclude-standard`). A tracked file is
    still included even if a later-added ignore pattern would exclude it if
    it were untracked; only an untracked-and-ignored file is left out. For a
-   genuinely unversioned tree, walk the filesystem instead. An
+   genuinely unversioned tree, apply that tree's own `.gitignore` with the
+   same temporary Git check, which is not created inside the project. If Git
+   cannot apply those rules, raise `GitDiscoveryError` instead of reading
+   ignored files. An
    `untracked-tree` does not use the enclosing repository's exclude rules.
    Git applies the ignore rules inside that tree, including negation and
    nested rules, and drops ignored paths before reading file contents. A
    genuinely empty destination stays an empty file list. A destination that
    does not exist yet is an `absent` result from `destination_freshness`,
    not an empty-directory fingerprint; do not create it merely to hash it.
+   The absent value also includes index and HEAD records for that destination
+   only. Those records are not part of `content_fingerprint`, and a staged
+   change outside the destination does not change them.
    If Git cannot apply the in-scope rules, raise `GitDiscoveryError` and
    report freshness as unresolved. A nested tracked module keeps the enclosing
    exclude rules. The scope kind `untracked-tree` is not the kind

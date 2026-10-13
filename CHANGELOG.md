@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.9.0 — 2026-10-13
+
+Bump: `minor`
+Compare: [v0.8.0...v0.9.0](https://github.com/nahuel-ramos-univar/ai-dlc/compare/v0.8.0...v0.9.0)
+
+### Added
+
+- feat: scaffold an approved foundation without inventing Git identity ([`073df88`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/073df880fed52a1973d6e698a05439ed3dd1425e))
+
+### Other
+
+- Merge pull request #15 from nahuel-ramos-univar/CTY-304 ([`7219332`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/7219332796277009d385022ad36e6815dd5a9020))
+
 ## 0.8.0 — 2026-10-08
 
 Bump: `minor`

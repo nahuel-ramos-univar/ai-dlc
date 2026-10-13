@@ -40,7 +40,12 @@ prepared, and with the values just read. If it returns false, stop writing
 that part of the proposal, recalculate the affected changes, preserve the
 intervening edit, and present the material difference for renewed approval
 before writing. Do not silently overwrite a destination
-file that moved since the proposal was prepared.
+file that moved since the proposal was prepared. This check is for a
+context proposal that has not started writing. It still applies to
+`sync-context`. A scaffold that writes approved source files follows
+[foundation-and-review.md](../../scaffold-project/references/foundation-and-review.md)
+during application and must not treat those approved writes as staleness
+of the original fingerprint.
 
 Keep `.ai-dlc-config.md` minimal. Keep `aidlc-docs/repository-context.md` as a short workspace index. It lists each actual Git root, its repository ID, meaningful modules, source paths, freshness marker, and links to colocated context. It is not a codebase dump.
 
@@ -156,7 +161,10 @@ Record declared scope separately from examined files. The helper discovers
 additions, deletions, and renames inside scope through the current sorted file
 set. Recheck affected evidence when a source or contract changes during
 analysis; otherwise report a mixed snapshot as uncertain. A Git root or nested
-tracked module records its owning root revision plus the fingerprint. An
+tracked module records its owning root revision plus the fingerprint when
+`HEAD` resolves to a commit. When the Git root exists but `HEAD` does not
+resolve, record `no-commit` plus the fingerprint and keep Git file discovery.
+Do not invent a SHA and do not switch that tree to the unversioned walk. An
 unversioned tree records `unversioned` plus the fingerprint. Never use a parent
 revision that does not track the examined files.
 

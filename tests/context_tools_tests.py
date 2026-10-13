@@ -438,6 +438,132 @@ def test_git_discovery_failure_raises_instead_of_falling_back_to_the_walk() -> N
             )
 
 
+def test_unborn_head_uses_git_discovery_and_no_commit_baseline() -> None:
+    """A Git working tree with no commits is not an unversioned directory.
+
+    These fixtures only initialize Git inside a temp directory. They do not
+    add a scaffold helper. `no-commit` is the existing Baseline token; the
+    validator still checks the fingerprint, not that token.
+    """
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp) / "payments-web"
+        root.mkdir()
+        init_repo(root)
+        (root / "app.ts").write_text("export const app = 1;\n")
+
+        scope = classify_repository_scope(root)
+        assert scope.kind == "git-root"
+        assert git_output(root, "rev-parse", "--show-toplevel")
+        head = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD"],
+            cwd=root,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        assert head.returncode != 0
+        assert b"Needed a single revision" in head.stderr or b"unknown revision" in head.stderr
+        fingerprint, paths = content_fingerprint(root)
+        assert "app.ts" in paths
+
+        (root / "aidlc-docs").mkdir()
+        index = root / "aidlc-docs" / "repository-context.md"
+        index.write_text(
+            "\n".join(
+                [
+                    "# Repository context",
+                    "",
+                    "<!-- AI-DLC:generated:start -->",
+                    "",
+                    "## Scope",
+                    "",
+                    "- Index: `single-repository`",
+                    "- Repository ID: `payments-web`",
+                    "- Baseline: `no-commit`",
+                    f"- Fingerprint: `{fingerprint}`",
+                    "",
+                    "## Modules",
+                    "",
+                    "| Module | Source | Context | Status |",
+                    "| --- | --- | --- | --- |",
+                    "",
+                    "<!-- AI-DLC:generated:end -->",
+                    "",
+                ]
+            )
+        )
+        checks = validate_generated_context(
+            index, {"payments-web": root}, index_repository_id="payments-web"
+        )
+        statuses = {check.name: check.status for check in checks}
+        assert statuses["index:fingerprint"] == "passed"
+        assert "failed" not in statuses.values()
+        module_field = parse_recorded_fingerprint(
+            "\n".join(
+                [
+                    "<!-- AI-DLC:generated:start -->",
+                    "## Identity and scope",
+                    f"- Baseline and fingerprint: `no-commit` / `{fingerprint}`",
+                    "<!-- AI-DLC:generated:end -->",
+                ]
+            )
+        )
+        assert module_field.status == "ok"
+        assert module_field.value == fingerprint
+
+        remote_root = Path(temp) / "with-remote"
+        remote_root.mkdir()
+        init_repo(remote_root)
+        (remote_root / "app.ts").write_text("export const app = 1;\n")
+        run(
+            remote_root,
+            "git",
+            "remote",
+            "add",
+            "origin",
+            "https://github.com/example/payments-web.git",
+        )
+        assert classify_repository_scope(remote_root).kind == "git-root"
+        assert git_output(remote_root, "rev-parse", "--verify", "HEAD") is None
+        assert (
+            normalize_remote(git_output(remote_root, "remote", "get-url", "origin") or "")
+            == "github.com/example/payments-web"
+        )
+        _, remote_paths = content_fingerprint(remote_root)
+        assert "app.ts" in remote_paths
+
+        committed = Path(temp) / "committed"
+        committed.mkdir()
+        init_repo(committed)
+        (committed / "app.ts").write_text("export const app = 1;\n")
+        run(committed, "git", "add", ".")
+        run(committed, "git", "commit", "-qm", "feat: initial")
+        revision = git_output(committed, "rev-parse", "HEAD")
+        assert revision is not None and len(revision) == 40
+        assert git_output(committed, "remote") == ""
+
+        config = (
+            "## Context identities\n"
+            "- Repository: `payments-web`\n"
+            "  - Artifact home: `.`\n"
+            "  - Root: `.`\n"
+            "- Related repository: `github.com/example/payments-api`\n"
+            "  - Repository ID: `payments-api`\n"
+            "- Related repository: `not a remote`\n"
+        )
+        related = parse_related_repositories(config)
+        assert related.status == "invalid"
+        assert len(related.entries) == 1
+        assert related.entries[0].canonical_remote == "github.com/example/payments-api"
+        assert stable_repository_id("payments-web", None, "other-id") == "payments-web"
+
+        broken = Path(temp) / "broken"
+        broken.mkdir()
+        (broken / ".git").mkdir()
+        assert git_output(broken, "rev-parse", "--show-toplevel") is None
+        assert (broken / ".git").exists()
+
+
 # --- Working-tree-only fingerprint semantics (finding 5) --------------------
 
 
@@ -3508,6 +3634,44 @@ def test_stale_proposal_does_not_match_a_newer_destination() -> None:
     assert proposal_is_current("abc", "abc", None, "file appeared") is False
 
 
+def test_approved_source_write_changes_fingerprint_without_changing_the_destination() -> None:
+    """An approved source file moves the fingerprint. The manifest text does not.
+
+    `proposal_is_current` still reports that fingerprint move. Scaffold must
+    not treat that report, after its own approved write, as a reason to stop
+    the next destination edit. This test does not prove an agent follows that
+    instruction.
+    """
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp) / "app"
+        root.mkdir()
+        init_repo(root)
+        manifest = root / "package.json"
+        original = '{ "name": "app" }\n'
+        manifest.write_text(original)
+        baseline, _ = content_fingerprint(root)
+
+        (root / "src").mkdir()
+        (root / "src" / "main.js").write_text("export const main = 1;\n")
+        after_create, paths = content_fingerprint(root)
+        assert "src/main.js" in paths
+        assert after_create != baseline
+        assert manifest.read_text() == original
+        assert proposal_is_current(baseline, after_create, original, original) is False
+        assert proposal_is_current(after_create, after_create, original, original) is True
+
+        external = '{ "name": "changed-outside" }\n'
+        manifest.write_text(external)
+        assert proposal_is_current(after_create, after_create, original, external) is False
+        assert manifest.read_text() == external
+
+        unexpected = root / "src" / "extra.js"
+        assert proposal_is_current(after_create, after_create, None, None) is True
+        unexpected.write_text("export const extra = 1;\n")
+        assert unexpected.exists()
+        assert proposal_is_current(after_create, after_create, None, unexpected.read_text()) is False
+
+
 def test_unrelated_rules_are_not_part_of_the_approved_write_set() -> None:
     existing = [
         ".cursor/rules/team-tests.mdc",
@@ -4798,6 +4962,7 @@ if __name__ == "__main__":
         test_git_aware_fingerprint_detects_additions_deletions_and_renames,
         test_git_aware_fingerprint_excludes_generated_context,
         test_git_discovery_failure_raises_instead_of_falling_back_to_the_walk,
+        test_unborn_head_uses_git_discovery_and_no_commit_baseline,
         test_git_fingerprint_skips_a_tracked_file_behind_an_external_directory_symlink,
         test_git_fingerprint_skips_a_directory_symlink_that_points_inside_the_repository,
         test_git_fingerprint_accepts_a_symlink_scope_root,
@@ -4926,6 +5091,7 @@ if __name__ == "__main__":
         test_retirement_decision_pending_mirrors_bugbot_reprompt_semantics,
         test_migration_outcome_reports_partial_without_implying_atomicity,
         test_stale_proposal_does_not_match_a_newer_destination,
+        test_approved_source_write_changes_fingerprint_without_changing_the_destination,
         test_unrelated_rules_are_not_part_of_the_approved_write_set,
         test_context_sync_outcome_unchanged_with_first_time_missing_bugbot_config,
         test_context_sync_outcome_unchanged_with_previously_declined_bugbot_proposal,

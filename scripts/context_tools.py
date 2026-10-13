@@ -1656,10 +1656,17 @@ def _ensure_scope_tree_is_listable(
             if name in EXCLUDED_PARTS:
                 continue
             child = current / name
-            if child.is_symlink() or is_nested_git_root(child, scope):
+            if child.is_symlink():
                 continue
+            # Ignored first: `check-ignore` only matches the name against
+            # ignore patterns, so it never needs to enter `child`. An
+            # excluded, permission-locked directory (for example a secret
+            # folder with mode 0) must be dropped here, before
+            # `is_nested_git_root` tries to stat inside it.
             relative = child.relative_to(scope).as_posix()
             if _scope_directory_is_ignored(scope, relative, env, excludes_file):
+                continue
+            if is_nested_git_root(child, scope):
                 continue
             kept.append(name)
         dirnames[:] = kept
@@ -1793,9 +1800,15 @@ def _destination_tracking_evidence(scope: RepositoryScope) -> bytes:
     """Index and HEAD records for this destination only.
 
     The bytes are Git metadata, not working-tree file contents. A path
-    outside the destination is not included. An unborn HEAD is recorded as
-    `head:unborn` so a repository with no commit stays distinct from a failed
-    query. This does not create the destination.
+    outside the destination is not included. An unborn HEAD has no record
+    for any path, including this destination, so it is encoded the same as
+    a born HEAD whose tree simply does not list this destination (`b"head:"`
+    with no records). The repository's overall commit history is not scoped
+    to the destination; only whether this destination has a HEAD record is.
+    Collapsing the two keeps an unrelated first commit elsewhere from
+    changing an absent destination's freshness. A failed HEAD or index query
+    still raises instead of being treated as either case. This does not
+    create the destination.
     """
     root = scope.git_root or scope.enclosing_git_root
     if root is None:
@@ -1819,7 +1832,7 @@ def _destination_tracking_evidence(scope: RepositoryScope) -> bytes:
             raise GitDiscoveryError(
                 "Freshness is unresolved. Git could not read HEAD tracking for the destination."
             )
-        head_bytes = b"head:unborn"
+        head_bytes = b"head:"
     else:
         head = _git_capture(root, "ls-tree", "-r", "-z", "HEAD", "--", pathspec)
         if head.returncode != 0:

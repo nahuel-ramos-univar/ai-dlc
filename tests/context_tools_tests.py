@@ -1076,6 +1076,31 @@ def test_unreadable_excluded_directory_does_not_block_fingerprint() -> None:
         assert paths == (".gitignore", "visible.txt")
 
 
+def test_absent_destination_freshness_survives_first_unrelated_commit() -> None:
+    # Regression: `_destination_tracking_evidence` used to encode an unborn
+    # HEAD as `head:unborn`, distinct from a born HEAD whose tree has no
+    # record for this path (`head:` with no entries). Both mean "HEAD has no
+    # record of this destination," so an unrelated first commit elsewhere
+    # must not change an absent destination's freshness.
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp) / "repo"
+        root.mkdir()
+        init_repo(root)
+        new_app = root / "new-app"
+        assert not new_app.exists()
+        unborn_state, unborn = destination_freshness(new_app)
+        assert unborn_state == "absent"
+
+        other = root / "other.py"
+        other.write_text("print('unrelated')\n")
+        run(root, "git", "add", "other.py")
+        run(root, "git", "commit", "-qm", "feat: first unrelated commit")
+        born_state, born = destination_freshness(new_app)
+        assert born_state == "absent"
+        assert born == unborn
+        assert not new_app.exists()
+
+
 def test_absent_destination_tracking_change_is_scoped() -> None:
     with tempfile.TemporaryDirectory() as temp:
         root = Path(temp) / "repo"
@@ -5364,6 +5389,7 @@ if __name__ == "__main__":
         test_valid_git_worktree_fingerprint_includes_tracked_files,
         test_unversioned_tree_respects_local_gitignore,
         test_unreadable_excluded_directory_does_not_block_fingerprint,
+        test_absent_destination_freshness_survives_first_unrelated_commit,
         test_absent_destination_tracking_change_is_scoped,
         test_fingerprint_reflects_working_tree_not_the_staged_git_index,
         test_corrupt_index_makes_staged_comparison_unavailable,

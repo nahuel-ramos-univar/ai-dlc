@@ -135,15 +135,16 @@ and its examined paths. Use `scripts/context_tools.py`:
    still included even if a later-added ignore pattern would exclude it if
    it were untracked; only an untracked-and-ignored file is left out. For a
    genuinely unversioned tree, walk the filesystem instead. An
-   `untracked-tree` does not use the enclosing repository's exclude rules:
-   list its files without that checkout's `.gitignore`, then still drop
-   generated context, caches, nested repositories, symlink escapes, secrets,
-   and paths excluded by an ignore rule inside the tree. A genuinely empty
-   destination stays an empty file list. If an in-scope ignore rule cannot
-   be applied safely, raise `GitDiscoveryError` and report freshness as
-   unresolved; do not record an empty fingerprint over source that the
-   enclosing checkout ignores. A nested tracked module keeps the enclosing
-   exclude rules. A Git query
+   `untracked-tree` does not use the enclosing repository's exclude rules.
+   Git applies the ignore rules inside that tree, including negation and
+   nested rules, and drops ignored paths before reading file contents. A
+   genuinely empty destination stays an empty file list. A destination that
+   does not exist yet is an `absent` result from `destination_freshness`,
+   not an empty-directory fingerprint; do not create it merely to hash it.
+   If Git cannot apply the in-scope rules, raise `GitDiscoveryError` and
+   report freshness as unresolved. A nested tracked module keeps the enclosing
+   exclude rules. The scope kind `untracked-tree` is not the kind
+   `unversioned`. A Git query
    failure for a Git-backed scope raises; it is never silently replaced by
    the filesystem walk.
 2. Sort normalized repository-relative paths.

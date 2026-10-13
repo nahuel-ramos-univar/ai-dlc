@@ -235,6 +235,7 @@ def test_context_generation_contract_has_required_examples() -> None:
     assert "freshness fingerprint" in refresh
     assert "does not use the enclosing repository's exclude rules" in refresh
     assert "does not use the enclosing repository's exclude rules" in generation
+    assert "untracked-tree` is not the kind" in generation
     assert "| 150 lines |" in templates
     assert "| 300 lines |" in templates
     assert "Anthropic requirement" in templates
@@ -966,18 +967,17 @@ def test_scaffold_project_contract_has_required_language() -> None:
         "Give the reviewer the confirmed purpose and the scaffolding boundary",
         "When the requested outcome includes real business behavior beyond a technical foundation",
         "/plan-work",
-        "How would you like to organize this project?",
-        "One application in one repository.",
-        "A monorepo containing multiple components.",
-        "Multiple related repositories.",
+        "Resolve the project's repository organization",
         "Do not assume that having a frontend, a backend, and infrastructure by itself requires separate repositories",
         "do not ask again",
         "This skill scaffolds one destination safely per run",
         "Creating a project directory is not creating a Git repository",
-        "Would you like a `.code-workspace` file to open these project folders together in Cursor locally?",
+        "separate from repository organization",
         "do not claim a deferred or not-yet-created folder is ready to open",
         "do not introduce a Cloud Agent environment or claim it controls cloud repository cloning",
         "which repositories or directories already exist versus which this run will create",
+        "destination_freshness",
+        "untracked-tree",
     ):
         assert phrase in skill, phrase
     for phrase in (
@@ -1019,6 +1019,8 @@ def test_scaffold_project_contract_has_required_language() -> None:
         "does not use the enclosing repository's exclude rules",
         "A genuinely empty destination still has an empty fingerprint",
         "report freshness as unresolved",
+        "destination_freshness",
+        "The scope kind `untracked-tree` is not the kind `unversioned`",
         "explicitly named shared file",
         "Membership in the monorepo does not authorize an arbitrary edit at the repository root",
         "Repository organization and workspace",

@@ -20,6 +20,8 @@ Use this mode only when `scaffold-project` asks for review of an approved scaffo
 
 Inspect the generated files and the surrounding configuration the scaffold changed. Do not treat the main chat's summary as a substitute for those files.
 
+Also receive the confirmed product purpose and the scaffolding boundary (technical foundation, navigable prototype, or working business feature) that `scaffold-project` approved. Use them to check for a purpose mismatch: a backend or datastore generated for a purpose stated as static-only; authentication, a payment flow, or other business behavior added without approval; a component missing that the approved smoke behavior actually needs; or a claim that a business feature exists when only a placeholder was created. This is still the same single reviewer in scaffolding mode; do not turn this into a speculative business or architecture review.
+
 Check for concrete defects: a missing entrypoint or a broken script; inconsistent manifests, imports, paths, or configuration; invalid workspace wiring; unsafe defaults or exposed secrets; a README instruction that does not match the generated behavior; an unintended edit to an existing file; an unsupported statement in generated context.
 
 Do not request speculative architecture changes. Do not repeat a stylistic finding that tooling already covers. Do not modify code, tests, Jira, Git state, permissions, infrastructure, or requirements.

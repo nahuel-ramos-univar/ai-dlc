@@ -230,7 +230,10 @@ def test_context_generation_contract_has_required_examples() -> None:
     assert "permit discovery" in preflight
     assert "Context-discovery writes" in preflight
     assert "Scaffold-project writes follow the approved proposal" in preflight
+    assert "does not use the enclosing checkout's ignore rules" in preflight
     assert "freshness fingerprint" in refresh
+    assert "does not use the enclosing repository's exclude rules" in refresh
+    assert "does not use the enclosing repository's exclude rules" in generation
     assert "| 150 lines |" in templates
     assert "| 300 lines |" in templates
     assert "Anthropic requirement" in templates
@@ -951,6 +954,17 @@ def test_scaffold_project_contract_has_required_language() -> None:
         "A generated file tree alone does not prove the foundation works",
         "Review completion does not replace executable validation",
         "references/foundation-and-review.md",
+        "Before identifying a stack, establish the product's purpose",
+        "references/product-purpose.md",
+        "allow an explicit generic-starter choice instead of inventing a purpose",
+        "untracked-tree",
+        "not merely a sibling repository confirmed as part of one product",
+        "Confirming product membership for a new, separate sibling repository never adopts",
+        "Open the proposal with the confirmed purpose summary",
+        "whether it is user-selected, a verified constraint, or a recommendation that still needs approval",
+        "Give the reviewer the confirmed purpose and the scaffolding boundary",
+        "When the requested outcome includes real business behavior beyond a technical foundation",
+        "/plan-work",
     ):
         assert phrase in skill, phrase
     for phrase in (
@@ -981,6 +995,19 @@ def test_scaffold_project_contract_has_required_language() -> None:
         "documented review skip",
         "general-purpose independent review",
         "missing entrypoint",
+        "Untracked tree inside an enclosing Git root",
+        "`untracked-tree` kind",
+        "Confirmed new module of an existing monorepo",
+        "never inferred from location alone",
+        "not merely a sibling repository confirmed as part of one product",
+        "it only governs `Related repository` entries",
+        "does not grant this destination the enclosing repository's identity",
+        "Never run `git init`, stage files, or otherwise modify the enclosing repository",
+        "does not use the enclosing repository's exclude rules",
+        "A genuinely empty destination still has an empty fingerprint",
+        "report freshness as unresolved",
+        "explicitly named shared file",
+        "Membership in the monorepo does not authorize an arbitrary edit at the repository root",
     ):
         assert phrase in foundation, phrase
     templates = (
@@ -993,10 +1020,41 @@ def test_scaffold_project_contract_has_required_language() -> None:
     ).read_text(encoding="utf-8")
     assert "Baseline and fingerprint: `<git revision, no-commit, or unversioned>`" in templates
     assert "Do not put `no-commit` on a tree" in templates
+    purpose = " ".join(
+        (
+            ROOT
+            / ".cursor"
+            / "skills"
+            / "scaffold-project"
+            / "references"
+            / "product-purpose.md"
+        )
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    for phrase in (
+        "what is being built, and what problem it solves",
+        "human users and their roles, or system and API consumers",
+        "Reuse a fact already supplied",
+        "Do not infer authentication, a database, a payment flow, an AI agent, a queue, or infrastructure merely from a broad category",
+        "allow that choice",
+        "a technical foundation",
+        "a navigable prototype",
+        "a working business feature",
+        "hand off to `/plan-work`",
+        "Do not require Jira access or a complete business model",
+        "a technology the user explicitly selected",
+        "a recommendation that still needs approval",
+        "Do not claim an earlier run invented a stack merely because its transcript is incomplete",
+        "Do not add a second reviewer",
+    ):
+        assert phrase in purpose, phrase
     assert "Scaffolding review mode" in reviewer
     assert "Do not modify code, tests, Jira, Git state" in reviewer
     assert "missing entrypoint" in reviewer
     assert "Do not request speculative architecture" in reviewer
+    assert "the confirmed product purpose and the scaffolding boundary" in reviewer
+    assert "a backend or datastore generated for a purpose stated as static-only" in reviewer
     assert reviewer.count("Do not modify code, tests, Jira, Git state") >= 1
     for scenario in (
         "Empty directory without a Git root",
@@ -1013,6 +1071,13 @@ def test_scaffold_project_contract_has_required_language() -> None:
         "Partial apply reported honestly",
         "Independent reviewer unavailable",
         "Real defect caught during review",
+        "Generic product request with no detail",
+        "Detailed request already supplies the facts",
+        "Explicitly generic starter",
+        "Static website does not gain a backend",
+        "Standalone folder inside an unrelated parent Git repository",
+        "Explicitly requested new module inside an existing monorepo",
+        "New module plus an approved root workspace manifest",
     ):
         assert scenario in manual, scenario
 

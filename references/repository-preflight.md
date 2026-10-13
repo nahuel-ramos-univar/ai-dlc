@@ -30,8 +30,16 @@ For a **nested repository, submodule, or worktree**, use its own Git root and
 never silently use the parent identity or revision. For an **unversioned tree**,
 permit discovery and use baseline `unversioned`. Record enclosing Git discovery
 only as a warning; do not use the parent `git_root` or commit SHA as identity
-or freshness. Ask only when artifact-home or write scope is ambiguous. Never
-run `git init`.
+or freshness. File discovery for an untracked tree does not use the enclosing checkout's ignore rules.
+List that tree's own files, then still drop generated
+context, caches, nested repositories, symlink escapes, secrets, and files
+excluded by an ignore rule inside the tree. A parent ignore that hides the
+whole directory must not make source disappear or look unchanged. A genuinely
+empty tree still has an empty fingerprint. If an in-scope ignore rule cannot
+be applied safely, freshness is unresolved rather than an empty fingerprint.
+A nested tracked module keeps the enclosing checkout's exclude rules. Ask
+only when artifact-home or write scope is ambiguous.
+Never run `git init`.
 
 Inspect staged, unstaged, and relevant untracked files. Preserve work outside
 the requested scope. If the target repository, remote, branch, artifact home,

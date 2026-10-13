@@ -5,15 +5,22 @@ run Git discovery from that directory. Record the actual Git root, current
 branch, intended remote, and target branch. Classify the requested path as one
 of:
 
-- **Git root:** the working directory is the repository root.
-- **Nested tracked module:** it is inside that Git root and Git tracks files
-  there (`git ls-files` is non-empty for that path).
+- **Git root (`git-root`):** the working directory is the repository root.
+- **Nested tracked module (`nested-tracked`):** it is inside that Git root and
+  Git tracks files there. A path whose working-tree files were deleted is still
+  tracked when the index or `HEAD` still records it. Do not treat that as a
+  new untracked project.
 - **Nested repository, submodule, or worktree:** Git discovery from the path
-  reports that repository's own root. It owns its identity and baseline.
-- **Unversioned tree:** it has no Git root, or the containing repository does
-  not track the requested path.
+  reports that repository's own root. The kind is `git-root` for that
+  checkout. It owns its identity and baseline.
+- **Untracked tree (`untracked-tree`):** the path is inside an enclosing Git
+  worktree, but that repository does not track it. It does not inherit the
+  enclosing repository's identity. This is not `unversioned`.
+- **Unversioned tree (`unversioned`):** no enclosing Git root applies to the
+  requested path. A path inside a Git worktree that Git does not track is an
+  `untracked-tree`, not an unversioned tree.
 - **Multi-repository workspace:** each discovered Git root is classified
-  independently.
+  independently. This is not one scope kind.
 
 The plugin source or installation directory may be a nested tracked path. That
 can be valid, especially in a monorepo. It does not authorize treating the
@@ -30,8 +37,17 @@ For a **nested repository, submodule, or worktree**, use its own Git root and
 never silently use the parent identity or revision. For an **unversioned tree**,
 permit discovery and use baseline `unversioned`. Record enclosing Git discovery
 only as a warning; do not use the parent `git_root` or commit SHA as identity
-or freshness. Ask only when artifact-home or write scope is ambiguous. Never
-run `git init`.
+or freshness. File discovery for an untracked tree does not use the enclosing checkout's ignore rules.
+List that tree's own files, then still drop generated
+context, caches, nested repositories, symlink escapes, secrets, and files
+excluded by an ignore rule inside the tree. A parent ignore that hides the
+whole directory must not make source disappear or look unchanged. A genuinely
+empty tree still has an empty fingerprint. Valid Git ignore syntax, including
+negation, character classes, and escapes, is applied. If Git cannot read or
+apply those rules, freshness is unresolved rather than an empty fingerprint.
+A nested tracked module keeps the enclosing checkout's exclude rules. Ask
+only when artifact-home or write scope is ambiguous.
+Never run `git init`.
 
 Inspect staged, unstaged, and relevant untracked files. Preserve work outside
 the requested scope. If the target repository, remote, branch, artifact home,
@@ -57,7 +73,10 @@ references into a consumer repository.
 create, update, or relocate exactly one `.code-workspace` file when it is
 part of an explicitly approved proposal, at a destination the proposal
 itself names and the user approved -- never an arbitrary or unapproved
-path. Read and write it as JSONC, not plain JSON, so hand-authored comments
+path. This is a local IDE convenience for opening folders together in
+Cursor; it does not create, configure, or imply a Cloud Agent environment,
+and it never controls cloud repository cloning or any remote execution
+environment. Read and write it as JSONC, not plain JSON, so hand-authored comments
 and unrelated settings, tasks, and extension configuration survive
 untouched; change only the fields the approved proposal actually touches.
 Recalculate `folders[].path` entries relative to the new location when

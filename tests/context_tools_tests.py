@@ -56,6 +56,7 @@ from context_tools import (  # noqa: E402
     parse_project_references,
     parse_related_repositories,
     plan_validate_proposal,
+    destination_freshness,
     proposal_is_current,
     relocate_workspace_folder_path,
     resolve_legacy_provenance,
@@ -138,6 +139,282 @@ def test_untracked_and_nested_repository_ownership() -> None:
         scope = classify_repository_scope(nested)
         assert scope.kind == "git-root"
         assert scope.git_root == nested.resolve()
+
+
+def test_untracked_tree_keeps_local_ignores_without_enclosing_identity() -> None:
+    # An untracked destination inside an enclosing Git root keeps its own
+    # ignore rules and never adopts that checkout's identity. This is a
+    # helper-behavior test, not proof that a live agent run followed the
+    # scaffold-project instructions.
+    with tempfile.TemporaryDirectory() as temp:
+        enclosing = Path(temp) / "Work"
+        enclosing.mkdir()
+        init_repo(enclosing)
+        (enclosing / "existing.txt").write_text("existing\n")
+        run(enclosing, "git", "add", ".")
+        run(enclosing, "git", "commit", "-qm", "feat: existing checkout")
+
+        new_project = enclosing / "new-project"
+        new_project.mkdir()
+        scope = classify_repository_scope(new_project)
+        assert scope.kind == "untracked-tree"
+        assert scope.git_root is None
+        assert scope.enclosing_git_root == enclosing.resolve()
+
+        (new_project / "app.ts").write_text("export const app = 1;\n")
+        (new_project / ".gitignore").write_text("ignored.log\n")
+        (new_project / "ignored.log").write_text("noisy\n")
+
+        _fingerprint, paths = content_fingerprint(new_project)
+        assert "app.ts" in paths
+        assert ".gitignore" in paths
+        # The project's own ignore rule still drops ignored.log. The
+        # enclosing checkout's excludes are not what does that.
+        assert "ignored.log" not in paths
+
+        # The destination's own identity stays independent of the
+        # enclosing checkout: classification never reports new_project as
+        # that checkout's own git_root.
+        enclosing_scope = classify_repository_scope(enclosing)
+        assert enclosing_scope.kind == "git-root"
+        assert enclosing_scope.git_root == enclosing.resolve()
+
+
+def test_enclosing_gitignore_cannot_hide_independent_project_source() -> None:
+    # Regression: a parent `.gitignore` of `new-project/` must not make
+    # `content_fingerprint(new-project)` empty, and editing source must
+    # change the fingerprint. A nested tracked module still honors the
+    # enclosing exclude rules. This does not prove a live scaffold run.
+    with tempfile.TemporaryDirectory() as temp:
+        enclosing = Path(temp) / "Work"
+        enclosing.mkdir()
+        init_repo(enclosing)
+        (enclosing / ".gitignore").write_text("new-project/\nempty-project/\n*.log\n")
+        (enclosing / "README.md").write_text("parent\n")
+        run(enclosing, "git", "add", ".")
+        run(enclosing, "git", "commit", "-qm", "chore: ignore standalone projects")
+
+        project = enclosing / "new-project"
+        (project / "src").mkdir(parents=True)
+        (project / "app.py").write_text("print('one')\n")
+        (project / ".gitignore").write_text("ignored.log\n/secrets.txt\n")
+        (project / "ignored.log").write_text("local noise\n")
+        (project / "secrets.txt").write_text("hidden\n")
+        (project / "src" / "secrets.txt").write_text("kept\n")
+        (project / "debug.log").write_text("parent pattern\n")
+        (project / "node_modules").mkdir()
+        (project / "node_modules" / "pkg.js").write_text("module.exports = 1;\n")
+        (project / ".env").write_text("TOKEN=fake\n")
+
+        scope = classify_repository_scope(project)
+        assert scope.kind == "untracked-tree"
+        assert scope.git_root is None
+
+        before, paths = content_fingerprint(project)
+        assert "app.py" in paths
+        assert "src/secrets.txt" in paths
+        assert "debug.log" in paths
+        assert "ignored.log" not in paths
+        assert "secrets.txt" not in paths
+        assert "node_modules/pkg.js" not in paths
+        assert ".env" not in paths
+
+        (project / "app.py").write_text("print('two')\n")
+        after, after_paths = content_fingerprint(project)
+        assert after != before
+        assert "app.py" in after_paths
+
+        empty = enclosing / "empty-project"
+        empty.mkdir()
+        empty_fingerprint, empty_paths = content_fingerprint(empty)
+        assert empty_paths == ()
+        assert empty_fingerprint
+
+        module = enclosing / "packages" / "web"
+        module.mkdir(parents=True)
+        (module / "index.ts").write_text("export const page = 1;\n")
+        (module / "debug.log").write_text("module noise\n")
+        run(enclosing, "git", "add", "packages/web/index.ts")
+        run(enclosing, "git", "commit", "-qm", "feat: track web module")
+        module_scope = classify_repository_scope(module)
+        assert module_scope.kind == "nested-tracked"
+        _module_fingerprint, module_paths = content_fingerprint(module)
+        assert "index.ts" in module_paths
+        assert "debug.log" not in module_paths
+
+        (project / ".gitignore").write_text("*.log\n!kept.log\n")
+        (project / "kept.log").write_text("keep\n")
+        (project / "noise.log").write_text("drop\n")
+        _negation_fingerprint, negation_paths = content_fingerprint(project)
+        assert "kept.log" in negation_paths
+        assert "noise.log" not in negation_paths
+
+
+def test_future_destination_scope_does_not_require_the_directory_to_exist() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        outside = Path(temp) / "outside-git" / "new-app"
+        outside_scope = classify_repository_scope(outside)
+        assert outside_scope.kind == "unversioned"
+        assert outside_scope.git_root is None
+        assert outside_scope.enclosing_git_root is None
+        assert not outside.exists()
+        assert not outside.parent.exists()
+
+        root = Path(temp) / "repo"
+        root.mkdir()
+        init_repo(root)
+        (root / "README.md").write_text("parent\n")
+        run(root, "git", "add", ".")
+        run(root, "git", "commit", "-qm", "feat: parent")
+
+        future = root / "new-app"
+        future_scope = classify_repository_scope(future)
+        assert future_scope.kind == "untracked-tree"
+        assert future_scope.git_root is None
+        assert future_scope.enclosing_git_root == root.resolve()
+        assert not future.exists()
+
+        deleted = root / "retired"
+        deleted.mkdir()
+        (deleted / "app.py").write_text("print(1)\n")
+        run(root, "git", "add", "retired")
+        run(root, "git", "commit", "-qm", "feat: retired")
+        shutil.rmtree(deleted)
+        assert not deleted.exists()
+        deleted_scope = classify_repository_scope(deleted)
+        assert deleted_scope.kind == "nested-tracked"
+        assert deleted_scope.git_root == root.resolve()
+
+        scratch = root / "scratch"
+        scratch.mkdir()
+        (scratch / "note.txt").write_text("note\n")
+        assert classify_repository_scope(scratch).kind == "untracked-tree"
+
+        tracked = root / "packages"
+        tracked.mkdir()
+        (tracked / "index.ts").write_text("export {}\n")
+        run(root, "git", "add", "packages")
+        run(root, "git", "commit", "-qm", "feat: packages")
+        tracked_scope = classify_repository_scope(tracked)
+        assert tracked_scope.kind == "nested-tracked"
+        assert tracked_scope.git_root == root.resolve()
+
+        nested = root / "nested-repo"
+        nested.mkdir()
+        init_repo(nested)
+        (nested / "main.ts").write_text("export {}\n")
+        run(nested, "git", "add", ".")
+        run(nested, "git", "commit", "-qm", "feat: nested")
+        nested_scope = classify_repository_scope(nested)
+        assert nested_scope.kind == "git-root"
+        assert nested_scope.git_root == nested.resolve()
+
+
+def test_scope_gitignore_uses_git_semantics_for_an_independent_tree() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp) / "Work"
+        root.mkdir()
+        init_repo(root)
+        (root / ".gitignore").write_text("new-project/\n")
+        (root / "README.md").write_text("parent\n")
+        run(root, "git", "add", ".")
+        run(root, "git", "commit", "-qm", "chore: ignore the new project")
+
+        project = root / "new-project"
+        (project / "private").mkdir(parents=True)
+        (project / "src").mkdir()
+        (project / "dist").mkdir()
+        (project / "foo" / "nested").mkdir(parents=True)
+        token = project / "private" / "token.txt"
+        token.write_text("not-for-fingerprint\n")
+        os.chmod(token, 0)
+        (project / ".env").write_text("TOKEN=hidden\n")
+        (project / ".env.local").write_text("LOCAL=hidden\n")
+        (project / ".env.example").write_text("TOKEN=\n")
+        (project / "src" / "skip.tmp").write_text("skip\n")
+        (project / "src" / "keep.py").write_text("keep\n")
+        (project / "app.py").write_text("print(1)\n")
+        (project / "debug.log").write_text("noise\n")
+        (project / "important.log").write_text("keep\n")
+        (project / "dist" / "bundle.js").write_text("bundle\n")
+        (project / "foo" / "nested" / "hidden.txt").write_text("hidden\n")
+        (project / "visible.txt").write_text("visible\n")
+        (project / "secret.a").write_text("class-a\n")
+        (project / "secret.c").write_text("class-c\n")
+        (project / "fileX.txt").write_text("question\n")
+        (project / "fileXY.txt").write_text("longer\n")
+        (project / "#pound").write_text("escaped-name\n")
+        (project / ".gitignore").write_text(
+            "private\n"
+            ".env*\n"
+            "!.env.example\n"
+            "dist/\n"
+            "*.log\n"
+            "!important.log\n"
+            "foo/**\n"
+            "secret.[ab]\n"
+            "file?.txt\n"
+            "\\#pound\n"
+        )
+        (project / "src" / ".gitignore").write_text("*.tmp\n")
+        try:
+            _fingerprint, paths = content_fingerprint(project)
+        finally:
+            os.chmod(token, 0o644)
+        assert "private/token.txt" not in paths
+        assert ".env" not in paths
+        assert ".env.local" not in paths
+        assert ".env.example" in paths
+        assert "src/skip.tmp" not in paths
+        assert "src/keep.py" in paths
+        assert "app.py" in paths
+        assert "debug.log" not in paths
+        assert "important.log" in paths
+        assert "dist/bundle.js" not in paths
+        assert "foo/nested/hidden.txt" not in paths
+        assert "visible.txt" in paths
+        assert "secret.a" not in paths
+        assert "secret.c" in paths
+        assert "fileX.txt" not in paths
+        assert "fileXY.txt" in paths
+        assert "#pound" not in paths
+
+
+def test_absent_destination_freshness_is_not_an_empty_directory_hash() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp) / "repo"
+        root.mkdir()
+        init_repo(root)
+        (root / ".gitignore").write_text("ignored-app/\n")
+        (root / "README.md").write_text("parent\n")
+        run(root, "git", "add", ".")
+        run(root, "git", "commit", "-qm", "chore: initial")
+
+        missing = root / "new-app"
+        state, fingerprint = destination_freshness(missing)
+        assert state == "absent"
+        assert not missing.exists()
+        empty = root / "empty-dir"
+        empty.mkdir()
+        empty_hash, empty_paths = content_fingerprint(empty)
+        assert empty_paths == ()
+        assert fingerprint != empty_hash
+
+        outside = Path(temp) / "no-git" / "future"
+        outside_state, outside_fingerprint = destination_freshness(outside)
+        assert outside_state == "absent"
+        assert outside_fingerprint != fingerprint
+        assert not outside.exists()
+
+        (root / ".gitignore").write_text("ignored-app/\nnew-app/\n")
+        _changed_state, changed = destination_freshness(missing)
+        assert changed != fingerprint
+
+        missing.mkdir()
+        (missing / "app.py").write_text("print(1)\n")
+        present_state, present = destination_freshness(missing)
+        assert present_state == "present"
+        assert present != fingerprint
 
 
 def test_fingerprint_detects_changes_and_excludes_generated_output() -> None:
@@ -4950,6 +5227,11 @@ if __name__ == "__main__":
     tests = [
         test_scope_classification_and_relocation,
         test_untracked_and_nested_repository_ownership,
+        test_untracked_tree_keeps_local_ignores_without_enclosing_identity,
+        test_enclosing_gitignore_cannot_hide_independent_project_source,
+        test_future_destination_scope_does_not_require_the_directory_to_exist,
+        test_scope_gitignore_uses_git_semantics_for_an_independent_tree,
+        test_absent_destination_freshness_is_not_an_empty_directory_hash,
         test_fingerprint_detects_changes_and_excludes_generated_output,
         test_generated_context_does_not_change_source_fingerprint,
         test_skill_source_changes_invalidate_fingerprint,

@@ -16,6 +16,7 @@ import posixpath
 import re
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlsplit
@@ -91,20 +92,70 @@ def git_output(path: Path, *args: str) -> str | None:
     return result.stdout.strip() if result.returncode == 0 else None
 
 
+def _absolute_lexical(path: Path) -> Path:
+    """Absolute path with `.` and `..` folded, without requiring the path to exist."""
+    raw = path.expanduser()
+    if not raw.is_absolute():
+        raw = Path.cwd() / raw
+    return Path(os.path.normpath(os.fspath(raw)))
+
+
+def _nearest_existing_ancestor(path: Path) -> Path | None:
+    current = path
+    while True:
+        if current.exists():
+            return current
+        parent = current.parent
+        if parent == current:
+            return None
+        current = parent
+
+
+def _tracked_relative_path(git_root: Path, relative: str) -> bool:
+    """True when Git already tracks `relative`, even if the working tree copy is gone."""
+    if git_output(git_root, "ls-files", "--", relative):
+        return True
+    # `git rm` drops the index entry before commit. HEAD still records the path.
+    # An unborn HEAD makes `ls-tree` fail; that is not evidence of tracking.
+    return bool(git_output(git_root, "ls-tree", "-r", "--name-only", "HEAD", "--", relative))
+
+
 def classify_repository_scope(requested_path: Path) -> RepositoryScope:
-    """Classify a requested directory without modifying Git state."""
-    requested = requested_path.resolve()
-    root_output = git_output(requested, "rev-parse", "--show-toplevel")
+    """Classify a requested directory without modifying Git state.
+
+    A destination that does not exist yet is classified from its nearest
+    existing ancestor. Nothing is created. Kinds stay `git-root`,
+    `nested-tracked`, `untracked-tree`, and `unversioned`. A path Git still
+    tracks, including one whose working-tree files were deleted, is
+    `nested-tracked`, not a new `untracked-tree`. A nested repository is
+    `git-root` of its own checkout.
+    """
+    if requested_path.exists():
+        requested = requested_path.resolve()
+        probe = requested
+    else:
+        lexical = _absolute_lexical(requested_path)
+        ancestor = _nearest_existing_ancestor(lexical)
+        if ancestor is None:
+            return RepositoryScope(lexical, None, "unversioned")
+        probe = ancestor.resolve()
+        suffix = Path(os.path.relpath(lexical, _absolute_lexical(ancestor)))
+        requested = probe if str(suffix) == "." else probe / suffix
+
+    root_output = git_output(probe, "rev-parse", "--show-toplevel")
     if root_output is None:
         return RepositoryScope(requested, None, "unversioned")
 
     root = Path(root_output).resolve()
     if requested == root:
         return RepositoryScope(requested, root, "git-root", root)
-
-    relative = requested.relative_to(root).as_posix()
-    tracked = git_output(root, "ls-files", "--", relative)
-    if tracked:
+    try:
+        relative = requested.relative_to(root).as_posix()
+    except ValueError:
+        return RepositoryScope(requested, None, "unversioned")
+    if relative in ("", "."):
+        return RepositoryScope(requested, root, "git-root", root)
+    if _tracked_relative_path(root, relative):
         return RepositoryScope(requested, root, "nested-tracked", root)
     return RepositoryScope(requested, None, "untracked-tree", root)
 
@@ -1370,22 +1421,96 @@ def _run_git_ls_files(git_root: Path, pathspec: str, *extra_args: str) -> list[s
     return [chunk.decode("utf-8") for chunk in result.stdout.split(b"\0") if chunk]
 
 
+def _list_paths_with_scope_gitignore(scope: Path) -> list[str]:
+    """List files using Git's ignore rules from inside `scope` only.
+
+    A temporary Git directory is the index. `GIT_WORK_TREE` is `scope`, so
+    Git applies `.gitignore` files in this tree — including negation, nested
+    rules, directory names, `*`, `**`, `?`, character classes, and escapes —
+    and does not apply the enclosing repository's excludes. The temporary
+    directory is not the user's project and is removed afterwards. Paths are
+    names only; file contents are not read. A Git failure raises
+    `GitDiscoveryError` instead of returning a list that hides or exposes the
+    wrong files.
+    """
+    with tempfile.TemporaryDirectory(prefix="aidlc-ignore-eval-") as tmp:
+        meta = Path(tmp) / "meta"
+        init = subprocess.run(
+            ["git", "init", "-q", str(meta)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if init.returncode != 0:
+            raise GitDiscoveryError(
+                "Freshness is unresolved. In-scope ignore rules could not be "
+                "evaluated because Git could not start a temporary ignore check."
+            )
+        no_global = Path(tmp) / "no-global-excludes"
+        no_global.write_text("")
+        env = os.environ.copy()
+        env["GIT_DIR"] = str(meta / ".git")
+        env["GIT_WORK_TREE"] = str(scope.resolve())
+        result = subprocess.run(
+            [
+                "git",
+                "-c",
+                f"core.excludesFile={no_global}",
+                "ls-files",
+                "-z",
+                "-o",
+                "--exclude-standard",
+                "--",
+                ".",
+            ],
+            cwd=scope,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+        )
+        if result.returncode != 0:
+            raise GitDiscoveryError(
+                "Freshness is unresolved. Git could not apply the in-scope ignore rules."
+            )
+        paths: list[str] = []
+        for chunk in result.stdout.split(b"\0"):
+            if not chunk:
+                continue
+            relative = chunk.decode("utf-8")
+            if relative.startswith("./"):
+                relative = relative[2:]
+            paths.append(relative)
+        return paths
+
+
 def _git_scoped_relative_paths(scope: Path) -> list[str] | None:
     """Return paths relative to `scope`, discovered through Git.
 
-    Combines every tracked file (`git ls-files`) with every untracked file
-    `.gitignore` (and other standard excludes) does not exclude (`git
-    ls-files --others --exclude-standard`), both restricted to `scope`. A
-    tracked file is always included even if a later-added ignore pattern
-    would exclude it if it were untracked; only untracked-and-ignored files
-    are left out. Returns `None` when `scope` is not inside a Git working
-    tree, so the caller falls back to a filesystem walk for a genuinely
-    unversioned tree.
+    For a Git root or a nested tracked module, this combines every tracked
+    file (`git ls-files`) with every untracked file `.gitignore` (and other
+    standard excludes) does not exclude (`git ls-files --others
+    --exclude-standard`), both restricted to `scope`. A tracked file is
+    always included even if a later-added ignore pattern would exclude it
+    if it were untracked; only untracked-and-ignored files are left out.
+
+    For an `untracked-tree`, the enclosing repository does not track this
+    scope. Discovery asks Git to apply ignore rules that live inside the
+    scope, not the enclosing repository's excludes. A genuinely empty
+    directory stays an empty list. If Git cannot apply those rules, this
+    raises `GitDiscoveryError` instead of returning a misleading list.
+
+    Returns `None` when `scope` is not inside a Git working tree, so the
+    caller falls back to a filesystem walk for a genuinely unversioned tree.
+    A recognizable checkout whose Git query fails raises; it is never replaced
+    by that walk.
     """
     located = _git_root_and_relative_scope(scope)
     if located is None:
         return None
     git_root, relative_scope = located
+    if classify_repository_scope(scope).kind == "untracked-tree":
+        return _list_paths_with_scope_gitignore(scope)
     tracked = _run_git_ls_files(git_root, relative_scope)
     untracked = _run_git_ls_files(git_root, relative_scope, "--others", "--exclude-standard")
     prefix = f"{relative_scope}/" if relative_scope else ""
@@ -1451,12 +1576,16 @@ def _nested_git_root_between(path: Path, scope: Path) -> bool:
 def iter_fingerprint_files(scope_root: Path) -> list[Path]:
     """Return sorted regular files for a declared source scope.
 
-    For a Git-backed scope, files are discovered through Git: every tracked
-    path plus every untracked path `.gitignore` does not exclude. An
-    ignored-and-untracked file never enters the hash, and a tracked file is
+    For a Git root or nested tracked module, files are discovered through Git:
+    every tracked path plus every untracked path `.gitignore` does not exclude.
+    An ignored-and-untracked file never enters the hash, and a tracked file is
     never dropped merely because a later ignore rule would exclude it if it
-    were untracked. A Git query failure for a Git-backed scope raises
-    (`RuntimeError`); it is never silently replaced by the filesystem walk.
+    were untracked. An `untracked-tree` does not inherit the enclosing
+    repository's exclude rules. Git applies the ignore rules inside that tree,
+    including negation and nested rules, and ignored paths are dropped before
+    any file contents are read. A Git query failure for a Git-backed scope
+    raises (`RuntimeError` or `GitDiscoveryError`); it is never silently
+    replaced by the filesystem walk.
 
     For a genuinely unversioned tree, files are discovered with a filesystem
     walk instead. Generated context and common cache/build directories are
@@ -1517,6 +1646,9 @@ def content_fingerprint(scope_root: Path) -> tuple[str, tuple[str, ...]]:
     differs from its current working-tree content, this fingerprint reflects
     only the working tree; call `staged_working_tree_divergence` to report
     that difference, never fold it into this value or its description.
+    Ignored paths are removed before this function reads any file. A missing
+    scope still raises `FileNotFoundError`; call `destination_freshness` for
+    a scaffold destination that is allowed not to exist yet.
     """
     digest = hashlib.sha256()
     relative_paths: list[str] = []
@@ -1530,6 +1662,65 @@ def content_fingerprint(scope_root: Path) -> tuple[str, tuple[str, ...]]:
         digest.update(b"\0")
         relative_paths.append(relative)
     return digest.hexdigest()[:16], tuple(relative_paths)
+
+
+def _enclosing_ignore_rule_fingerprint(scope: RepositoryScope) -> str:
+    """Hash enclosing `.gitignore` files that could affect `scope`, not ignored contents."""
+    root = scope.enclosing_git_root
+    if root is None:
+        return ""
+    lexical_root = _absolute_lexical(root)
+    lexical_requested = _absolute_lexical(scope.requested_path)
+    relative = Path(os.path.relpath(lexical_requested, lexical_root))
+    directories = [root]
+    current = root
+    if str(relative) not in ("", "."):
+        for part in relative.parts[:-1]:
+            current = current / part
+            directories.append(current)
+    digest = hashlib.sha256()
+    for directory in directories:
+        gitignore = directory / ".gitignore"
+        try:
+            label = gitignore.resolve().relative_to(root.resolve()).as_posix()
+        except (OSError, ValueError):
+            label = gitignore.name
+        digest.update(label.encode("utf-8"))
+        digest.update(b"\0")
+        if gitignore.is_file() and not gitignore.is_symlink():
+            digest.update(gitignore.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()[:16]
+
+
+def destination_freshness(requested_path: Path) -> tuple[str, str]:
+    """Return `(state, fingerprint)` for a destination that may not exist yet.
+
+    `state` is `absent` or `present`. The absent fingerprint is not the hash
+    of an empty directory. It changes when the path appears, when Git's
+    tracking of that path changes, or when an enclosing ignore rule that
+    applies to the path changes. This function does not create the path.
+    """
+    scope = classify_repository_scope(requested_path)
+    target = scope.requested_path
+    digest = hashlib.sha256()
+    if not target.exists():
+        digest.update(b"absent\0")
+        digest.update(scope.kind.encode("utf-8"))
+        digest.update(b"\0")
+        if scope.enclosing_git_root is not None:
+            digest.update(str(scope.enclosing_git_root).encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(_enclosing_ignore_rule_fingerprint(scope).encode("ascii"))
+        return "absent", digest.hexdigest()[:16]
+    fingerprint, _paths = content_fingerprint(target)
+    digest.update(b"present\0")
+    digest.update(scope.kind.encode("utf-8"))
+    digest.update(b"\0")
+    digest.update(fingerprint.encode("ascii"))
+    digest.update(b"\0")
+    digest.update(_enclosing_ignore_rule_fingerprint(scope).encode("ascii"))
+    return "present", digest.hexdigest()[:16]
 
 
 def staged_working_tree_divergence(scope_root: Path) -> tuple[str, ...]:

@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.10.0 — 2026-10-13
+
+Bump: `minor`
+Compare: [v0.9.0...v0.10.0](https://github.com/nahuel-ramos-univar/ai-dlc/compare/v0.9.0...v0.10.0)
+
+### Added
+
+- feat: ask repository organization and workspace as separate scaffold decisions ([`ff931a2`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/ff931a27bc32b868deee55c970b31c4a3561aef2))
+
+### Fixed
+
+- fix: classify future scaffold destinations with Git ignore semantics ([`0c47a52`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/0c47a52b3730e4f41343b48161799e22cde9f109))
+- fix: establish product purpose before a scaffold inherits the wrong repository ([`95b1942`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/95b1942c9c07dca5a5ae09d90b98df5531366cb3))
+
+### Other
+
+- Merge pull request #16 from nahuel-ramos-univar/CTY-304-business ([`c95904d`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/c95904d4be719c35d8903ebcca9d21d80ddfaaaa))
+
 ## 0.9.0 — 2026-10-13
 
 Bump: `minor`

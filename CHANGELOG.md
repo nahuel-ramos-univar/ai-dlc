@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.10.1 — 2026-10-13
+
+Bump: `patch`
+Compare: [v0.10.0...v0.10.1](https://github.com/nahuel-ramos-univar/ai-dlc/compare/v0.10.0...v0.10.1)
+
+### Fixed
+
+- fix: check ignore state before nested-git probe, collapse unborn HEAD ([`ef591a1`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/ef591a1d87e44c72f8ec3682ba8c1db5496aa58b))
+- fix: honor local ignores and explain the first scaffold steps ([`48b955e`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/48b955e23fcb7ebfe8d6543b85c2e770dc8b64d1))
+
+### Other
+
+- Merge pull request #17 from nahuel-ramos-univar/CTY-304-readme ([`b56b30d`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/b56b30d90c4ba2967b55cc8c6a8fdd132b255904))
+
 ## 0.10.0 — 2026-10-13
 
 Bump: `minor`

@@ -28,10 +28,15 @@ When filling the skeleton:
 
 - Replace every bracket with real content, or omit that line.
 - Do not publish placeholder text.
-- Omit a section that has no real content.
-- Testing lines are observable scenarios the Product Owner supplied. Do not invent test-runner cases.
+- Omit a section that has no real content; do not render an empty heading.
+- Testing / Validation Notes is an optional business-level scenario or condition that helps exercise an existing acceptance criterion, per [single-story.md](single-story.md), "Testing and validation expectations." It must not introduce new product behavior. Omit it when it would only restate or paraphrase the acceptance criteria.
 - Technical notes are known constraints in business language. Hand implementation detail to `refine-story`.
-- Do not invent goals, metrics, dependencies, or risks.
+- Scope / Out of Scope is included only when the approved Story carries a scope or exclusion that is not already fully expressed as an Acceptance Criterion, per [single-story.md](single-story.md). Do not invent scope or exclusions. Do not copy Acceptance Criteria into this section. Omit it when absent.
+- Goals & Metrics is included only when the approved Story carries a Story-specific outcome or measure, per [single-story.md](single-story.md), "Story-specific goals and metrics." Do not invent one to populate this section; omit it when absent.
+- Design Reference is included only when the approved Story carries a Story-level design reference, per [single-story.md](single-story.md), "Design reference." Do not discover, infer, or inspect a design here. Retrieval happens while drafting or updating the proposal. This template only publishes a reference already in the approved Story. Omit it when absent.
+- Do not invent goals, metrics, dependencies, risks, scope, exclusions, or a design reference.
+
+This template renders the approved Story model; it does not define it. It may omit an empty optional section, and it may omit a restatement that would only duplicate content already published in another field of the same payload, such as Acceptance Criteria. Deduplication is allowed only when meaning and traceability are preserved. It must not infer or introduce product behavior, a goal, a metric, a validation expectation, a dependency, a risk, a design reference, a scope boundary, or any other semantic content that is absent from the approved Story proposal. It must preserve every meaningful approved requirement, boundary, unresolved question, dependency, and reference. Formatting and omission of empty sections must not cause information loss.
 
 ## Default description
 
@@ -42,9 +47,14 @@ When filling the skeleton:
 
 **Context:** [Background that a reader needs and that is not already in the user-story line.]
 
-#### 🧪 Testing
+#### 📐 Scope / Out of Scope
 
-- [Observable scenario that shows the story meets its acceptance criteria.]
+- **In scope:** [Approved boundary that is not already an Acceptance Criterion.]
+- **Out of scope:** [Approved exclusion that must survive publication.]
+
+#### 🧪 Testing / Validation Notes
+
+- [Optional business-level validation scenario or condition that adds useful information for exercising an existing Acceptance Criterion without introducing new behavior.]
 
 #### 💼 Stakeholder Questions
 
@@ -58,7 +68,11 @@ When filling the skeleton:
 
 #### 🎯 Goals & Metrics
 
-- [Goal or metric the Product Owner supplied.]
+- [Story-specific outcome or measure, only when the Product Owner or supporting evidence actually supplied one that adds information beyond the Acceptance Criteria. Omit this section when there is none.]
+
+#### 🎨 Design Reference
+
+- [Specific Figma file, frame, page, section, or other design artifact relevant to this Story, only when one actually exists. Omit this section when there is none.]
 
 #### 🚧 Dependencies & Risks
 

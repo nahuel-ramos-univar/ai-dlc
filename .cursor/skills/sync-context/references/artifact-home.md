@@ -79,7 +79,11 @@ only confirmed values, through the approved config change. See
 
 Do not create `.ai-dlc-config.md` in every source repository to record a
 Bugbot decision. Store decisions under the configured artifact home, keyed by
-the stable repository ID.
+the stable repository ID. A project-rule decision under
+`## Project rule decisions` (see [project-rules.md](project-rules.md)) is
+different: its identity is the pair (stable repository ID, stable policy
+slug), because one repository can hold several independent policy decisions
+at once. Do not collapse that pair into the repository ID alone.
 
 ## Multi-repository `Root`
 

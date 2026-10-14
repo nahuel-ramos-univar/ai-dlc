@@ -1114,6 +1114,54 @@ def test_scaffold_project_contract_has_required_language() -> None:
         assert scenario in manual, scenario
 
 
+def test_project_rule_decisions_are_keyed_by_repository_and_policy() -> None:
+    """A project-rule decision's identity is the (repository, policy) pair,
+    not the repository alone -- a HIGH-severity gap a merge review found
+    and this contract now closes."""
+    project_rules = (
+        ROOT
+        / ".cursor"
+        / "skills"
+        / "sync-context"
+        / "references"
+        / "project-rules.md"
+    ).read_text(encoding="utf-8")
+    artifact_home = (
+        ROOT
+        / ".cursor"
+        / "skills"
+        / "sync-context"
+        / "references"
+        / "artifact-home.md"
+    ).read_text(encoding="utf-8")
+    foundation = (
+        ROOT
+        / ".cursor"
+        / "skills"
+        / "scaffold-project"
+        / "references"
+        / "foundation-and-review.md"
+    ).read_text(encoding="utf-8")
+
+    for phrase in (
+        "## Project rule decisions",
+        "stable repository ID, stable policy slug",
+        "`Rule` is optional metadata, not identity",
+        "declined` or `deferred` entry has no `Rule` line",
+        "never changes what is allowed for a",
+        "different policy slug in the same repository",
+    ):
+        assert phrase in project_rules, phrase
+
+    assert "stable policy" in artifact_home and "slug" in artifact_home
+    assert "## Project rule decisions" in artifact_home
+
+    assert (
+        "The decision's identity is (stable repository ID, stable policy slug), not the repository ID alone"
+        in foundation
+    )
+
+
 def test_scaffold_project_completes_its_own_review_configuration() -> None:
     """Scaffold-project reuses Bugbot/project-rule/context-review contracts
     by reference instead of inventing a second setup flow or a second
@@ -1219,6 +1267,7 @@ if __name__ == "__main__":
         test_plan_work_contract_has_required_language,
         test_refine_story_contract_has_required_language,
         test_scaffold_project_contract_has_required_language,
+        test_project_rule_decisions_are_keyed_by_repository_and_policy,
         test_scaffold_project_completes_its_own_review_configuration,
         test_canvas_review_is_the_closing_view,
         test_manual_evaluation_covers_context_quality_scenarios,

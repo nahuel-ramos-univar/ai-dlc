@@ -5201,6 +5201,51 @@ def test_decision_reprompt_allowed_same_shape_as_bugbot_reprompt() -> None:
     assert decision_reprompt_allowed("", same_run=False) is True
 
 
+def test_project_rule_decision_identity_is_repository_and_policy_pair() -> None:
+    # The HIGH-severity gap a merge review found: keying a project-rule
+    # decision only by repository ID would let a `declined` for one policy
+    # silently suppress the prompt for an unrelated policy in the same
+    # repository. Identity must be the (repository ID, policy slug) pair.
+    config = """
+## Project rule decisions
+- Repository: `payments-api`
+  - Policy: `database-migrations`
+  - Decision: declined
+  - Baseline: `abc123`
+  - Fingerprint: `deadbeefdeadbeef`
+- Repository: `payments-api`
+  - Policy: `package-manager`
+  - Decision: approved
+  - Rule: `.cursor/rules/package-manager.mdc`
+  - Baseline: `abc123`
+  - Fingerprint: `deadbeefdeadbeef`
+"""
+    section = find_live_section(config, "## Project rule decisions")
+    assert section.status == "ok"
+
+    # Simulates reading the persisted section into a lookup keyed by the
+    # full (repository, policy) pair, the way a caller must per
+    # project-rules.md -- never collapsed to repository ID alone.
+    decisions = {
+        ("payments-api", "database-migrations"): "declined",
+        ("payments-api", "package-manager"): "approved",
+    }
+
+    declined_policy = decisions[("payments-api", "database-migrations")]
+    assert decision_reprompt_allowed(declined_policy, same_run=True) is False
+    assert decision_reprompt_allowed(declined_policy, same_run=False) is False
+
+    approved_policy = decisions[("payments-api", "package-manager")]
+    assert decision_reprompt_allowed(approved_policy, same_run=True) is False
+
+    # A third policy slug in the same repository, with no recorded decision
+    # of its own, is still promptable -- the declined database-migrations
+    # entry does not leak into it merely because the repository matches.
+    unseen_policy = decisions.get(("payments-api", "linting-config"))
+    assert unseen_policy is None
+    assert decision_reprompt_allowed(unseen_policy, same_run=True) is True
+
+
 def test_plan_validate_proposal_runs_every_deterministic_check() -> None:
     valid = plan_validate_proposal(
         {
@@ -5675,6 +5720,7 @@ if __name__ == "__main__":
         test_plan_outcome_combines_item_statuses_without_implying_atomicity,
         test_jira_mutation_authorized_requires_both_local_and_jira_approval,
         test_decision_reprompt_allowed_same_shape_as_bugbot_reprompt,
+        test_project_rule_decision_identity_is_repository_and_policy_pair,
         test_plan_validate_proposal_runs_every_deterministic_check,
         test_plan_validate_proposal_fail_closed_on_reported_shape_bugs,
         test_cli_plan_validate_exit_codes_match_check_results,

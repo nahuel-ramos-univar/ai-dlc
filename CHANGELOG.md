@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.12.0 — 2026-10-14
+
+Bump: `minor`
+Compare: [v0.11.0...v0.12.0](https://github.com/nahuel-ramos-univar/ai-dlc/compare/v0.11.0...v0.12.0)
+
+### Added
+
+- feat: keep plan-work Stories concise without dropping approved scope ([`e06d1a4`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/e06d1a45ab67480118d249b39660e4aee44767c7))
+
+### Other
+
+- Merge pull request #19 from nahuel-ramos-univar/CTY-311-plan-work-improvements ([`21fb6f2`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/21fb6f244f66a1707be29e1795cc84307b363e19))
+
 ## 0.11.0 — 2026-10-14
 
 Bump: `minor`

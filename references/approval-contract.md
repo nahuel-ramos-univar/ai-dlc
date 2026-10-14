@@ -5,7 +5,7 @@ Shared by every skill that writes to Jira. Approval must come from the role the 
 Before any external write, present the exact target and material changes to that authorized approver:
 
 - Jira project, issue key, fields, links, comments, or newly created records;
-- description and acceptance criteria as separate fields when the issue type has an acceptance-criteria field;
+- description and acceptance criteria as separate fields when that field is identified and writable; otherwise the agreed destination in the same payload, never a write to a field Jira will reject and never an assumed Description fallback for a field that exists but is not writable;
 - each approved dependency as a plain-language relationship between draft identifiers, for example "Story A blocks Story B", plus the discovered link type that will carry that meaning once both issues exist;
 - any suggested Priority, Labels, Fix Version, Sprint, or Story Points value, with the evidence it is based on, in the same confirmation as the rest of the payload; a number the authorized approver supplies for Story Points is labeled a human estimate;
 - the chosen issue type for a new Task or Subtask, after discovering the site's actual hierarchy — see [Jira integration](jira-integration.md);

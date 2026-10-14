@@ -32,7 +32,7 @@ Discover the connected site's actual Jira issue types and hierarchy before propo
 
 ## Workflow
 1. Record the issue's current revision, the analyzed Git baseline, affected paths, and local modifications.
-2. Confirm each business acceptance criterion stays business-facing before adding technical detail.
+2. Confirm each business acceptance criterion stays business-facing before adding technical detail. If this analysis uncovers a pending business decision, return it to the Product Owner through `/plan-work`. Do not resolve it unilaterally, and do not modify approved business acceptance criteria.
 3. In development mode, inspect behavior, callers, contracts, dependencies, compatibility, rollback, and risk.
 4. In QA mode, map every criterion to positive, negative, boundary, regression, fixture, environment, and automation needs.
 5. In combined mode, resolve conflicts between development feasibility and acceptance evidence. The main chat performs this analysis; do not delegate drafting of the refinement to a specialist agent.

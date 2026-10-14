@@ -53,8 +53,8 @@ Show:
 - the parent recommendation and why it fits;
 - dependencies, assumptions, and open questions;
 - the deterministic validation result;
-- reviewer findings, or a visible "no findings" result;
-- the Jira payload split into description and acceptance criteria, and whether a Jira write is approved;
+- reviewer findings, or a visible "no findings" result — not a status phrase in place of the review;
+- the Jira payload split into description and acceptance criteria (field or Description fallback), and whether a Jira write is approved;
 - after a write, the issue key and URL from the record just read, or a pending write.
 
 A Task or an Epic uses its own fields. Do not force either into the User Story description skeleton.

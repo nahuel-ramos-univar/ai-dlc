@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.12.1 — 2026-10-14
+
+Bump: `patch`
+Compare: [v0.12.0...v0.12.1](https://github.com/nahuel-ramos-univar/ai-dlc/compare/v0.12.0...v0.12.1)
+
+### Fixed
+
+- fix: put Story ACs in the writable Jira field and keep reviewed distinct from blocked ([`1ce0d51`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/1ce0d518adf70a645550cce0814ffbcc87320b77))
+
+### Other
+
+- Merge pull request #20 from nahuel-ramos-univar/CTY-311-plan-work-improvements-2 ([`32762a3`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/32762a3ff6f6546ea66729e68340544f4cc91fed))
+
 ## 0.12.0 — 2026-10-14
 
 Bump: `minor`

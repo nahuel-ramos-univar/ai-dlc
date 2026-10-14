@@ -24,7 +24,13 @@ Propose:
 
 Do not invent behavior purely to make the acceptance criteria look complete; leave unresolved behavior as an explicit open question instead — see [Open questions and ambiguity](#open-questions-and-ambiguity) below. Technical constraints should explain the impact in business language. Hand implementation details to `refine-story`.
 
-Do not fill or offer [jira-story-template.md](jira-story-template.md) while drafting. That template is a publication-payload step in the main skill, after the product content has been drafted and reviewed. Keep acceptance criteria out of the Jira description when that payload is prepared.
+Do not fill or offer [jira-story-template.md](jira-story-template.md) while drafting. That template is a publication-payload step in the main skill, after the product content has been drafted and reviewed. Where accepted business criteria are stored at publication — the issue type's acceptance-criteria field, or Description when that field is confirmed absent — is a publication rule in the main skill and that template. It is not a product decision.
+
+While drafting, check that required behavior and observable result are defined well enough to challenge, and that Stories in this draft cohere: the same decision must not be asked twice, and one Story must not silently contradict another.
+
+Ask only about material product decisions that the request, existing context, design, or another Story in this draft has not already resolved. Do not run a universal questionnaire of empty states, errors, login, or clicks. Do not invent requirements or exclusions. Label each boundary as confirmed, assumed, or proposed. Do not duplicate Value, Acceptance Criteria, and Scope when they say the same thing.
+
+Open product questions do not block independent review. The reviewer evaluates them and names which ones block implementation or publication. Do not present the draft as ready to implement, or as approved for publication, while a blocking product decision remains open. Hand implementation detail, and only that, to `refine-story`. If later technical work uncovers a still-unresolved business decision, it returns here; it does not invent the product answer.
 
 Approved scope and exclusions must survive that publication. Render them as Scope / Out of Scope when they state a boundary that is not already an Acceptance Criterion. Do not drop an approved exclusion because another section has no place for it.
 

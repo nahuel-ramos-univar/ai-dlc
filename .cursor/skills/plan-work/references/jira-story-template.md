@@ -18,9 +18,12 @@ If the Product Owner edits the shape, show the edited template and wait for appr
 
 Author the description in Markdown. Follow [Jira integration](../../../../references/jira-integration.md). Do not author Jira wiki markup. The Atlassian MCP treats the body as Markdown and converts it on write. Wiki headings, wiki tables, and status icons are stored as literal text or escaped markers.
 
-Acceptance criteria are not part of the description. Jira keeps them in the issue type's acceptance-criteria field. Discover that field from the issue type before the write. Do not hardcode a custom field id. Write each criterion as an observable statement. Do not prefix criteria with status icons.
+Discover the issue type's acceptance-criteria field before the write. Do not hardcode a custom field id. Write each criterion as an observable statement. Do not prefix criteria with status icons. Show the destination in the payload the Product Owner approves. Do not ask for a second approval of an "exception."
 
-If that field is missing, keep the criteria in the local proposal and say the field was not found. Do not copy them into the description unless the Product Owner explicitly chooses that exception for this write.
+- Identified and writable: put business acceptance criteria only in that field. Omit the Acceptance criteria heading below.
+- Confirmed absent: include the Acceptance criteria heading below as the Description fallback. A Product Owner-edited template must still carry every approved criterion.
+- Exists but not writable, incomplete metadata, or access error: do not treat the field as absent. Report the limitation and agree the destination inside the approved payload.
+- Never publish operational disclaimers about Jira fields, MCP, or fallback inside the ticket.
 
 This skeleton is for a User Story. Do not wrap a Task or an Epic in the "As a …" line. A Task uses [task.md](task.md). An Epic uses [feature-or-epic.md](feature-or-epic.md).
 
@@ -46,6 +49,10 @@ This template renders the approved Story model; it does not define it. It may om
 **User story:** As a [actor], I want [capability], so that [outcome].
 
 **Context:** [Background that a reader needs and that is not already in the user-story line.]
+
+#### Acceptance criteria
+
+- [Observable result 1. Include this section when Description is the approved destination for acceptance criteria. Omit it when criteria are written to the dedicated field.]
 
 #### 📐 Scope / Out of Scope
 
@@ -84,9 +91,11 @@ This prose line is human-readable context, not the operative relationship. An ap
 
 ## Acceptance criteria field
 
-Put this content in the acceptance-criteria field, not under Description:
+When the issue type has a writable acceptance-criteria field, put this content in that field, not under Description:
 
 ```markdown
 - [Observable result 1.]
 - [Observable result 2.]
 ```
+
+When that field is confirmed absent, use the Acceptance criteria heading in the Description skeleton above instead. Do not write both. If the field exists but is not writable, agree the destination in the approved payload rather than assuming Description. Do not add a sentence in the ticket explaining why.

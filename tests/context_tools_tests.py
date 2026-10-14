@@ -5157,6 +5157,9 @@ def test_plan_outcome_combines_item_statuses_without_implying_atomicity() -> Non
     # for publication) is its own distinct, more advanced state than
     # ordinary mixed-progress "partial" -- Bugbot CTY-303-finding-1.
     assert plan_outcome({"a": "reviewed", "b": "reviewed"}) == "reviewed"
+    # A Blocker on any item is `blocked`, not `reviewed`. Review having
+    # run is not the same as review having cleared.
+    assert plan_outcome({"a": "reviewed", "b": "blocked"}) == "blocked"
     # Reviewed mixed with an earlier stage still disagrees enough to stay
     # "partial": review is not uniformly complete across the plan.
     assert plan_outcome({"a": "reviewed", "b": "drafted"}) == "partial"

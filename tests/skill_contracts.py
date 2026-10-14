@@ -603,6 +603,9 @@ def test_plan_work_contract_has_required_language() -> None:
         assert "Suggestion" in vocabulary
     assert "No findings" in product_review or "no findings" in product_review.lower()
     assert "manufacture a finding" in product_review
+    assert "skill-composition.md" in product_review
+    assert "do not delay that review" in product_review
+    assert "completed` only when the reviewer responded" in product_review or "only when the reviewer responded" in product_review
 
     # Bugbot: the reviewer must not run or assume a standalone duplicate search.
     assert "duplicate candidates" not in reviewer
@@ -613,12 +616,13 @@ def test_plan_work_contract_has_required_language() -> None:
     # Section 9: local plan approval never implies Jira mutation approval.
     assert "is never, by itself, approval to mutate Jira" in skill
 
-    # Story description template: Markdown, offered once, acceptance
-    # criteria stay out of the description body.
+    # Story description template: Markdown, offered once. Business AC go
+    # in the writable field when one exists, otherwise Description.
     assert "jira-story-template.md" in skill
     assert "## Planning template" in skill
     assert "decision_reprompt_allowed" in skill
-    assert "Do not copy them into the description" in skill
+    assert "confirmed absent" in skill
+    assert "Do not ask for a second approval" in skill
     # Section 8 / review finding: the Jira format question is a publication
     # step, not a drafting-time competitor to the Product Owner's questions.
     assert "Apply this when preparing a User Story's Jira write payload, not earlier" in skill
@@ -677,18 +681,22 @@ def test_plan_work_contract_has_required_language() -> None:
     # and from Jira publication approval.
     assert "local_plan_approved" in skill
     assert "jira_mutation_approved" in skill
+    assert "independent review finished with no unresolved blocker" in skill
+    assert "sets the item to `blocked`, not `reviewed`" in skill
     assert "Offer the template only when preparing the Jira publication payload" in story_template_flat
     assert "before a User Story description is drafted" not in story_template_flat
     single_story = flat("references/single-story.md")
     assert "Do not fill or offer" in single_story
     assert "When a Jira description is needed, fill the approved shape" not in single_story
     assert "Author the description in Markdown" in story_template_flat
-    assert "Acceptance criteria are not part of the description" in story_template_flat
+    assert "confirmed absent" in story_template_flat
+    assert "Never publish operational disclaimers" in story_template_flat
     assert "#### 📋 Description" in story_template
     assert "h4." not in story_template
     assert "|| Question ||" not in story_template
     assert "Do not hand-write Jira wiki markup" in jira
-    assert "write acceptance criteria only in that field" in jira
+    assert "that field only, no Description duplicate" in jira
+    assert "exists but not writable" in jira
 
     # Closing review uses the host Canvas capability when available, with an
     # equivalent chat fallback when the host cannot open one -- never a
@@ -753,6 +761,7 @@ def test_refine_story_contract_has_required_language() -> None:
     assert "allows the authorized developer to approve technical implementation content" in approval_contract
     assert "An authorized developer may approve the technical Jira change set" in skill
     assert "requires Product Owner approval through `/plan-work`" in skill
+    assert "Do not resolve it unilaterally" in skill
 
     # Independent review is reused, not reinvented, and is never self-review.
     assert "refinement-reviewer" in skill and "refinement-reviewer" in reviewer
@@ -766,6 +775,12 @@ def test_refine_story_contract_has_required_language() -> None:
     assert "Technical acceptance criteria" in template
     assert "keep publication pending" in template
     assert "Do not leave them only in the chat" in template
+    assert "Identified and writable" in template
+    assert "Confirmed absent" in template
+    assert "Exists but not writable" in template
+    assert "Do not write to a field Jira will reject" in template
+    assert "identified and writable" in approval_contract
+    assert "never an assumed Description fallback" in approval_contract
     assert "A missing parent is not the same as missing approval" in skill
     assert "technical acceptance criteria were persisted" in skill
     assert "description section named Technical acceptance criteria" in implement_change
@@ -1185,6 +1200,23 @@ def test_plan_work_story_model_separates_semantics_from_rendering() -> None:
     assert "must survive that publication" in story
     assert "empty state versus error state" in story
 
+    for marker in (
+        "do not block independent review",
+        "Do not run a universal questionnaire",
+        "must not be asked twice",
+        "confirmed, assumed, or proposed",
+        "ready to implement",
+    ):
+        assert marker in story, marker
+    for marker in (
+        "confirmed absent",
+        "Never publish operational disclaimers",
+        "Identified and writable",
+        "Exists but not writable",
+        "approved destination for acceptance criteria",
+    ):
+        assert marker in template, marker
+
     manual = (ROOT / "MANUAL_EVALUATION.md").read_text(encoding="utf-8")
     for scenario in (
         "Plan-work Testing omitted when it only restates ACs",
@@ -1201,6 +1233,16 @@ def test_plan_work_story_model_separates_semantics_from_rendering() -> None:
         "Plan-work existing Story-specific design link survives update-existing",
         "Plan-work supplied design link is not described as inspected without access",
         "Project-rule declined policy does not suppress another policy in the same repository",
+        "Plan-work AC field available is not duplicated in Description",
+        "Plan-work confirmed missing AC field uses Description fallback",
+        "Plan-work inaccessible AC metadata is not treated as absent",
+        "Plan-work AC field exists but is not writable",
+        "Plan-work custom template still carries every AC",
+        "Plan-work review runs with open product questions",
+        "Plan-work reviewer Blocker leaves the item blocked",
+        "Refine-story AC field exists but is not writable",
+        "Plan-work does not re-ask a decision already answered on another Story",
+        "Plan-work independent review findings are visible to the Product Owner",
     ):
         assert scenario in manual, scenario
 

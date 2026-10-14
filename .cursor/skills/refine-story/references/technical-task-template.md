@@ -4,7 +4,7 @@ Use this template for the Jira technical item `refine-story` proposes or updates
 
 Omit a section that has no real content for this change. Do not fill a section with generic boilerplate just to appear complete, and do not require every section for trivial work. Do not invent a file path, an API, an architecture decision, or a test command that was not actually read or run. Leave an open question open rather than promising implementation will never need clarification.
 
-The fenced block below is description content. When the issue type has an acceptance-criteria field, technical acceptance criteria stay out of this block.
+The fenced block below is description content. When the approved destination is the writable acceptance-criteria field, technical acceptance criteria stay out of this block.
 
 ```markdown
 #### 🎯 Objective
@@ -51,8 +51,9 @@ The fenced block below is description content. When the issue type has an accept
 
 Discover the issue type's acceptance-criteria field. Do not hardcode a custom field id.
 
-- When the field exists, write the technical criteria only there. Do not also place them in the description.
-- When the field is missing, offer to store them as a `Technical acceptance criteria` section in the description, inside the same approved payload. Do not leave them only in the chat.
+- Identified and writable: write the technical criteria only there. Do not also place them in the description.
+- Confirmed absent: offer to store them as a `Technical acceptance criteria` section in the description, inside the same approved payload. Do not leave them only in the chat.
+- Exists but not writable, incomplete metadata, or access error: do not treat the field as absent. Report the limitation and agree the destination inside the approved payload. Do not write to a field Jira will reject.
 - When neither location is approved, keep publication pending. Keep the criteria in the proposal. Do not declare the handoff complete.
 
 After the write, re-read the issue and confirm the criteria are stored in the field or in that description section. If they are not, say so and do not treat the handoff as complete.

@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.11.0 — 2026-10-14
+
+Bump: `minor`
+Compare: [v0.10.1...v0.11.0](https://github.com/nahuel-ramos-univar/ai-dlc/compare/v0.10.1...v0.11.0)
+
+### Added
+
+- feat: finish scaffold context, review, and Bugbot setup in one run ([`41a7d21`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/41a7d213e306ba2434ed60b5b025b18a0c803669))
+
+### Fixed
+
+- fix: key project-rule decisions by (repository, policy), not repository alone ([`27112a4`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/27112a425a12321a8d13d1bb217cfffb33576ea3))
+- fix: close review-staleness and Bugbot-naming gaps in scaffold-project ([`7f5a8e6`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/7f5a8e6f0a8eebdd322430f7ea0d57c00728fa56))
+
+### Other
+
+- Merge pull request #18 from nahuel-ramos-univar/CTY-304-improvement-bugbot ([`30525d9`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/30525d9562e39019f4792217b1c986917f110677))
+
 ## 0.10.1 — 2026-10-13
 
 Bump: `patch`

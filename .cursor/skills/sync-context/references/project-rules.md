@@ -43,15 +43,60 @@ the observed path, command, or convention it is based on.
 
 Use the same approve/decline/defer contract as
 [bugbot-configuration.md](bugbot-configuration.md): show the proposed file
-content before writing it, ask once per confirmed policy, and persist the
-decision in the configured artifact home's configuration keyed by the stable
-repository ID. Do not ask again after `declined` unless the user explicitly
-asks to reconsider; `decision_reprompt_allowed` in `scripts/context_tools.py`
-encodes this same decision shape and may be reused for the same check.
+content before writing it, and ask once per confirmed policy. Do not ask
+again after `declined` unless the user explicitly asks to reconsider;
+`decision_reprompt_allowed` in `scripts/context_tools.py` encodes this same
+decision shape and may be reused for the same check.
+
+**Identity is the pair (stable repository ID, stable policy slug), not the
+repository ID alone.** A repository can have several independent project-rule
+policies under review at once -- "database changes must use migrations,"
+"use pnpm for package management," and so on. Each is a separate decision.
+Keying only by repository ID would let a `declined` recorded for one policy
+silently suppress the prompt for an unrelated policy in the same repository;
+that is a real collision, not a theoretical one, so key every decision by
+both parts together.
+
+The **policy slug** is a short, stable, kebab-case identifier for the policy
+itself, in the same `[a-z0-9]+(?:-[a-z0-9]+)*` shape `REPOSITORY_ID_PATTERN`
+already validates repository IDs with (for example `database-migrations`,
+`package-manager`). Choose it once, when the policy is first confirmed, from
+the policy's substance -- not from the eventual rule file's path, because a
+`declined` or `deferred` policy may never materialize a rule file at all.
+Keep a chosen slug stable across every later reconsideration of that same
+policy; do not mint a new slug for the same policy on a later run.
+
+**`Rule` is optional metadata, not identity.** Record the rule file's path
+only once a proposal for that policy is actually `approved` and the file is
+written. A `declined` or `deferred` entry has no `Rule` line. If an approved
+rule file is later moved or renamed, update `Rule` in place; the policy slug
+that identifies the decision does not change.
+
+```markdown
+## Project rule decisions
+- Repository: `payments-api`
+  - Policy: `database-migrations`
+  - Decision: declined
+  - Baseline: `abc123`
+  - Fingerprint: `<fingerprint>`
+- Repository: `payments-api`
+  - Policy: `package-manager`
+  - Decision: approved
+  - Rule: `.cursor/rules/package-manager.mdc`
+  - Baseline: `abc123`
+  - Fingerprint: `<fingerprint>`
+```
+
+Look up the decision for the exact (repository ID, policy slug) pair this
+proposal is about before calling `decision_reprompt_allowed`. A `declined` or
+`deferred` result for one policy slug never changes what is allowed for a
+different policy slug in the same repository, even on the same run.
 
 Approval of change set A (context documents) does not authorize set B.
 Approval of a Bugbot proposal does not authorize a project rule, and the
 reverse is also true — ask once per set, not once per run for everything.
+Within set B, approving one policy's rule does not authorize a different
+policy's rule in the same run; each (repository, policy) pair is its own ask.
 
 ## Preservation
 

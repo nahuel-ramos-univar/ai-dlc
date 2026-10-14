@@ -29,6 +29,21 @@ When change set C is in play, also show the migration review content in [legacy-
 
 A run whose outcome is "no relevant changes" states that outcome in a short chat reply; it does not open or refresh a Canvas for it.
 
+## scaffold-project
+
+Show, after [finalization order](../.cursor/skills/scaffold-project/references/foundation-and-review.md#finalization-order) completes:
+
+- the foundation created, and how to run and validate it;
+- the repository index and each module context, with their paths;
+- Bugbot review guidance: created, unchanged, declined, or deferred, and why;
+- project rules: created, unchanged, declined, not applicable, or deferred, and why;
+- the final deterministic validation result, from after every write;
+- implementation-review status and any unresolved finding;
+- context-review status and any unresolved finding;
+- missing tools or remaining prerequisites.
+
+Do not open a Canvas just to restate the pre-approval proposal again after it was already shown in chat; refresh it from the files actually written. A trivial, documentation-only scaffold with a short result gets a short chat reply instead.
+
 ## plan-work
 
 Show:

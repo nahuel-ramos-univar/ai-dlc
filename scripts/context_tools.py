@@ -259,11 +259,21 @@ def decision_reprompt_allowed(decision: str, same_run: bool) -> bool:
     `decision` is one of `"approved"`, `"declined"`, or `"deferred"` -- the
     shape this plugin already reuses for several unrelated decisions
     recorded in `.ai-dlc-config.md`: Bugbot's `## Bugbot decisions`, a
-    distributed-context adoption choice, and `plan-work`'s `## Planning
-    template` offer. Any caller recording a decision in exactly this
-    three-value shape should call this function instead of inventing its
-    own reprompt rule, so the same-run and later-run behavior stays
-    identical everywhere it is used.
+    project rule's `## Project rule decisions`, a distributed-context
+    adoption choice, and `plan-work`'s `## Planning template` offer. Any
+    caller recording a decision in exactly this three-value shape should
+    call this function instead of inventing its own reprompt rule, so the
+    same-run and later-run behavior stays identical everywhere it is used.
+
+    This function takes one already-looked-up `decision` value; it does not
+    look the value up itself. For a decision whose identity is a compound
+    key -- a project-rule decision is keyed by (stable repository ID, stable
+    policy slug), not by repository ID alone, see
+    `.cursor/skills/sync-context/references/project-rules.md` -- the caller
+    must look up the decision for the exact compound key the current
+    proposal is about before calling this function. A `declined` or
+    `deferred` result recorded for one policy slug must never be read as the
+    decision for a different policy slug in the same repository.
 
     - `"declined"` is never re-proposed by this helper; only an explicit
       user request to reconsider does that, and that request is a separate

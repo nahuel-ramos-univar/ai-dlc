@@ -174,16 +174,18 @@ It does not initialize Git, create a remote, deploy, or provision infrastructure
 
 If Node, Terraform, or another tool the scaffold expected is not installed, the matching check is reported unavailable. It is not reported as passed.
 
-Initial context is written from the files this run actually created. A sibling that was not created is not described as done.
+Initial context is written from the files this run actually created. A sibling that was not created is not described as done. This run completes that initial repository index and module context itself; you do not need to run `/sync-context` right afterward just to get it. Run `/sync-context` later, when source changes drift from the written context, or to onboard an existing project this skill did not create.
 
-When the change is more than a trivial file layout, the skill asks `implementation-reviewer` to read the generated files. If the host cannot delegate that review, the result says independent review was not performed and leaves it pending. The scaffold chat does not label its own check as that review.
+The same run also looks at whether a `.cursor/BUGBOT.md` review file or a project rule is worth proposing, using evidence from the approved foundation itself, for example a declared API contract or an infrastructure boundary. It never freezes a placeholder handler's current output as a rule, and it never writes an empty or generic file just to produce one. When there is nothing concrete yet to ground a rule in, the result says so and records that as deferred, not declined, so a later `/sync-context` run can reconsider it once real contracts or behavior exist. Writing `BUGBOT.md` only records review guidance for a human or an already-configured Bugbot integration to read later; it does not install, enable, or run Bugbot.
+
+When the change is more than a trivial file layout, the skill asks `implementation-reviewer` to check that the generated foundation runs. A trivial structural or documentation-only scaffold may skip that scaffolding review, and it must say why. It still asks `context-reviewer` to check the generated repository index and module context for accuracy, including on a trivial scaffold, because that pass covers initial context generation. The reviewer reads the documents this run generated or changed, and may also read dependencies, consumers, and relevant configuration inside the authorized scope. It does not rescan an unrelated repository. If the host cannot delegate a required review, the result says independent review was not performed and leaves it pending. The scaffold chat does not label its own check as either of those reviews. Bugbot review guidance and any project-rule proposal come after both reviews. After every approved write, including a review fix or a project-rule file, the run refreshes the affected context once — storing `content_fingerprint` of the declared scope, not `destination_freshness` — and reruns the mechanical check before reporting it as current.
 
 ## What to run next
 
 | Command | Typical user | When | You provide | Main result |
 | --- | --- | --- | --- | --- |
-| `/sync-context` | Developer or anyone preparing a repository | Context is missing or stale | The open product folder, plus optional Jira or Figma references | Approved repository and module context |
-| `/scaffold-project` | Developer starting a repository or component | A new foundation is needed | Purpose, users, scope, and the destination folder | An approved minimal foundation and initial context for what was created |
+| `/sync-context` | Developer or anyone preparing a repository | Context is missing or stale, or an existing project needs onboarding | The open product folder, plus optional Jira or Figma references | Approved repository and module context, plus a current Bugbot or project-rule decision |
+| `/scaffold-project` | Developer starting a repository or component | A new foundation is needed | Purpose, users, scope, and the destination folder | An approved minimal foundation, its own initial context, and an initial Bugbot or project-rule decision for what was created. Run `/sync-context` later, not immediately after, when context should be refreshed |
 | `/plan-work` | Product owner | The business work is not in Jira yet | The outcome in plain language, and a Jira target when you want it published | A proposed Epic, Story, Task, or backlog update. Jira changes wait for an approved change set |
 | `/refine-story` | Developer | A Jira item is ready for a technical plan | The issue key, for example `PROJ-123` | A technical proposal that keeps the business acceptance criteria |
 | `/implement-change` | Developer | The technical proposal is approved | The issue key and the repository to change | The code or infrastructure change in the approved scope |
@@ -199,7 +201,7 @@ These files do different jobs, and the ones you approve can live in Git:
 - repository context explains the system
 - the product README explains how to run that product
 - a project rule is a durable instruction for the agent
-- `BUGBOT.md` is review guidance for a later `/review-bugbot` run, which you start yourself
+- `BUGBOT.md` is repository review guidance. Cursor's review tooling reads it when invoked -- a `/review-bugbot` run you start yourself, Bugbot's automatic pull request review, and Agent Review when it is configured to run after a commit or task. Writing the file does not install, enable, or run any of them; that is a separate Cursor configuration step this plugin does not perform
 
 After validation says the change is ready, you commit, push, open the pull request, and merge with your normal Git tools. This plugin does not do those steps.
 

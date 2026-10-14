@@ -1103,8 +1103,131 @@ def test_scaffold_project_contract_has_required_language() -> None:
         "Existing multi-repo product offers a workspace",
         "New multi-repo product separates directories from Git setup",
         "Monorepo does not require a workspace",
+        "Fresh scaffold with approved Bugbot setup",
+        "Declined setup without repeated questions",
+        "Existing BUGBOT.md preserved",
+        "Insufficient evidence for useful rules",
+        "Reviewer source fix followed by context refresh",
+        "Independent delegation or Canvas unavailable",
+        "New module added without dropping existing monorepo index entries",
     ):
         assert scenario in manual, scenario
+
+
+def test_project_rule_decisions_are_keyed_by_repository_and_policy() -> None:
+    """A project-rule decision's identity is the (repository, policy) pair,
+    not the repository alone -- a HIGH-severity gap a merge review found
+    and this contract now closes."""
+    project_rules = (
+        ROOT
+        / ".cursor"
+        / "skills"
+        / "sync-context"
+        / "references"
+        / "project-rules.md"
+    ).read_text(encoding="utf-8")
+    artifact_home = (
+        ROOT
+        / ".cursor"
+        / "skills"
+        / "sync-context"
+        / "references"
+        / "artifact-home.md"
+    ).read_text(encoding="utf-8")
+    foundation = (
+        ROOT
+        / ".cursor"
+        / "skills"
+        / "scaffold-project"
+        / "references"
+        / "foundation-and-review.md"
+    ).read_text(encoding="utf-8")
+
+    for phrase in (
+        "## Project rule decisions",
+        "stable repository ID, stable policy slug",
+        "`Rule` is optional metadata, not identity",
+        "declined` or `deferred` entry has no `Rule` line",
+        "never changes what is allowed for a",
+        "different policy slug in the same repository",
+    ):
+        assert phrase in project_rules, phrase
+
+    assert "stable policy" in artifact_home and "slug" in artifact_home
+    assert "## Project rule decisions" in artifact_home
+
+    assert (
+        "The decision's identity is (stable repository ID, stable policy slug), not the repository ID alone"
+        in foundation
+    )
+
+
+def test_scaffold_project_completes_its_own_review_configuration() -> None:
+    """Scaffold-project reuses Bugbot/project-rule/context-review contracts
+    by reference instead of inventing a second setup flow or a second
+    reviewer, and makes the final-validation ordering explicit."""
+    skill = (
+        ROOT / ".cursor" / "skills" / "scaffold-project" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    foundation = (
+        ROOT
+        / ".cursor"
+        / "skills"
+        / "scaffold-project"
+        / "references"
+        / "foundation-and-review.md"
+    ).read_text(encoding="utf-8")
+    canvas = (ROOT / "references" / "canvas-review.md").read_text(encoding="utf-8")
+
+    for phrase in (
+        "bugbot-configuration.md",
+        "project-rules.md",
+        "review-handoff.md",
+        "repository review configuration",
+        "independent context review",
+        "finalization order",
+        "the user should not need to run `sync-context` immediately after this skill",
+        "context-reviewer",
+        "after steps 10 and 11, not before them",
+        "The stored `Fingerprint:` value is `content_fingerprint` of the declared scope, not `destination_freshness`",
+        "project-rule status (created, unchanged, declined, not applicable, or deferred)",
+        "Bugbot review guidance status (created, unchanged, declined, or deferred)",
+        "recompute the fingerprint and re-read the destination instead of reusing the read from before steps 10–11 ran",
+        "step 11's result stays valid only when the refresh was mechanical",
+    ):
+        assert phrase in skill, phrase
+    assert "Bugbot setup" not in skill
+
+    for phrase in (
+        "## Repository review configuration",
+        "## Independent context review",
+        "## Finalization order",
+        "Do not freeze a placeholder's current response as a rule",
+        "Record that outcome as `deferred`",
+        "is different from an explicit `declined`",
+        "does not install, enable, or configure the Bugbot service",
+        "is not excluded from `content_fingerprint`",
+        "The persisted `Fingerprint:` field is `content_fingerprint` of the declared scope",
+        "Do not store `destination_freshness` in `Fingerprint:`",
+        "The reviewer may still read dependencies, consumers, and relevant configuration inside the authorized scope",
+        "Do not rescan an unrelated repository",
+        "Do not \"fix\" a stale fingerprint by replacing the stored hash",
+        "Do not widen `EXCLUDED_PARTS` or `GENERATED_FILENAMES`",
+        "validate_generated_context` once more, against the final files on disk",
+        "This run's own approved writes in (a), (c), and (d) are expected inputs to (e)",
+        "Mechanical versus semantic refresh",
+        "the `context-reviewer` result from (c) stays valid",
+        "Run one targeted `context-reviewer` follow-up on just that changed content",
+        "This proposal is its own change set, prepared after steps 8–11 already wrote and reviewed other files",
+        "Do not reuse the fingerprint read before steps 10–11 ran",
+    ):
+        assert phrase in foundation, phrase
+
+    assert "`content_fingerprint` or `destination_freshness`" not in foundation
+    assert "## scaffold-project" in canvas
+    assert "Bugbot review guidance: created, unchanged, declined, or deferred" in canvas
+    assert "project rules: created, unchanged, declined, not applicable, or deferred" in canvas
+    assert "Bugbot setup" not in canvas
 
 
 def test_manual_evaluation_and_shared_contracts_exist() -> None:
@@ -1144,6 +1267,8 @@ if __name__ == "__main__":
         test_plan_work_contract_has_required_language,
         test_refine_story_contract_has_required_language,
         test_scaffold_project_contract_has_required_language,
+        test_project_rule_decisions_are_keyed_by_repository_and_policy,
+        test_scaffold_project_completes_its_own_review_configuration,
         test_canvas_review_is_the_closing_view,
         test_manual_evaluation_covers_context_quality_scenarios,
         test_legacy_aidlc_migration_contract_is_specific,

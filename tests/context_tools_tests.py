@@ -484,6 +484,112 @@ def test_generated_context_does_not_change_source_fingerprint() -> None:
         assert after_update == initial
 
 
+def test_root_fingerprint_can_go_stale_while_module_fingerprint_does_not() -> None:
+    # Mirrors a real scaffold shape: a root-level file (README, a manifest)
+    # edited after the repository index was written leaves each module's own
+    # fingerprint unchanged while the index-level fingerprint drifts. This is
+    # exactly the `index:fingerprint failed` / `modules:fingerprint passed`
+    # split `validate_generated_context` reports, which is why finalization
+    # order refreshes the index once after every write, not only per module.
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp) / "repo"
+        module = root / "backend"
+        module.mkdir(parents=True)
+        (module / "app.py").write_text("print('hi')\n")
+        (root / "README.md").write_text("# repo\n")
+
+        root_before, _ = content_fingerprint(root)
+        module_before, _ = content_fingerprint(module)
+
+        (root / "README.md").write_text("# repo\n\nUpdated after the index was written.\n")
+
+        root_after, _ = content_fingerprint(root)
+        module_after, _ = content_fingerprint(module)
+
+        assert root_after != root_before
+        assert module_after == module_before
+
+
+def test_project_rule_file_changes_fingerprint_but_bugbot_file_does_not() -> None:
+    # `is_generated_artifact` excludes `.cursor/BUGBOT.md` by name, so writing
+    # it never requires a refresh. A `.cursor/rules/<slug>.mdc` project-rule
+    # file has no matching exclusion -- writing one approved during scaffold
+    # finalization genuinely changes the index-level fingerprint, which is
+    # exactly why that write must happen before the final refresh, not after.
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        (root / "src").mkdir()
+        (root / "src" / "app.ts").write_text("export const app = 1;\n")
+        baseline, _ = content_fingerprint(root)
+
+        (root / ".cursor").mkdir()
+        (root / ".cursor" / "BUGBOT.md").write_text("Review focus.\n")
+        after_bugbot, _ = content_fingerprint(root)
+        assert after_bugbot == baseline
+
+        (root / ".cursor" / "rules").mkdir()
+        (root / ".cursor" / "rules" / "project-policy.mdc").write_text(
+            "# Project policy\n"
+        )
+        after_rule, _ = content_fingerprint(root)
+        assert after_rule != baseline
+
+
+def _replace_recorded_fingerprint(index: Path, value: str) -> None:
+    current = index.read_text(encoding="utf-8")
+    start = current.index("- Fingerprint: `") + len("- Fingerprint: `")
+    end = current.index("`", start)
+    index.write_text(current[:start] + value + current[end:], encoding="utf-8")
+
+
+def test_readme_change_fails_validation_until_content_fingerprint_is_restored() -> None:
+    # Full cycle the hash-only tests do not cover: write context, change a
+    # root README, see the real validator fail the index while the module
+    # still passes, then store content_fingerprint again and see it pass.
+    # destination_freshness is a different hash and must not be written into
+    # Fingerprint:, or the same validator fails on current prose.
+    with tempfile.TemporaryDirectory() as temp:
+        web = Path(temp) / "web"
+        module = web / "apps" / "storefront"
+        module.mkdir(parents=True)
+        (module / "index.ts").write_text("export const x = 1;\n")
+        (web / "README.md").write_text("# store\n")
+        _write_valid_module(module, "web", "storefront", "apps/storefront")
+        (web / "aidlc-docs").mkdir()
+        index = web / "aidlc-docs" / "repository-context.md"
+        _write_valid_index(index, web)
+        module_check = "modules:fingerprint:../apps/storefront/AIDLC_CONTEXT.md"
+
+        def statuses() -> dict[str, str]:
+            return {
+                check.name: check.status
+                for check in validate_generated_context(
+                    index, {"web": web}, index_repository_id="web"
+                )
+            }
+
+        initial = statuses()
+        assert initial["index:fingerprint"] == "passed"
+        assert initial[module_check] == "passed"
+
+        (web / "README.md").write_text("# store\n\nUpdated after the index was written.\n")
+        stale = statuses()
+        assert stale["index:fingerprint"] == "failed"
+        assert stale[module_check] == "passed"
+
+        content_hash, _paths = content_fingerprint(web)
+        _state, freshness_hash = destination_freshness(web)
+        assert freshness_hash != content_hash
+
+        _replace_recorded_fingerprint(index, freshness_hash)
+        assert statuses()["index:fingerprint"] == "failed"
+
+        _replace_recorded_fingerprint(index, content_hash)
+        restored = statuses()
+        assert restored["index:fingerprint"] == "passed"
+        assert restored[module_check] == "passed"
+
+
 def test_skill_source_changes_invalidate_fingerprint() -> None:
     with tempfile.TemporaryDirectory() as temp:
         root = Path(temp)
@@ -5095,6 +5201,51 @@ def test_decision_reprompt_allowed_same_shape_as_bugbot_reprompt() -> None:
     assert decision_reprompt_allowed("", same_run=False) is True
 
 
+def test_project_rule_decision_identity_is_repository_and_policy_pair() -> None:
+    # The HIGH-severity gap a merge review found: keying a project-rule
+    # decision only by repository ID would let a `declined` for one policy
+    # silently suppress the prompt for an unrelated policy in the same
+    # repository. Identity must be the (repository ID, policy slug) pair.
+    config = """
+## Project rule decisions
+- Repository: `payments-api`
+  - Policy: `database-migrations`
+  - Decision: declined
+  - Baseline: `abc123`
+  - Fingerprint: `deadbeefdeadbeef`
+- Repository: `payments-api`
+  - Policy: `package-manager`
+  - Decision: approved
+  - Rule: `.cursor/rules/package-manager.mdc`
+  - Baseline: `abc123`
+  - Fingerprint: `deadbeefdeadbeef`
+"""
+    section = find_live_section(config, "## Project rule decisions")
+    assert section.status == "ok"
+
+    # Simulates reading the persisted section into a lookup keyed by the
+    # full (repository, policy) pair, the way a caller must per
+    # project-rules.md -- never collapsed to repository ID alone.
+    decisions = {
+        ("payments-api", "database-migrations"): "declined",
+        ("payments-api", "package-manager"): "approved",
+    }
+
+    declined_policy = decisions[("payments-api", "database-migrations")]
+    assert decision_reprompt_allowed(declined_policy, same_run=True) is False
+    assert decision_reprompt_allowed(declined_policy, same_run=False) is False
+
+    approved_policy = decisions[("payments-api", "package-manager")]
+    assert decision_reprompt_allowed(approved_policy, same_run=True) is False
+
+    # A third policy slug in the same repository, with no recorded decision
+    # of its own, is still promptable -- the declined database-migrations
+    # entry does not leak into it merely because the repository matches.
+    unseen_policy = decisions.get(("payments-api", "linting-config"))
+    assert unseen_policy is None
+    assert decision_reprompt_allowed(unseen_policy, same_run=True) is True
+
+
 def test_plan_validate_proposal_runs_every_deterministic_check() -> None:
     valid = plan_validate_proposal(
         {
@@ -5371,6 +5522,9 @@ if __name__ == "__main__":
         test_absent_destination_freshness_is_not_an_empty_directory_hash,
         test_fingerprint_detects_changes_and_excludes_generated_output,
         test_generated_context_does_not_change_source_fingerprint,
+        test_root_fingerprint_can_go_stale_while_module_fingerprint_does_not,
+        test_project_rule_file_changes_fingerprint_but_bugbot_file_does_not,
+        test_readme_change_fails_validation_until_content_fingerprint_is_restored,
         test_skill_source_changes_invalidate_fingerprint,
         test_parent_fingerprint_skips_nested_git_repository,
         test_fingerprint_includes_symlink_scope_root,
@@ -5566,6 +5720,7 @@ if __name__ == "__main__":
         test_plan_outcome_combines_item_statuses_without_implying_atomicity,
         test_jira_mutation_authorized_requires_both_local_and_jira_approval,
         test_decision_reprompt_allowed_same_shape_as_bugbot_reprompt,
+        test_project_rule_decision_identity_is_repository_and_policy_pair,
         test_plan_validate_proposal_runs_every_deterministic_check,
         test_plan_validate_proposal_fail_closed_on_reported_shape_bugs,
         test_cli_plan_validate_exit_codes_match_check_results,

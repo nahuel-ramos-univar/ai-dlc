@@ -1143,8 +1143,12 @@ def test_scaffold_project_completes_its_own_review_configuration() -> None:
         "after steps 10 and 11, not before them",
         "The stored `Fingerprint:` value is `content_fingerprint` of the declared scope, not `destination_freshness`",
         "project-rule status (created, unchanged, declined, not applicable, or deferred)",
+        "Bugbot review guidance status (created, unchanged, declined, or deferred)",
+        "recompute the fingerprint and re-read the destination instead of reusing the read from before steps 10–11 ran",
+        "step 11's result stays valid only when the refresh was mechanical",
     ):
         assert phrase in skill, phrase
+    assert "Bugbot setup" not in skill
 
     for phrase in (
         "## Repository review configuration",
@@ -1163,13 +1167,19 @@ def test_scaffold_project_completes_its_own_review_configuration() -> None:
         "Do not widen `EXCLUDED_PARTS` or `GENERATED_FILENAMES`",
         "validate_generated_context` once more, against the final files on disk",
         "This run's own approved writes in (a), (c), and (d) are expected inputs to (e)",
+        "Mechanical versus semantic refresh",
+        "the `context-reviewer` result from (c) stays valid",
+        "Run one targeted `context-reviewer` follow-up on just that changed content",
+        "This proposal is its own change set, prepared after steps 8–11 already wrote and reviewed other files",
+        "Do not reuse the fingerprint read before steps 10–11 ran",
     ):
         assert phrase in foundation, phrase
 
     assert "`content_fingerprint` or `destination_freshness`" not in foundation
     assert "## scaffold-project" in canvas
-    assert "Bugbot setup: created, unchanged, declined, or deferred" in canvas
+    assert "Bugbot review guidance: created, unchanged, declined, or deferred" in canvas
     assert "project rules: created, unchanged, declined, not applicable, or deferred" in canvas
+    assert "Bugbot setup" not in canvas
 
 
 def test_manual_evaluation_and_shared_contracts_exist() -> None:

@@ -35,7 +35,7 @@ Show, after [finalization order](../.cursor/skills/scaffold-project/references/f
 
 - the foundation created, and how to run and validate it;
 - the repository index and each module context, with their paths;
-- Bugbot setup: created, unchanged, declined, or deferred, and why;
+- Bugbot review guidance: created, unchanged, declined, or deferred, and why;
 - project rules: created, unchanged, declined, not applicable, or deferred, and why;
 - the final deterministic validation result, from after every write;
 - implementation-review status and any unresolved finding;

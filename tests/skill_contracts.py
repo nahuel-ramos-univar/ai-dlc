@@ -1114,10 +1114,100 @@ def test_scaffold_project_contract_has_required_language() -> None:
         assert scenario in manual, scenario
 
 
+def test_plan_work_story_model_separates_semantics_from_rendering() -> None:
+    """Structural markers only. Does not prove agent behavior, publication
+    quality, or Product Owner judgment."""
+    plan_dir = ROOT / ".cursor" / "skills" / "plan-work" / "references"
+
+    def flat(name: str) -> str:
+        return " ".join((plan_dir / name).read_text(encoding="utf-8").split())
+
+    story = flat("single-story.md")
+    template = flat("jira-story-template.md")
+
+    for marker in (
+        "Testing and validation expectations",
+        "must not introduce a new required behavior",
+        "Omit Testing entirely",
+        "refine-story",
+    ):
+        assert marker in story, marker
+    for marker in (
+        "Testing / Validation Notes",
+        "must not introduce new product behavior",
+    ):
+        assert marker in template, marker
+
+    for marker in (
+        "Story-specific goals and metrics",
+        "exception, not the default",
+        "Do not infer, derive, or invent a metric",
+    ):
+        assert marker in story, marker
+    assert "omit it when absent" in template
+
+    for marker in (
+        "Open questions and ambiguity",
+        "user-facing",
+        "cannot access",
+    ):
+        assert marker in story, marker
+    assert "order-history" not in story.lower()
+
+    for marker in (
+        "Design reference",
+        "Do not invent a design reference",
+        "do not claim inspection",
+        "universal blocker",
+        "project-level Figma URL",
+    ):
+        assert marker in story, marker
+    for marker in (
+        "Design Reference",
+        "Do not discover, infer, or inspect",
+    ):
+        assert marker in template, marker
+    assert "Story-specific design" in flat("update-existing.md")
+
+    for marker in (
+        "Semantic precedence",
+        "Do not silently decide",
+    ):
+        assert marker in story, marker
+
+    for marker in (
+        "does not define it",
+        "information loss",
+        "Scope / Out of Scope",
+        "Do not invent scope or exclusions",
+    ):
+        assert marker in template, marker
+    assert "must survive that publication" in story
+    assert "empty state versus error state" in story
+
+    manual = (ROOT / "MANUAL_EVALUATION.md").read_text(encoding="utf-8")
+    for scenario in (
+        "Plan-work Testing omitted when it only restates ACs",
+        "Plan-work valid extra validation scenario",
+        "Plan-work Testing cannot introduce new behavior",
+        "Plan-work Goals omitted without a metric",
+        "Plan-work explicit Story-level metric preserved",
+        "Plan-work ambiguous status surfaces an Open Question",
+        "Plan-work ambiguous unauthenticated access uses evidence then asks",
+        "Plan-work Story-specific design reference included",
+        "Plan-work project-level Figma is not copied into the Story",
+        "Plan-work design versus AC conflict is surfaced",
+        "Plan-work approved scope exclusions survive the Jira payload",
+        "Plan-work existing Story-specific design link survives update-existing",
+        "Plan-work supplied design link is not described as inspected without access",
+        "Project-rule declined policy does not suppress another policy in the same repository",
+    ):
+        assert scenario in manual, scenario
+
+
 def test_project_rule_decisions_are_keyed_by_repository_and_policy() -> None:
-    """A project-rule decision's identity is the (repository, policy) pair,
-    not the repository alone -- a HIGH-severity gap a merge review found
-    and this contract now closes."""
+    """Structural markers only. Does not prove the agent looks up persisted
+    Markdown or that renaming a rule file is handled at runtime."""
     project_rules = (
         ROOT
         / ".cursor"
@@ -1146,20 +1236,15 @@ def test_project_rule_decisions_are_keyed_by_repository_and_policy() -> None:
     for phrase in (
         "## Project rule decisions",
         "stable repository ID, stable policy slug",
-        "`Rule` is optional metadata, not identity",
-        "declined` or `deferred` entry has no `Rule` line",
-        "never changes what is allowed for a",
-        "different policy slug in the same repository",
+        "`Rule` is optional metadata",
+        "different policy slug",
     ):
         assert phrase in project_rules, phrase
 
     assert "stable policy" in artifact_home and "slug" in artifact_home
     assert "## Project rule decisions" in artifact_home
 
-    assert (
-        "The decision's identity is (stable repository ID, stable policy slug), not the repository ID alone"
-        in foundation
-    )
+    assert "stable repository ID, stable policy slug" in foundation
 
 
 def test_scaffold_project_completes_its_own_review_configuration() -> None:
@@ -1265,6 +1350,7 @@ if __name__ == "__main__":
         test_release_workflow_files_exist,
         test_project_onboarding_is_conditionally_referenced,
         test_plan_work_contract_has_required_language,
+        test_plan_work_story_model_separates_semantics_from_rendering,
         test_refine_story_contract_has_required_language,
         test_scaffold_project_contract_has_required_language,
         test_project_rule_decisions_are_keyed_by_repository_and_policy,

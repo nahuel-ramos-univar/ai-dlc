@@ -5202,48 +5202,32 @@ def test_decision_reprompt_allowed_same_shape_as_bugbot_reprompt() -> None:
 
 
 def test_project_rule_decision_identity_is_repository_and_policy_pair() -> None:
-    # The HIGH-severity gap a merge review found: keying a project-rule
-    # decision only by repository ID would let a `declined` for one policy
-    # silently suppress the prompt for an unrelated policy in the same
-    # repository. Identity must be the (repository ID, policy slug) pair.
-    config = """
-## Project rule decisions
-- Repository: `payments-api`
-  - Policy: `database-migrations`
-  - Decision: declined
-  - Baseline: `abc123`
-  - Fingerprint: `deadbeefdeadbeef`
-- Repository: `payments-api`
-  - Policy: `package-manager`
-  - Decision: approved
-  - Rule: `.cursor/rules/package-manager.mdc`
-  - Baseline: `abc123`
-  - Fingerprint: `deadbeefdeadbeef`
-"""
-    section = find_live_section(config, "## Project rule decisions")
-    assert section.status == "ok"
+    """Helper and short structural markers only.
 
-    # Simulates reading the persisted section into a lookup keyed by the
-    # full (repository, policy) pair, the way a caller must per
-    # project-rules.md -- never collapsed to repository ID alone.
-    decisions = {
-        ("payments-api", "database-migrations"): "declined",
-        ("payments-api", "package-manager"): "approved",
-    }
+    Does not parse persisted Markdown, does not count example lines, and
+    does not prove agent lookup. `decision_reprompt_allowed` takes one
+    already-looked-up value. Agent lookup is in MANUAL_EVALUATION.md.
+    """
+    assert decision_reprompt_allowed("declined", same_run=True) is False
+    assert decision_reprompt_allowed("declined", same_run=False) is False
+    assert decision_reprompt_allowed("approved", same_run=True) is False
+    assert decision_reprompt_allowed("", same_run=True) is True
 
-    declined_policy = decisions[("payments-api", "database-migrations")]
-    assert decision_reprompt_allowed(declined_policy, same_run=True) is False
-    assert decision_reprompt_allowed(declined_policy, same_run=False) is False
-
-    approved_policy = decisions[("payments-api", "package-manager")]
-    assert decision_reprompt_allowed(approved_policy, same_run=True) is False
-
-    # A third policy slug in the same repository, with no recorded decision
-    # of its own, is still promptable -- the declined database-migrations
-    # entry does not leak into it merely because the repository matches.
-    unseen_policy = decisions.get(("payments-api", "linting-config"))
-    assert unseen_policy is None
-    assert decision_reprompt_allowed(unseen_policy, same_run=True) is True
+    project_rules = " ".join(
+        (
+            ROOT
+            / ".cursor"
+            / "skills"
+            / "sync-context"
+            / "references"
+            / "project-rules.md"
+        )
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    assert "stable repository ID, stable policy slug" in project_rules
+    assert "`Rule` is optional metadata" in project_rules
+    assert "policy slug" in project_rules and "does not change" in project_rules
 
 
 def test_plan_validate_proposal_runs_every_deterministic_check() -> None:

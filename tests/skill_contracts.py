@@ -691,10 +691,41 @@ def test_plan_work_contract_has_required_language() -> None:
     assert "Author the description in Markdown" in story_template_flat
     assert "confirmed absent" in story_template_flat
     assert "Never publish operational disclaimers" in story_template_flat
-    assert "#### 📋 Description" in story_template
+    assert "As a [user], I want [capability], so that [benefit]." in story_template
+    assert "#### 📋 Description" not in story_template
+    assert "**User story:**" not in story_template
+    heading_order = (
+        "#### 🎯 Context",
+        "#### 📌 Scope / Out of Scope",
+        "#### 🎨 Design / References",
+        "#### 💬 Stakeholder Questions",
+        "#### 🛠️ Technical Notes",
+        "#### 🧪 Validation Notes",
+        "#### 📊 Goals & Metrics",
+        "#### 🔗 Dependencies & Risks",
+        "#### ✅ Acceptance Criteria",
+    )
+    heading_positions = [story_template.index(heading) for heading in heading_order]
+    assert heading_positions == sorted(heading_positions)
+    assert "\n\n---\n\n" in story_template
+    assert "never count as completed or approved requirements" in story_template_flat
+    assert "existing planning flow" in story_template_flat
+    assert "format the available tool actually supports" in story_template_flat
+    default_skeleton = (
+        story_template.split("## Default description", 1)[1]
+        .split("```markdown", 1)[1]
+        .split("```", 1)[0]
+    )
+    assert "[Add confirmed technical constraints, if applicable]" in default_skeleton
+    assert "[Add additional business validation guidance, if needed]" in default_skeleton
+    assert "[Add a story-specific goal or metric, if applicable]" in default_skeleton
+    assert "refine-story" not in default_skeleton
+    assert "dedicated field" not in default_skeleton
+    assert "approved destination" not in default_skeleton
     assert "h4." not in story_template
     assert "|| Question ||" not in story_template
     assert "Do not hand-write Jira wiki markup" in jira
+    assert "format the available tool actually supports" in jira
     assert "that field only, no Description duplicate" in jira
     assert "exists but not writable" in jira
 
@@ -1148,8 +1179,10 @@ def test_plan_work_story_model_separates_semantics_from_rendering() -> None:
     ):
         assert marker in story, marker
     for marker in (
-        "Testing / Validation Notes",
+        "Validation Notes",
         "must not introduce new product behavior",
+        "reader-facing placeholders",
+        "never count as completed or approved requirements",
     ):
         assert marker in template, marker
 
@@ -1159,7 +1192,7 @@ def test_plan_work_story_model_separates_semantics_from_rendering() -> None:
         "Do not infer, derive, or invent a metric",
     ):
         assert marker in story, marker
-    assert "omit it when absent" in template
+    assert "omit-empty-optional-sections" in template
 
     for marker in (
         "Open questions and ambiguity",
@@ -1178,7 +1211,7 @@ def test_plan_work_story_model_separates_semantics_from_rendering() -> None:
     ):
         assert marker in story, marker
     for marker in (
-        "Design Reference",
+        "Design / References",
         "Do not discover, infer, or inspect",
     ):
         assert marker in template, marker
@@ -1219,10 +1252,10 @@ def test_plan_work_story_model_separates_semantics_from_rendering() -> None:
 
     manual = (ROOT / "MANUAL_EVALUATION.md").read_text(encoding="utf-8")
     for scenario in (
-        "Plan-work Testing omitted when it only restates ACs",
+        "Plan-work Validation Notes placeholder when they only restate ACs",
         "Plan-work valid extra validation scenario",
         "Plan-work Testing cannot introduce new behavior",
-        "Plan-work Goals omitted without a metric",
+        "Plan-work Goals placeholder without a metric",
         "Plan-work explicit Story-level metric preserved",
         "Plan-work ambiguous status surfaces an Open Question",
         "Plan-work ambiguous unauthenticated access uses evidence then asks",

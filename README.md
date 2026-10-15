@@ -192,7 +192,7 @@ When the change is more than a trivial file layout, the skill asks `implementati
 | `/validate-change` | Developer | The change is ready to check | The issue key and how to run the relevant tests | Evidence against the acceptance criteria, including tests that already exist |
 | `/create-e2e-tests` | Developer or QA | A journey needs browser coverage | The issue key or the journey | End-to-end tests. This command is optional and is not run by `/validate-change` |
 
-A normal sequence is context or foundation, then business planning, then technical refinement, then implementation, then validation. You can start later in that sequence when the earlier artifact already exists. Naming a later command does not run it. See [skill composition](references/skill-composition.md).
+A normal sequence is context or foundation, then business planning, then technical refinement, then implementation, then validation. You can start later in that sequence when the earlier artifact already exists. Naming a later command does not run it, except when you authorize `/implement-change` to continue into `/validate-change` in the same request. See [skill composition](references/skill-composition.md).
 
 Jira holds the business work items and the technical refinement. This plugin does not require a Markdown copy of each Story in the repository.
 

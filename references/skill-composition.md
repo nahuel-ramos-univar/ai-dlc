@@ -2,7 +2,9 @@
 
 Each skill is a manual slash entry point. Naming another skill or showing its slash command does not execute it.
 
-Use local references as shared instructions inside the current workflow. When work must move to another skill, provide a clear handoff such as `/refine-story PAY-123` and state what evidence the user should carry forward.
+The only authorized continuous-flow exception is `/implement-change` continuing into `/validate-change` when the user asked for that sequence in the same request. No other skill pair is started this way. `create-e2e-tests` is never started this way. After implementation finishes, load and follow the validate-change workflow and report the seam. Do not claim the user typed `/validate-change`.
+
+Use local references as shared instructions inside the current workflow. When work must move to another skill, provide a clear handoff such as `/refine-story PAY-123` and state what evidence the user should carry forward. Plan-work, refine-story, sync-context, scaffold-project, and create-e2e-tests stay handoffs. Do not generalize this exception.
 
 The plugin manifest discovers agent files from its relative `agents/` path. Do not assume an agent filename or frontmatter name is a valid runtime `subagent_type`.
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.13.0 — 2026-10-15
+
+Bump: `minor`
+Compare: [v0.12.2...v0.13.0](https://github.com/nahuel-ramos-univar/ai-dlc/compare/v0.12.2...v0.13.0)
+
+### Added
+
+- feat: let implement-change continue into validate-change with gated review ([`fcf8c50`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/fcf8c50393cb410985139d78d5acec1603862996))
+
+### Other
+
+- Merge pull request #22 from nahuel-ramos-univar/CTY-306-implement-change ([`8573881`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/85738812f5f3fcc0373561116eaf95cd9feb8238))
+
 ## 0.12.2 — 2026-10-15
 
 Bump: `patch`

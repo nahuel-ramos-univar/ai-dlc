@@ -854,6 +854,129 @@ def test_refine_story_contract_has_required_language() -> None:
     assert "/refine-story`" in canvas or "`/refine-story`" in canvas
 
 
+def test_implement_and_validate_change_contract_has_required_language() -> None:
+    """Structural markers only. Does not prove Cursor invoked Bugbot, applied
+    a fix, or continued from implement-change into validate-change."""
+    def flat_skill(name: str) -> str:
+        return " ".join(
+            (ROOT / ".cursor" / "skills" / name / "SKILL.md")
+            .read_text(encoding="utf-8")
+            .split()
+        )
+
+    implement = flat_skill("implement-change")
+    validate = flat_skill("validate-change")
+    risk = " ".join(
+        (
+            ROOT
+            / ".cursor"
+            / "skills"
+            / "implement-change"
+            / "references"
+            / "risk-and-specialists.md"
+        )
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    evidence = " ".join(
+        (
+            ROOT
+            / ".cursor"
+            / "skills"
+            / "validate-change"
+            / "references"
+            / "evidence-and-bugbot.md"
+        )
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    reviewer = " ".join(
+        (ROOT / "agents" / "implementation-reviewer.md").read_text(encoding="utf-8").split()
+    )
+    composition = " ".join(
+        (ROOT / "references" / "skill-composition.md").read_text(encoding="utf-8").split()
+    )
+    manual = (ROOT / "MANUAL_EVALUATION.md").read_text(encoding="utf-8")
+
+    assert "approved deliverable and its own content" in implement
+    assert "Do not depend on refine-story mode metadata" in implement
+    assert "Ask only when development work and QA work cannot be distinguished" in implement
+    assert "QA item is not included" in implement
+    assert "approach review mode" in implement
+    assert "before writing code" in implement
+    assert "wait for its result" in implement
+    assert "leave the affected scope pending" in implement
+    assert "Do not edit the gated scope while that review is pending" in implement
+    assert "Presence of Terraform or IAM" in implement
+    assert "is not that trigger" in implement
+    assert "Do not treat file paths as belonging to one Story" in implement
+    assert "authorized continuing into validation" in implement
+    assert "Do not run `terraform apply`" in implement
+
+    assert "authorized that successor workflow" in validate
+    assert "does not require an extra `/implement-change` slash command" in validate
+    assert "repository preflight" in validate
+    assert "review only, or no modifications" in validate
+    assert "propose targeted fixes and do not apply them" in validate
+    assert "preserve unrelated staged, unstaged, and untracked" in validate
+    assert "without asking the user to request it again" in validate
+    assert "not-applicable** only with a concrete reason" in validate or "not-applicable only with a concrete reason" in validate
+    assert "same failing check returns without material progress" in validate
+    assert "Do not change tests so they pass by dropping the expected behavior" in validate
+    assert "An execution error is not a code finding" in validate
+    assert "A partial review is not passed" in validate
+    assert "no bugs is not evidence that acceptance criteria passed" in validate
+    assert "Static contract tests in this plugin do not prove that Bugbot was invoked" in validate
+    assert "ready for the developer to deliver" in validate
+    assert "does not commit" in validate
+
+    assert "material new decision" in risk
+    assert "Presence of Terraform or IAM" in risk
+    assert "is not enough" in risk
+    assert "Do not use this reviewer as a substitute for Bugbot" in risk
+    assert "Request an independent `implementation-reviewer` assessment before validation" not in risk
+
+    assert "execution-error" in evidence
+    assert "without asking the user to request it again" in evidence
+    assert "used only with a concrete reason" in evidence
+    assert "A launch of Bugbot in another chat does not count" in evidence
+    assert "This plugin cannot invoke Bugbot programmatically" not in evidence
+
+    assert "Approach review mode" in reviewer
+    assert "Scaffolding review mode" in reviewer
+    assert "Default implementation review" in reviewer
+    assert "does not replace scaffolding review mode" in reviewer
+    assert "Do not invent a code review when no new implementation exists" in reviewer
+    assert "must be resolved before the affected scope is edited" in reviewer
+
+    assert "only authorized continuous-flow exception" in composition
+    assert "`/implement-change` continuing into `/validate-change`" in composition
+    assert "No other skill pair is started this way" in composition
+    assert "stay handoffs" in composition
+    assert "Do not generalize this exception" in composition
+    assert "create-e2e-tests` is never started this way" in composition
+    assert "Naming another skill or showing its slash command does not execute it." in (
+        ROOT / "references" / "skill-composition.md"
+    ).read_text(encoding="utf-8")
+
+    for scenario in (
+        "Implement-change DEV subtasks from instruction without extra confirmation",
+        "Implement-change asks only when DEV and QA cannot be distinguished",
+        "Implement-change skips approach review when the refinement still covers the approach",
+        "Implement-change approach review runs before code for a material new decision",
+        "Implement-change then validate-change authorized continuation",
+        "Validate-change in-run fix stays in authorized functional scope",
+        "Validate-change stops when the same failure shows no progress",
+        "Validate-change Bugbot records the code it actually reviewed",
+        "Implement-change blocking or unavailable approach review prevents affected edits",
+        "Validate-change standalone run preserves unrelated changes",
+        "Validate-change review-only never edits",
+        "Validate-change code changes trigger Bugbot by default",
+        "Unrelated skill transitions remain handoffs",
+    ):
+        assert scenario in manual, scenario
+
+
 def test_canvas_review_is_the_closing_view() -> None:
     canvas = " ".join(
         (ROOT / "references" / "canvas-review.md").read_text(encoding="utf-8").split()
@@ -1427,6 +1550,7 @@ if __name__ == "__main__":
         test_plan_work_contract_has_required_language,
         test_plan_work_story_model_separates_semantics_from_rendering,
         test_refine_story_contract_has_required_language,
+        test_implement_and_validate_change_contract_has_required_language,
         test_scaffold_project_contract_has_required_language,
         test_project_rule_decisions_are_keyed_by_repository_and_policy,
         test_scaffold_project_completes_its_own_review_configuration,

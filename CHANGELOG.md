@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.12.2 — 2026-10-15
+
+Bump: `patch`
+Compare: [v0.12.1...v0.12.2](https://github.com/nahuel-ramos-univar/ai-dlc/compare/v0.12.1...v0.12.2)
+
+### Fixed
+
+- fix: publish the default Story template with optional placeholders intact ([`5e447db`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/5e447db9cb7c3254be49e86b03dde91adf18160f))
+
+### Other
+
+- Merge pull request #21 from nahuel-ramos-univar/CTY-311-plan-work-improvements-3 ([`fa11781`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/fa117817cb5a3106adc5bf8dfe6bd9b04ba29d82))
+
 ## 0.12.1 — 2026-10-14
 
 Bump: `patch`

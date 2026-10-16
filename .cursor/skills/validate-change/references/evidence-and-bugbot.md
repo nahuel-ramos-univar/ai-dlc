@@ -1,6 +1,6 @@
 # Evidence and Bugbot
 
-Evidence identifies the checked revision, uncommitted state, command or inspection performed, result, and acceptance criterion covered. A test command that did not run is unavailable, not passed.
+Evidence identifies the checked revision, uncommitted state, command or inspection performed, result, and acceptance criterion covered. A test command that did not run is unavailable, not passed. Sufficiency — what a check actually exercised versus replaced, regression versus a pre-existing failure, and the close-out — lives in [verification evidence](../../../../references/verification-evidence.md). Passing mocks do not prove deployed integration.
 
 `validate-change` owns Bugbot coordination. For a code change in this flow, attempt the real supported Bugbot invocation without asking the user to request it again. Use a supported host facility to run the official review-bugbot skill or the host `bugbot` subagent. If that facility is not available, ask the developer to run `/review-bugbot` and mark Bugbot pending. Never invent findings. Never claim it ran without a real result.
 

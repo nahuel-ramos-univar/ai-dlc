@@ -21,14 +21,14 @@ If the user asked for review only, or no modifications, propose targeted fixes a
 
 ## Workflow
 1. Run [repository preflight](../../../references/repository-preflight.md). Confirm the authorized repository, actual Git root, branch, and unrelated staged, unstaged, and untracked modifications to preserve. Capture the revision, changed paths, and acceptance criteria under review.
-2. Map every acceptance criterion to a code inspection and the narrowest applicable unit, integration, end-to-end, manual, or unavailable check. Run an end-to-end test only when one already exists and is relevant. Do not claim `create-e2e-tests` ran.
-3. Run only relevant checks. Report command, revision, result, duration when known, and reason for skipped or unavailable checks.
+2. Map every acceptance criterion to a code inspection and the narrowest applicable unit, integration, end-to-end, manual, or unavailable check. Assess what each check actually demonstrates; do not only rerun the author's suite. Follow [verification evidence](../../../references/verification-evidence.md). Run an end-to-end test only when one already exists and is relevant. Load [end-to-end environment](../../../references/e2e-environment.md) before classifying or running that check. Do not generate a new end-to-end suite, a new journey, or a first framework. Do not claim `create-e2e-tests` ran.
+3. Run only relevant checks. Report command, revision, result, duration when known, and reason for skipped or unavailable checks. Classify a failure as a regression this change introduced, a pre-existing failure with baseline evidence, an environment problem, or uncertain. Do not call a failure pre-existing without evidence.
 4. Inspect dependency manifests, public contracts, migrations, and security-sensitive code when changed. When a shared file changed, check affected contracts, consumers, and tests.
 5. The main chat may request an independent `validator` assessment when a second evidence pass reduces uncertainty. Do not request `implementation-reviewer` for a post-code architecture review or a full code review of the diff. Approach review belongs to `/implement-change` before code. Bugbot owns the diff.
 6. Coordinate Bugbot as part of this workflow — see [evidence-and-bugbot.md](references/evidence-and-bugbot.md).
 7. Invalidate affected evidence if material code or configuration changes after a check. Rerun only the checks that the change invalidates.
 8. For high-risk changes or materially stale review rules, identify the required review and approval. Dedicated governance integration is deferred.
-9. Close with distinct statuses, not a single "done": implementation finished, tests verified or not, Bugbot status, and whether the change is ready for the developer to deliver. Return **ready for the developer to deliver** only when policy-required evidence is passed, including Bugbot, or an explicit applicable policy records an approved exception. A pending, partial, or execution-error Bugbot review is not passed. Delivery means the developer commits, pushes, opens the pull request, obtains approvals, and merges with normal Git and pull-request tools. This skill does not commit, push, open a pull request, or merge.
+9. Close with distinct statuses, not a single "done": new behavior verified and what the checks exercised, regression executed and its scope, pre-existing failures, checks that failed or did not run, Bugbot status and the code state reviewed, limitations that affect delivery, and whether the change is ready for the developer to deliver. Passing mocks do not prove deployed integration. Return **ready for the developer to deliver** only when policy-required evidence is passed, including Bugbot, or an explicit applicable policy records an approved exception. A pending, partial, or execution-error Bugbot review is not passed. Delivery means the developer commits, pushes, opens the pull request, obtains approvals, and merges with normal Git and pull-request tools. This skill does not commit, push, open a pull request, or merge.
 
 ## In-run corrections
 Do not apply a fix when the user asked for review only or no modifications. Propose it instead.
@@ -44,7 +44,7 @@ Apply a targeted fix in this run only when all of these hold:
 
 Shared files may change when the authorized behavior requires it. Check affected contracts, consumers, and tests. Do not treat file paths as belonging to one Story. Do not require another slash command for those authorized in-scope fixes.
 
-If the same failing check returns without material progress toward the cause, stop and report the diagnosis. Do not keep retrying. Do not change tests so they pass by dropping the expected behavior.
+If the same failing check returns without material progress toward the cause, stop and report the diagnosis. Do not keep retrying. Do not change tests so they pass by dropping the expected behavior. Do not delete tests, add skips, weaken assertions, or update snapshots only to get a green result.
 
 If the fix needs a new business decision, hand off to `/plan-work`. If the approved technical design no longer applies, hand off to `/refine-story`. Do not claim those slash commands ran.
 
@@ -64,6 +64,6 @@ Use **not-applicable** only with a concrete reason, for example that this run ch
 Observe remote Bugbot only when it appears in actual configured checks; do not assume it is configured. This skill does not merge.
 
 ## Output
-Return a concise acceptance-evidence matrix, reviewed Git state, failures, skipped checks, remaining risks, and explicit Bugbot status with the code state it actually reviewed.
+Return a concise acceptance-evidence matrix that says what each check proved, reviewed Git state, failures classified as regression, pre-existing, environment, or uncertain, skipped checks, remaining risks, limitations, and explicit Bugbot status with the code state it actually reviewed.
 
-Read [evidence-and-bugbot.md](references/evidence-and-bugbot.md), [repository preflight](../../../references/repository-preflight.md), and [skill composition](../../../references/skill-composition.md).
+Read [evidence-and-bugbot.md](references/evidence-and-bugbot.md), [verification evidence](../../../references/verification-evidence.md), [repository preflight](../../../references/repository-preflight.md), and [skill composition](../../../references/skill-composition.md). Load [end-to-end environment](../../../references/e2e-environment.md) only when an existing end-to-end check is in play.

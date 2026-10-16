@@ -37,6 +37,7 @@ Show, after [finalization order](../.cursor/skills/scaffold-project/references/f
 - the repository index and each module context, with their paths;
 - Bugbot review guidance: created, unchanged, declined, or deferred, and why;
 - project rules: created, unchanged, declined, not applicable, or deferred, and why;
+- pull-request template: created, unchanged, declined, not applicable, or deferred, and why;
 - the final deterministic validation result, from after every write;
 - implementation-review status and any unresolved finding;
 - context-review status and any unresolved finding;

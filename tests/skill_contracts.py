@@ -230,9 +230,14 @@ def test_context_generation_contract_has_required_examples() -> None:
     assert "permit discovery" in preflight
     assert "Context-discovery writes" in preflight
     assert "Scaffold-project writes follow the approved proposal" in preflight
+    assert "exactly one pull-request or merge-request template path" in preflight
+    assert "Do not treat that exception as permission to write" in preflight
+    assert "write a GitHub path when the host is GitLab" in preflight
     assert "does not use the enclosing checkout's ignore rules" in preflight
     assert "does not create, configure, or imply a Cloud Agent environment" in preflight
     assert "freshness fingerprint" in refresh
+    assert "pr_template_pending" in refresh
+    assert "membership_pending" in refresh
     assert "does not use the enclosing repository's exclude rules" in refresh
     assert "does not use the enclosing repository's exclude rules" in generation
     assert "untracked-tree` is not the kind" in generation
@@ -251,6 +256,18 @@ def test_context_generation_contract_has_required_examples() -> None:
         assert scenario in generation
     assert "once per repository for initial setup" in bugbot
     assert "declined" in bugbot
+    pr_template = (
+        sync_dir / "references" / "pull-request-template.md"
+    ).read_text(encoding="utf-8")
+    assert "Do not assume GitHub" in pr_template
+    assert ".github/pull_request_template.md" in pr_template
+    assert ".gitlab/merge_request_templates/Default.md" in pr_template
+    assert "does not authorize commit, push" in pr_template
+    assert "## Pull request template decisions" in pr_template
+    assert "is ordinary source" in pr_template
+    assert "EXCLUDED_PARTS" in pr_template
+    assert "GENERATED_FILENAMES" in pr_template
+    assert "pull-request-template.md" in generation
 
 
 def test_context_artifact_contract_and_skill_budgets() -> None:
@@ -267,6 +284,7 @@ def test_context_artifact_contract_and_skill_budgets() -> None:
         "references/legacy-migration.md",
         "references/architecture-discovery.md",
         "references/context-quality.md",
+        "references/pull-request-template.md",
     ):
         assert (sync_dir / relative).is_file()
     for skill in (ROOT / ".cursor" / "skills").glob("*/SKILL.md"):
@@ -332,6 +350,16 @@ def test_release_workflow_files_exist() -> None:
     assert re.match(r"^\d+\.\d+\.\d+$", version)
     gitignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
     assert "__pycache__/" in gitignore
+    assert "*.py[cod]" in gitignore
+    assert "tests/.tmp-*" in gitignore
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert "Structural tests" in ci
+    assert "does not launch Cursor" in ci
+    assert "does not prove runtime plugin discovery" in ci
+    assert "playwright" not in ci.lower()
+    manual = (ROOT / "MANUAL_EVALUATION.md").read_text(encoding="utf-8")
+    assert "Plugin discovery in Cursor" in manual
+    assert "static layout and helper checks only" in manual
 
 
 def test_architecture_discovery_contract_has_required_language() -> None:
@@ -890,6 +918,11 @@ def test_implement_and_validate_change_contract_has_required_language() -> None:
         .read_text(encoding="utf-8")
         .split()
     )
+    verification = " ".join(
+        (ROOT / "references" / "verification-evidence.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
     reviewer = " ".join(
         (ROOT / "agents" / "implementation-reviewer.md").read_text(encoding="utf-8").split()
     )
@@ -912,6 +945,11 @@ def test_implement_and_validate_change_contract_has_required_language() -> None:
     assert "Do not treat file paths as belonging to one Story" in implement
     assert "authorized continuing into validation" in implement
     assert "Do not run `terraform apply`" in implement
+    assert "verification-evidence.md" in implement
+    assert "exercise versus replace" in implement
+    assert "Do not reset, clean, or move unrelated changes" in implement
+    assert "Do not call a failure pre-existing without evidence" in implement
+    assert "verification close-out" in implement
 
     assert "authorized that successor workflow" in validate
     assert "does not require an extra `/implement-change` slash command" in validate
@@ -929,6 +967,11 @@ def test_implement_and_validate_change_contract_has_required_language() -> None:
     assert "Static contract tests in this plugin do not prove that Bugbot was invoked" in validate
     assert "ready for the developer to deliver" in validate
     assert "does not commit" in validate
+    assert "what each check actually demonstrates" in validate
+    assert "Passing mocks do not prove deployed integration" in validate
+    assert "Do not generate a new end-to-end suite" in validate
+    assert "e2e-environment.md" in validate
+    assert "pre-existing failure with baseline evidence" in validate
 
     assert "material new decision" in risk
     assert "Presence of Terraform or IAM" in risk
@@ -941,6 +984,14 @@ def test_implement_and_validate_change_contract_has_required_language() -> None:
     assert "used only with a concrete reason" in evidence
     assert "A launch of Bugbot in another chat does not count" in evidence
     assert "This plugin cannot invoke Bugbot programmatically" not in evidence
+    assert "Passing mocks do not prove deployed integration" in evidence
+
+    assert "does not prove behavior it replaced with a fake" in verification
+    assert "A separate QA item does not remove" in verification
+    assert "Do not impose a mocking library" in verification
+    assert "Do not ask for cloud credentials" in verification
+    assert "Do not create a verification-plan file" in verification
+    assert "Do not call a failure pre-existing without evidence" in verification
 
     assert "Approach review mode" in reviewer
     assert "Scaffolding review mode" in reviewer
@@ -965,6 +1016,8 @@ def test_implement_and_validate_change_contract_has_required_language() -> None:
         "Implement-change skips approach review when the refinement still covers the approach",
         "Implement-change approach review runs before code for a material new decision",
         "Implement-change then validate-change authorized continuation",
+        "Plugin discovery in Cursor",
+        "Implement-change continues into validate-change in Cursor",
         "Validate-change in-run fix stays in authorized functional scope",
         "Validate-change stops when the same failure shows no progress",
         "Validate-change Bugbot records the code it actually reviewed",
@@ -973,8 +1026,55 @@ def test_implement_and_validate_change_contract_has_required_language() -> None:
         "Validate-change review-only never edits",
         "Validate-change code changes trigger Bugbot by default",
         "Unrelated skill transitions remain handoffs",
+        "Implement-change records a test baseline before edits",
+        "Implement-change approach names real versus replaced components",
+        "Implement-change still adds development tests when a QA item exists",
+        "Implement-change does not call a failure pre-existing without evidence",
+        "Validate-change treats passing fakes as insufficient for client composition",
+        "Validate-change classifies failures instead of only rerunning the author suite",
+        "Create-e2e-tests discovers the environment before assuming one",
+        "Create-e2e-tests distinguishes environment classes",
+        "Create-e2e-tests does not force browser tests on a service without UI",
+        "Create-e2e-tests remote execution needs an authorized target",
+        "Validate-change runs existing E2E but does not generate a suite",
     ):
         assert scenario in manual, scenario
+
+
+def test_create_e2e_tests_contract_has_required_language() -> None:
+    """Structural markers only. Does not prove the agent discovered a
+    consumer environment or executed a browser journey."""
+    skill = " ".join(
+        (ROOT / ".cursor" / "skills" / "create-e2e-tests" / "SKILL.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    environment = " ".join(
+        (ROOT / "references" / "e2e-environment.md").read_text(encoding="utf-8").split()
+    )
+    composition = (ROOT / "references" / "skill-composition.md").read_text(
+        encoding="utf-8"
+    )
+
+    assert "e2e-environment.md" in skill
+    assert "Discover the environment before assuming one" in skill
+    assert "locally executable application" in skill
+    assert "simulated backend" in skill
+    assert "Playwright is a candidate" in skill
+    assert "Do not force browser tests onto a service with no UI" in skill
+    assert "Creating a test is not the same as a successful execution" in skill
+    assert "does not run this skill" in skill
+    assert "Do not run against production by default" in skill
+    assert "A test-runner container is not the application stack" in skill
+
+    assert "Do not assume a local application" in environment
+    assert "A configuration file does not prove" in environment
+    assert "webServer" in environment
+    assert "Do not invent selectors" in environment
+    assert "Having a URL, credentials, or access does not" in environment
+    assert "Do not install Docker" in environment
+    assert "does not start `/create-e2e-tests`" in environment
+    assert "create-e2e-tests` is never started this way" in composition
 
 
 def test_canvas_review_is_the_closing_view() -> None:
@@ -1279,6 +1379,12 @@ def test_scaffold_project_contract_has_required_language() -> None:
         "Reviewer source fix followed by context refresh",
         "Independent delegation or Canvas unavailable",
         "New module added without dropping existing monorepo index entries",
+        "Scaffold offers a pull-request template independently",
+        "Existing pull-request template is preserved",
+        "Unknown Git host defers a pull-request template",
+        "GitLab remote does not write a GitHub template path",
+        "Declined pull-request template is not re-asked in the same run",
+        "Sync-context can offer a pull-request template when source is unchanged",
     ):
         assert scenario in manual, scenario
 
@@ -1441,8 +1547,19 @@ def test_project_rule_decisions_are_keyed_by_repository_and_policy() -> None:
 
     assert "stable policy" in artifact_home and "slug" in artifact_home
     assert "## Project rule decisions" in artifact_home
+    assert "## Pull request template decisions" in artifact_home
 
     assert "stable repository ID, stable policy slug" in foundation
+    pr_template = (
+        ROOT
+        / ".cursor"
+        / "skills"
+        / "sync-context"
+        / "references"
+        / "pull-request-template.md"
+    ).read_text(encoding="utf-8")
+    assert "Identity is the stable repository ID" in pr_template
+    assert "not a project-rule slug" in pr_template
 
 
 def test_scaffold_project_completes_its_own_review_configuration() -> None:
@@ -1473,6 +1590,9 @@ def test_scaffold_project_completes_its_own_review_configuration() -> None:
         "context-reviewer",
         "after steps 10 and 11, not before them",
         "The stored `Fingerprint:` value is `content_fingerprint` of the declared scope, not `destination_freshness`",
+        "pull-request template status (created, unchanged, declined, not applicable, or deferred)",
+        "Do not assume GitHub",
+        "pull-request-template.md",
         "project-rule status (created, unchanged, declined, not applicable, or deferred)",
         "Bugbot review guidance status (created, unchanged, declined, or deferred)",
         "recompute the fingerprint and re-read the destination instead of reusing the read from before steps 10–11 ran",
@@ -1503,6 +1623,10 @@ def test_scaffold_project_completes_its_own_review_configuration() -> None:
         "Run one targeted `context-reviewer` follow-up on just that changed content",
         "This proposal is its own change set, prepared after steps 8–11 already wrote and reviewed other files",
         "Do not reuse the fingerprint read before steps 10–11 ran",
+        "pull-request-template.md",
+        "Do not assume GitHub",
+        "If the host is unknown, record `deferred`",
+        "approved pull-request template",
     ):
         assert phrase in foundation, phrase
 
@@ -1510,6 +1634,7 @@ def test_scaffold_project_completes_its_own_review_configuration() -> None:
     assert "## scaffold-project" in canvas
     assert "Bugbot review guidance: created, unchanged, declined, or deferred" in canvas
     assert "project rules: created, unchanged, declined, not applicable, or deferred" in canvas
+    assert "pull-request template: created, unchanged, declined, not applicable, or deferred" in canvas
     assert "Bugbot setup" not in canvas
 
 
@@ -1524,6 +1649,8 @@ def test_manual_evaluation_and_shared_contracts_exist() -> None:
         "project-onboarding.md",
         "approval-contract.md",
         "canvas-review.md",
+        "verification-evidence.md",
+        "e2e-environment.md",
     ):
         assert (ROOT / "references" / filename).is_file()
     assert not (ROOT / ".cursor" / "skills" / "plan-work" / "references" / "approval-contract.md").exists()
@@ -1551,6 +1678,7 @@ if __name__ == "__main__":
         test_plan_work_story_model_separates_semantics_from_rendering,
         test_refine_story_contract_has_required_language,
         test_implement_and_validate_change_contract_has_required_language,
+        test_create_e2e_tests_contract_has_required_language,
         test_scaffold_project_contract_has_required_language,
         test_project_rule_decisions_are_keyed_by_repository_and_policy,
         test_scaffold_project_completes_its_own_review_configuration,

@@ -151,12 +151,16 @@ when the fingerprint is `unchanged` — pass it to `context_sync_outcome` as
 `Related repository` entry is the same shape of input, passed as
 `membership_pending`; adding or correcting membership is also change set A,
 even when nothing in the source fingerprint moved. This does not by itself
-end the run: still check whether change set B (a Bugbot or project-rule proposal,
+end the run: still check whether change set B (a Bugbot, project-rule, or
+pull-request template proposal,
 [bugbot-configuration.md](references/bugbot-configuration.md),
-[project-rules.md](references/project-rules.md)) or change set C (legacy
+[project-rules.md](references/project-rules.md),
+[pull-request-template.md](references/pull-request-template.md)) or change set C (legacy
 migration cleanup, [legacy-migration.md](references/legacy-migration.md))
 has pending or newly relevant work. `context_sync_outcome` in
 `scripts/context_tools.py` combines all of this into the reachable outcome.
+Pass a pending pull-request template offer as `pr_template_pending` so an
+unchanged source fingerprint cannot hide it.
 A full no-op — no write, no new proposal, no approval question — requires
 that no project-reference update is pending and that sets B and C also have
 nothing actionable, not only that the source fingerprint is unchanged.
@@ -247,12 +251,16 @@ cross-module impact. Keep candidate content outside canonical output paths
 until it is approved; see [context-generation.md](references/context-generation.md).
 
 Separately within this same stage, evaluate whether a Bugbot proposal
-(change set B, [bugbot-configuration.md](references/bugbot-configuration.md))
-or a scoped project-policy rule (change set B,
-[project-rules.md](references/project-rules.md)) is justified by the
-evidence just gathered, and whether legacy migration items are present
+(change set B, [bugbot-configuration.md](references/bugbot-configuration.md)),
+a scoped project-policy rule (change set B,
+[project-rules.md](references/project-rules.md)), or an optional pull-request
+template (change set B,
+[pull-request-template.md](references/pull-request-template.md)) is justified
+by the evidence just gathered, and whether legacy migration items are present
 (change set C, [legacy-migration.md](references/legacy-migration.md)). Each
-set is prepared independently; none is bundled into set A's content.
+set is prepared independently; none is bundled into set A's content. A
+pull-request template is its own ask inside set B: approving Bugbot or a
+project rule does not authorize it.
 
 Still within set A, propose any product-membership update that the evidence
 or the user's own words support: a `Related repository` entry for a sibling
@@ -263,9 +271,10 @@ because a folder happens to be open alongside this one -- an open folder is
 a candidate to ask about, not a confirmed sibling. Preserve every existing,
 still-valid membership entry unless the user is explicitly correcting it. A
 membership-only change never by itself reopens or rewrites an existing
-`BUGBOT.md` or project rule; set B's own fingerprint and recorded decisions
-decide that independently, per
-[bugbot-configuration.md](references/bugbot-configuration.md).
+`BUGBOT.md`, project rule, or pull-request template; set B's own fingerprint
+and recorded decisions decide that independently, per
+[bugbot-configuration.md](references/bugbot-configuration.md) and
+[pull-request-template.md](references/pull-request-template.md).
 When a local multi-root `.code-workspace` would help (several related
 repositories are open and no workspace file ties them together yet, or an
 existing one is missing a confirmed sibling), propose creating or updating
@@ -318,8 +327,10 @@ fully reviewed or quality verified.
 
 ### 5. Obtain approval
 Present each relevant change set explicitly — **A. Context documents**,
-**B. Project rules and BUGBOT.md**, **C. Legacy migration cleanup** — without
-asking once per file. Respect authorization already given in this session
+**B. Project rules, BUGBOT.md, and pull-request template**, **C. Legacy
+migration cleanup** — without asking once per file. Inside set B, Bugbot, each
+project-rule policy, and the pull-request template remain independent
+approvals. Respect authorization already given in this session
 for the same change set and scope; do not ask again for it. A request for an
 explanation does not authorize any write. A request for a context refresh
 authorizes set A only, never set C, and does not by itself authorize set B.
@@ -432,7 +443,8 @@ independent review result (completed, skipped for a small factual update, or
 unavailable) and, when required independent review was unavailable, that
 quality assurance is partial, and the status of each relevant
 change set (A/B/C): applied, proposed and pending approval, declined, or not
-applicable. Return each declared `Related repository`'s resolution
+applicable. For set B, report Bugbot, each project-rule policy, and the
+pull-request template separately. Return each declared `Related repository`'s resolution
 (available with its matched local path, unavailable, ambiguous, or declared
 but malformed -- see `parse_related_repositories`'s `"invalid"` status in
 [context-retrieval.md](../../../references/context-retrieval.md)) and any
@@ -450,6 +462,7 @@ related-repository resolution procedure,
 [review-handoff.md](references/review-handoff.md),
 [bugbot-configuration.md](references/bugbot-configuration.md),
 [project-rules.md](references/project-rules.md),
+[pull-request-template.md](references/pull-request-template.md),
 [legacy-migration.md](references/legacy-migration.md),
 [repository preflight](../../../references/repository-preflight.md),
 [canvas review](../../../references/canvas-review.md),

@@ -18,6 +18,12 @@ module roots before writing. Write only under:
   (change set B): `<source-root>/.cursor/rules/<slug>.mdc`, one file per
   confirmed policy, never a copy of this plugin's own skills, agents, or
   shared references
+- after the per-repository approval in
+  [pull-request-template.md](pull-request-template.md) (change set B):
+  exactly one of `<source-root>/.github/pull_request_template.md`,
+  `<source-root>/.gitlab/merge_request_templates/Default.md`, or
+  `<source-root>/pull_request_template.md`, matching the verified Git host.
+  This is not permission to write other files under `.github/` or `.gitlab/`.
 
 Nothing here authorizes change set C (legacy migration cleanup); that
 remains its own approval per [legacy-migration.md](legacy-migration.md).

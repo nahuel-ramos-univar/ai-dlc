@@ -11,7 +11,7 @@
 #   SKIP_RELEASE=1                 no-op exit 0
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+ROOT="${RELEASE_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 cd "$ROOT"
 export PYTHONPATH="$ROOT/scripts/release${PYTHONPATH:+:$PYTHONPATH}"
 
@@ -81,13 +81,31 @@ publish_tag_and_release() {
   ensure_github_release "$version"
 }
 
-# Retry path: previous CI pushed the release commit/tag but GitHub Release failed.
+ensure_release_tag() {
+  local version="$1"
+  local tag="v${version}"
+  local head tagged
+  head="$(git rev-parse HEAD)"
+  if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+    tagged="$(git rev-list -n 1 "${tag}")"
+    if [[ "$tagged" != "$head" ]]; then
+      echo "ERROR: ${tag} points at ${tagged}, HEAD is ${head}; refusing to move the tag" >&2
+      exit 1
+    fi
+    return 0
+  fi
+  git tag -a "${tag}" -m "simplified-ai-dlc-lifecycle ${version}"
+}
+
+# Retry path: HEAD is already a release commit. Inspect tag, remote, and
+# GitHub Release state instead of assuming the previous run finished.
 last_subj="$(git log -1 --pretty=%s 2>/dev/null || true)"
 if [[ "$last_subj" =~ ^chore\(release\):\ ([0-9]+\.[0-9]+\.[0-9]+) ]]; then
   released="${BASH_REMATCH[1]}"
   echo "HEAD is chore(release): $released"
   if [[ "$MODE" == "ci" ]]; then
-    ensure_github_release "$released"
+    ensure_release_tag "$released"
+    publish_tag_and_release "$released"
   else
     echo "nothing to bump; GitHub Release retry only runs in --ci"
   fi

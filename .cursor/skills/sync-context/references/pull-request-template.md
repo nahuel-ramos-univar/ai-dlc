@@ -10,43 +10,57 @@ merge. Creating the file does not publish it to the team.
 ## Discover first
 
 Complete repository preflight before offering a template. From local Git,
-inspect configured remotes and classify the Git host when the URL is
-enough:
+inspect configured remotes. Classify the Git host from the remote hostname,
+not from a word in the repository path:
 
 - a `github.com` host is GitHub;
-- a `gitlab.com` host, or a remote whose path clearly names GitLab, is GitLab;
-- a `bitbucket.org` host is Bitbucket;
-- anything else, including a local-only repository with no remote, is unknown.
+- a `gitlab.com` host is GitLab;
+- a `bitbucket.org` host is Bitbucket Cloud;
+- anything else, including GitHub Enterprise Server, self-hosted GitLab,
+  Bitbucket Server or Data Center, and a local-only repository with no
+  remote, is unknown.
 
-Do not assume GitHub. Do not require a network round-trip only to create a
-locally approved file. Do not invent a host from a directory name.
+Do not treat `gitlab` or `bitbucket` in the path of a `github.com` remote as
+GitLab or Bitbucket. Do not assume GitHub. Do not require a network round-trip
+only to create a locally approved file. Do not invent a host from a directory
+name.
 
-Then look for an existing template or organizational convention already
-present in the authorized tree, including the usual locations for that host:
+Then look for an existing template already present in the authorized tree.
+GitHub filenames are not case sensitive and may use `.md` or `.txt`:
 
-- GitHub: `.github/pull_request_template.md`, `.github/PULL_REQUEST_TEMPLATE.md`,
-  `.github/PULL_REQUEST_TEMPLATE/`, `.github/pull_request_template/`,
-  `docs/pull_request_template.md`, `pull_request_template.md`;
+- GitHub: `pull_request_template.md` at the repository root,
+  `docs/pull_request_template.md`, `.github/pull_request_template.md`, and a
+  `PULL_REQUEST_TEMPLATE/` directory at the root, in `docs/`, or in `.github/`;
 - GitLab: `.gitlab/merge_request_templates/`;
-- Bitbucket: `pull_request_template.md` at the repository root.
+- Bitbucket Cloud: `.bitbucket/pull_request_template.md`.
+
+A root `pull_request_template.md` on a Bitbucket Cloud repository is not that
+host's template. Leave it untouched. It does not satisfy Cloud, and it does
+not block offering `.bitbucket/pull_request_template.md`. Do not invent a
+Bitbucket Server or Data Center file path.
 
 An organization-wide template that lives only on the host cannot be verified
 from a local checkout. Mention that possibility as unverified. Do not fetch
 it unless an authenticated host tool is already available and the user asked
 for that read.
 
-If any of those files or directories already exists, preserve the
-customization. Do not overwrite it. Do not add a second default that
-duplicates it. Report the existing path as unchanged. This is not a declined
-decision.
+If a supported template file or directory already exists for the identified
+host, preserve the customization. Do not overwrite it. Do not add a second
+default that duplicates it. Report the existing path as unchanged. This is
+not a declined decision.
+
+For an unknown host, treat `.github/`, `.gitlab/`, or
+`.bitbucket/pull_request_template.md` only as a hypothesis. Ask which host it
+is before proposing a write. Do not write a GitHub path by implication.
 
 ## Destination
 
-Propose a file only when no template exists yet and the host is identified:
+Propose a file only when no supported template exists yet for that host and
+the host is identified:
 
 - GitHub: `<source-root>/.github/pull_request_template.md`;
 - GitLab: `<source-root>/.gitlab/merge_request_templates/Default.md`;
-- Bitbucket: `<source-root>/pull_request_template.md`.
+- Bitbucket Cloud: `<source-root>/.bitbucket/pull_request_template.md`.
 
 If the host is unknown, record `deferred` and do not write a GitHub path by
 implication. If the host is identified but that host's path is not one of
@@ -56,7 +70,8 @@ Those three paths, after their own per-repository approval, are the only
 pull-request or merge-request template writes allowed by
 [repository preflight](../../../../references/repository-preflight.md) and
 [context-generation.md](context-generation.md). This is not permission to
-write other files under `.github/`, `.gitlab/`, or the repository root.
+write other files under `.github/`, `.gitlab/`, `.bitbucket/`, or a
+`PULL_REQUEST_TEMPLATE/` directory.
 
 ## Content
 
@@ -114,8 +129,8 @@ repository just to record a decision.
 ```
 
 Use `approved`, `declined`, or `deferred`. Record `Host` when it was
-identified (`github`, `gitlab`, `bitbucket`). Omit `Host` when the host was
-unknown. Record `Path` only after an `approved` write.
+identified (`github`, `gitlab`, `bitbucket` for Bitbucket Cloud). Omit `Host`
+when the host was unknown. Record `Path` only after an `approved` write.
 
 A declined or deferred result is a complete, valid outcome. It does not fail
 `scaffold-project` or `sync-context`.

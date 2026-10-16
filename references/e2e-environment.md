@@ -1,8 +1,10 @@
 # End-to-end environment
 
-Shared by `/create-e2e-tests` and `/validate-change` when an end-to-end check
-is in play. Discover the project's own setup. Do not assume a local
-application, a deployed environment, Docker, or a cloud account.
+Shared by `/create-e2e-tests`, `/validate-change` when an end-to-end check is
+in play, and `/implement-change` when existing end-to-end coverage is
+modified or executed — including baseline, regression, and a required spec
+update. Discover the project's own setup. Do not assume a local application,
+a deployed environment, Docker, or a cloud account.
 
 Do not print or persist secrets. Do not inspect a repository that is not in
 the authorized scope merely because it sits nearby.
@@ -21,7 +23,11 @@ Inside the authorized scope, inspect what is already there:
 - related components that the approved scope already includes.
 
 A configuration file does not prove that the environment works. It does not
-authorize remote execution.
+authorize remote execution. Inspect the test command and runner configuration
+to tell whether a check is end-to-end and which environment it targets. A
+locally invoked runner can still point at a remote Dev or QA URL. Apply the
+remote-execution rules below before that run. Reuse an authorization already
+given in this session.
 
 ## Environment classes
 
@@ -86,10 +92,15 @@ If the tests cannot run, name the concrete missing requirement and the
 checks that were still possible. Tests that use a simulated backend must be
 identified as such. They are not full integration.
 
-`/create-e2e-tests` authors coverage and prepares the approved setup. It may
-execute when scope and environment allow. `/validate-change` may run
-end-to-end tests that already exist and are relevant. It does not generate a
-new suite and does not start `/create-e2e-tests`.
+`/create-e2e-tests` owns new journeys, a first suite, and framework setup. It
+may execute when scope and environment allow. `/implement-change` may update
+an existing end-to-end spec when the authorized behavior requires it, even if
+those files were not named, and may run existing end-to-end coverage during
+baseline or regression. It does not add a new journey, a first suite, or a
+framework, and it does not start `/create-e2e-tests`. `/validate-change` may
+run end-to-end tests that already exist and are relevant. It does not generate
+a new suite and does not start `/create-e2e-tests`. Naming another skill does
+not execute it.
 
 ## Docker
 

@@ -71,10 +71,11 @@ or exactly one pull-request or merge-request template path named by
 [pull-request-template.md](../.cursor/skills/sync-context/references/pull-request-template.md)
 for the verified Git host: `<source-root>/.github/pull_request_template.md`
 when that host is GitHub, `<source-root>/.gitlab/merge_request_templates/Default.md`
-when that host is GitLab, or `<source-root>/pull_request_template.md` when
-that host is Bitbucket. Do not treat that exception as permission to write
-other files under `.github/`, `.gitlab/`, or the repository root. Do not
-write a GitHub path when the host is GitLab, Bitbucket, or unknown.
+when that host is GitLab, or `<source-root>/.bitbucket/pull_request_template.md`
+when that host is Bitbucket Cloud. Do not treat that exception as permission to write
+other files under `.github/`, `.gitlab/`, `.bitbucket/`, or the
+repository root. Do not write a GitHub path when the host is GitLab,
+Bitbucket, or unknown.
 Do not use those exceptions to create arbitrary Markdown in source trees, and
 never use them to copy this plugin's own skills, agents, or shared
 references into a consumer repository.

@@ -22,8 +22,9 @@ module roots before writing. Write only under:
   [pull-request-template.md](pull-request-template.md) (change set B):
   exactly one of `<source-root>/.github/pull_request_template.md`,
   `<source-root>/.gitlab/merge_request_templates/Default.md`, or
-  `<source-root>/pull_request_template.md`, matching the verified Git host.
-  This is not permission to write other files under `.github/` or `.gitlab/`.
+  `<source-root>/.bitbucket/pull_request_template.md`, matching the verified
+  Git host. This is not permission to write other files under `.github/`,
+  `.gitlab/`, or `.bitbucket/`.
 
 Nothing here authorizes change set C (legacy migration cleanup); that
 remains its own approval per [legacy-migration.md](legacy-migration.md).

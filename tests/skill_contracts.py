@@ -262,12 +262,26 @@ def test_context_generation_contract_has_required_examples() -> None:
     assert "Do not assume GitHub" in pr_template
     assert ".github/pull_request_template.md" in pr_template
     assert ".gitlab/merge_request_templates/Default.md" in pr_template
+    assert ".bitbucket/pull_request_template.md" in pr_template
+    assert "docs/PULL_REQUEST_TEMPLATE" in pr_template or "docs/`" in pr_template
+    assert "PULL_REQUEST_TEMPLATE/" in pr_template
+    assert "from the remote hostname" in pr_template
+    assert "path clearly names GitLab" not in pr_template
     assert "does not authorize commit, push" in pr_template
     assert "## Pull request template decisions" in pr_template
     assert "is ordinary source" in pr_template
     assert "EXCLUDED_PARTS" in pr_template
     assert "GENERATED_FILENAMES" in pr_template
     assert "pull-request-template.md" in generation
+    assert ".bitbucket/pull_request_template.md" in preflight
+    skill = (sync_dir / "SKILL.md").read_text(encoding="utf-8")
+    skill_flat = " ".join(skill.split())
+    assert "Conditional set B and C contracts" in skill
+    assert "Load set B and C contracts only per" in skill
+    assert "before deciding, proposing, or writing" in skill_flat
+    assert "first-time offer is pending" in skill_flat
+    assert "never suppresses another" in skill_flat
+    assert "stable policy ID" in skill_flat
 
 
 def test_context_artifact_contract_and_skill_budgets() -> None:
@@ -992,6 +1006,14 @@ def test_implement_and_validate_change_contract_has_required_language() -> None:
     assert "Do not ask for cloud credentials" in verification
     assert "Do not create a verification-plan file" in verification
     assert "Do not call a failure pre-existing without evidence" in verification
+    assert "Do not limit the check to failures a Jira field listed verbatim" in verification
+    assert "even if the user did not name those files" in verification
+    assert "Do not claim the change broke nothing outside that scope" in verification
+    assert "even if the user did not name those files" in implement
+    assert "Do not add a new journey, a first suite, or a framework" in implement
+    assert "before modifying or executing" in implement
+    assert "including this baseline" in implement
+    assert "only when an existing end-to-end spec must change" not in implement
 
     assert "Approach review mode" in reviewer
     assert "Scaffolding review mode" in reviewer
@@ -1037,6 +1059,9 @@ def test_implement_and_validate_change_contract_has_required_language() -> None:
         "Create-e2e-tests does not force browser tests on a service without UI",
         "Create-e2e-tests remote execution needs an authorized target",
         "Validate-change runs existing E2E but does not generate a suite",
+        "Implement-change updates existing E2E without named files",
+        "Implement-change hands off new E2E authorship",
+        "Implement-change loads the E2E environment contract before running existing coverage",
     ):
         assert scenario in manual, scenario
 
@@ -1075,6 +1100,10 @@ def test_create_e2e_tests_contract_has_required_language() -> None:
     assert "Do not install Docker" in environment
     assert "does not start `/create-e2e-tests`" in environment
     assert "create-e2e-tests` is never started this way" in composition
+    assert "This skill owns new journeys" in skill
+    assert "may update an existing end-to-end spec" in environment
+    assert "locally invoked runner" in environment
+    assert "only when an existing end-to-end spec must change" not in environment
 
 
 def test_canvas_review_is_the_closing_view() -> None:
@@ -1383,6 +1412,11 @@ def test_scaffold_project_contract_has_required_language() -> None:
         "Existing pull-request template is preserved",
         "Unknown Git host defers a pull-request template",
         "GitLab remote does not write a GitHub template path",
+        "Bitbucket Cloud offers `.bitbucket/pull_request_template.md`",
+        "GitHub path containing gitlab is not GitLab",
+        "Bitbucket Server host stays unknown",
+        "Sync-context still detects set B without always loading those contracts",
+        "Sync-context declined policy does not silence another policy in the same repository",
         "Declined pull-request template is not re-asked in the same run",
         "Sync-context can offer a pull-request template when source is unchanged",
     ):

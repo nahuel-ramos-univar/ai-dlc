@@ -50,11 +50,19 @@ prove something that is verifiable on this host.
 
 ## External failures
 
-Check the expected behavior for relevant client or adapter failures that the
-approved criteria already name. Do not require catching every exception.
-Do not invent a new error contract. If the expected failure behavior is
-undefined and the public contract would change, record the pending decision
-instead of guessing.
+When the change touches a client, adapter, or request contract, check the
+expected failure behavior already specified by:
+
+- the approved acceptance criteria;
+- existing public contracts, for example an OpenAPI document, a schema, or a
+  documented error response;
+- relevant failures of the modified client or adapter, for example a timeout,
+  refused authentication, or an error shape callers already depend on.
+
+Do not require catching every exception. Do not invent a new error contract.
+Do not limit the check to failures a Jira field listed verbatim. If the
+expected outcome is undefined and a public contract would change, record the
+pending decision instead of guessing.
 
 ## Dependencies and setup docs
 
@@ -66,9 +74,17 @@ extra generic documentation when an existing setup place already exists.
 ## Development tests and a separate QA item
 
 A separate QA item does not remove this development work's duty to add the
-unit and integration tests the change needs. Writing end-to-end coverage is
-`/create-e2e-tests`. Running an end-to-end test that already exists may be
-part of `/validate-change`. That skill does not generate a new suite.
+unit and integration tests the change needs.
+
+`/implement-change` may update an existing end-to-end spec when the authorized
+behavior requires it, even if the user did not name those files. Do not add a
+new journey, a first suite, or a framework. Do not weaken assertions. New
+end-to-end authorship is a `/create-e2e-tests` handoff. Naming that skill does
+not execute it.
+
+Running an end-to-end test that already exists may be part of
+`/validate-change`. That skill does not generate a new suite and does not
+start `/create-e2e-tests`.
 
 ## Baseline before edits
 
@@ -113,3 +129,6 @@ The closing report distinguishes:
 - checks that failed or did not run;
 - independent review or Bugbot status, and the code state reviewed;
 - limitations that affect delivery.
+
+Name the regression that actually ran. Do not claim the change broke nothing
+outside that scope.

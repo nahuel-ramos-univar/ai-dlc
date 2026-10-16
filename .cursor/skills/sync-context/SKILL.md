@@ -26,8 +26,9 @@ context" or "stop using the coordinator repo") is still this same pipeline,
 not a separate skill: it is set A (new distributed context per repository)
 and set C (coordinator retirement) running together. This never
 authorizes deleting a real checkout, changing a remote repository, or
-migrating the currently open engagement on its own — see
-[legacy-migration.md](references/legacy-migration.md).
+migrating the currently open engagement on its own. Load
+[legacy-migration.md](references/legacy-migration.md) before deciding,
+proposing, or writing that migration.
 
 A confirmed legacy AI-DLC installation starts that same proposal without
 waiting for those phrases. Call `detect_legacy_aidlc_installation` and
@@ -37,13 +38,33 @@ until bounded inspection confirms provenance, rules the match out, or
 reports `"inspection-unavailable"`. Marker absence alone is not a verified
 absence and does not authorize deletion. A persisted
 `Placement: adopted-coordinator` is not the user's architectural choice.
-See [legacy-migration.md](references/legacy-migration.md),
-"Known legacy AI-DLC installation".
+When detection is not a clean absence, load
+[legacy-migration.md](references/legacy-migration.md) and follow
+**Known legacy AI-DLC installation** before classifying or proposing.
 
 ## Evidence contract
 Use local Git for the repository revision, branch, tracked changes, and direct file history. Run repository preflight before choosing a repository scope. When a Jira key or URL is supplied, follow the Jira integration contract. Never treat unavailable Jira data as evidence or silently substitute a guessed issue.
 
 Distinguish three evidence levels and never conflate them: **inventoried** (a path was found through Git or filesystem listing, including inclusion in a fingerprint), **inspected** (its relevant content was actually read), and **verified** (a specific assertion was checked against sufficient evidence). Listing or fingerprinting every tracked file is not the same as examining, analyzing, or verifying each one; reading a manifest does not verify every component it lists, and reading part of a file does not verify the whole file. State scope honestly: name the areas actually inspected and their limits instead of an exhaustive file count.
+
+## Conditional set B and C contracts
+
+Stage 1 already reads the artifact-home configuration. From that file, the
+remotes, and the tree, detect whether Bugbot, a project rule, a pull-request
+template, or legacy migration might still be in play:
+
+- persisted `## Bugbot decisions`, `## Project rule decisions`, `## Pull request template decisions`, and any legacy-migration records;
+- missing persisted decision for Bugbot, a project-rule policy, or a pull-request template (a first-time offer is pending, not "nothing actionable");
+- `.cursor/BUGBOT.md` and `.cursor/rules/*.mdc`;
+- remote hostnames (`github.com`, `gitlab.com`, `bitbucket.org`, or unknown);
+- existing host-typical templates: GitHub `pull_request_template.md` at the root, in `docs/`, or in `.github/`, plus a `PULL_REQUEST_TEMPLATE/` directory in those same places; GitLab `.gitlab/merge_request_templates/`; Bitbucket Cloud `.bitbucket/pull_request_template.md`.
+
+That inspection is enough to know which contract to load. It does not replace the contract. Load [bugbot-configuration.md](references/bugbot-configuration.md), [project-rules.md](references/project-rules.md), [pull-request-template.md](references/pull-request-template.md), or [legacy-migration.md](references/legacy-migration.md) before deciding, proposing, or writing that capability. Do not skip an offer only because the reference was not loaded yet. Load the matching contract before concluding set B has no work.
+
+A persisted `declined` applies only to that capability and that decision's identity. Report it; do not re-ask unless the user asks to reconsider; load the contract if reconsideration or a write is about to happen. Bugbot and the pull-request template are each keyed by stable repository ID and are independent of each other. A project-rule decision is keyed by (stable repository ID, stable policy ID); declining one policy never suppresses another in the same repository. A persisted `deferred` may be reconsidered on a later run; load the contract before changing it.
+
+Do not load those four files on a refresh that has nothing actionable in
+sets B or C after that detection.
 
 ## Workflow
 
@@ -151,16 +172,14 @@ when the fingerprint is `unchanged` — pass it to `context_sync_outcome` as
 `Related repository` entry is the same shape of input, passed as
 `membership_pending`; adding or correcting membership is also change set A,
 even when nothing in the source fingerprint moved. This does not by itself
-end the run: still check whether change set B (a Bugbot, project-rule, or
-pull-request template proposal,
-[bugbot-configuration.md](references/bugbot-configuration.md),
-[project-rules.md](references/project-rules.md),
-[pull-request-template.md](references/pull-request-template.md)) or change set C (legacy
-migration cleanup, [legacy-migration.md](references/legacy-migration.md))
-has pending or newly relevant work. `context_sync_outcome` in
-`scripts/context_tools.py` combines all of this into the reachable outcome.
-Pass a pending pull-request template offer as `pr_template_pending` so an
-unchanged source fingerprint cannot hide it.
+end the run: still detect whether change set B (a Bugbot, project-rule, or
+pull-request template proposal) or change set C (legacy migration cleanup)
+has pending or newly relevant work, using the discovery triggers in
+[Conditional set B and C contracts](#conditional-set-b-and-c-contracts).
+Load the matching contract before deciding that work is actionable or not.
+`context_sync_outcome` in `scripts/context_tools.py` combines all of this
+into the reachable outcome. Pass a pending pull-request template offer as
+`pr_template_pending` so an unchanged source fingerprint cannot hide it.
 A full no-op — no write, no new proposal, no approval question — requires
 that no project-reference update is pending and that sets B and C also have
 nothing actionable, not only that the source fingerprint is unchanged.
@@ -250,17 +269,13 @@ changes), files to create/modify/move/delete, unresolved questions, and
 cross-module impact. Keep candidate content outside canonical output paths
 until it is approved; see [context-generation.md](references/context-generation.md).
 
-Separately within this same stage, evaluate whether a Bugbot proposal
-(change set B, [bugbot-configuration.md](references/bugbot-configuration.md)),
-a scoped project-policy rule (change set B,
-[project-rules.md](references/project-rules.md)), or an optional pull-request
-template (change set B,
-[pull-request-template.md](references/pull-request-template.md)) is justified
-by the evidence just gathered, and whether legacy migration items are present
-(change set C, [legacy-migration.md](references/legacy-migration.md)). Each
-set is prepared independently; none is bundled into set A's content. A
-pull-request template is its own ask inside set B: approving Bugbot or a
-project rule does not authorize it.
+Separately within this same stage, if detection says set B or C may be
+actionable, load the matching contract and then evaluate whether a Bugbot
+proposal, a scoped project-policy rule, or an optional pull-request template
+(change set B) is justified, and whether legacy migration items are present
+(change set C). Each set is prepared independently; none is bundled into set
+A's content. A pull-request template is its own ask inside set B: approving
+Bugbot or a project rule does not authorize it.
 
 Still within set A, propose any product-membership update that the evidence
 or the user's own words support: a `Related repository` entry for a sibling
@@ -272,9 +287,8 @@ a candidate to ask about, not a confirmed sibling. Preserve every existing,
 still-valid membership entry unless the user is explicitly correcting it. A
 membership-only change never by itself reopens or rewrites an existing
 `BUGBOT.md`, project rule, or pull-request template; set B's own fingerprint
-and recorded decisions decide that independently, per
-[bugbot-configuration.md](references/bugbot-configuration.md) and
-[pull-request-template.md](references/pull-request-template.md).
+and recorded decisions decide that independently. Load the matching set B
+contract before changing a persisted B decision.
 When a local multi-root `.code-workspace` would help (several related
 repositories are open and no workspace file ties them together yet, or an
 existing one is missing a confirmed sibling), propose creating or updating
@@ -452,24 +466,24 @@ but malformed -- see `parse_related_repositories`'s `"invalid"` status in
 the per-repository migration outcome and each identified coordinator's
 retirement disposition.
 
-Read [artifact-home.md](references/artifact-home.md),
+Always read [artifact-home.md](references/artifact-home.md),
 [context retrieval](../../../references/context-retrieval.md) for the
 related-repository resolution procedure,
-[context-generation.md](references/context-generation.md),
 [incremental-refresh.md](references/incremental-refresh.md),
-[context-templates.md](references/context-templates.md),
-[validation.md](references/validation.md),
-[review-handoff.md](references/review-handoff.md),
-[bugbot-configuration.md](references/bugbot-configuration.md),
-[project-rules.md](references/project-rules.md),
-[pull-request-template.md](references/pull-request-template.md),
-[legacy-migration.md](references/legacy-migration.md),
 [repository preflight](../../../references/repository-preflight.md),
-[canvas review](../../../references/canvas-review.md),
-[skill composition](../../../references/skill-composition.md), and
-[Jira integration](../../../references/jira-integration.md) for the required
-evidence shape.
+[canvas review](../../../references/canvas-review.md), and
+[skill composition](../../../references/skill-composition.md).
+Read [Jira integration](../../../references/jira-integration.md) when a Jira
+key or URL is supplied.
 
+When Stage 2 continues into a proposal or write, also read
+[context-generation.md](references/context-generation.md),
+[context-templates.md](references/context-templates.md),
+[validation.md](references/validation.md), and
+[review-handoff.md](references/review-handoff.md).
+
+Load set B and C contracts only per
+[Conditional set B and C contracts](#conditional-set-b-and-c-contracts).
 Load [architecture-discovery.md](references/architecture-discovery.md) and
 [context-quality.md](references/context-quality.md) only for the tiers in
 Stage 2/3 that use them (initial/full sync, or a material architecture

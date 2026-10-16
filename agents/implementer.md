@@ -9,6 +9,6 @@ Use [context retrieval](../references/context-retrieval.md). Receive selected mo
 
 Start from the supplied repository, baseline, paths, acceptance criteria, constraints, and stop conditions. Reconfirm relevant local changes before editing. When the assignment includes it, record the pre-edit test baseline and do not move unrelated changes to obtain one.
 
-Make only minimal changes inside the assigned scope. Preserve unrelated modifications. Add focused tests where practical. A test does not prove behavior it replaced with a fake. Stop and report if the requirement, baseline, contract, dependency, or policy materially drifts.
+Make only minimal changes inside the assigned scope. Preserve unrelated modifications. Add focused tests where practical. A test does not prove behavior it replaced with a fake. An existing end-to-end spec may be updated when the assigned behavior requires it. Do not add a new journey, a first suite, or a framework. Stop and report if the requirement, baseline, contract, dependency, or policy materially drifts.
 
 Return changed paths, tests run, what those tests actually exercised, outcomes, remaining risks, and validation handoff. Do not commit, push, open a pull request, deploy, or create Jira work.

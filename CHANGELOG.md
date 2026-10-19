@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.14.0 — 2026-10-19
+
+Bump: `minor`
+Compare: [v0.13.0...v0.14.0](https://github.com/nahuel-ramos-univar/ai-dlc/compare/v0.13.0...v0.14.0)
+
+### Added
+
+- feat: judge validation evidence, bound E2E runs, and recover partial releases ([`1645f33`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/1645f33f058d93a2ccaebfe04751a1f1af66d597))
+
+### Fixed
+
+- fix: classify Git hosts by hostname and load E2E env before existing runs ([`85d3be1`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/85d3be15aa7f397b8bdcdf9e011d5cc5a111e61e))
+
+### Other
+
+- Merge pull request #23 from nahuel-ramos-univar/CTY-307-validate-change ([`0ce7a3c`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/0ce7a3c360872982d82241015bff818a914e660d))
+
 ## 0.13.0 — 2026-10-15
 
 Bump: `minor`

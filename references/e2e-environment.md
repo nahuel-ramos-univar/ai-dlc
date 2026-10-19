@@ -97,10 +97,10 @@ may execute when scope and environment allow. `/implement-change` may update
 an existing end-to-end spec when the authorized behavior requires it, even if
 those files were not named, and may run existing end-to-end coverage during
 baseline or regression. It does not add a new journey, a first suite, or a
-framework, and it does not start `/create-e2e-tests`. `/validate-change` may
-run end-to-end tests that already exist and are relevant. It does not generate
-a new suite and does not start `/create-e2e-tests`. Naming another skill does
-not execute it.
+framework, and it does not start `/create-e2e-tests`. The independent
+validator in `/validate-change` may run end-to-end tests that already exist
+and are relevant. It does not generate a new suite and does not start
+`/create-e2e-tests`. Naming another skill does not execute it.
 
 ## Docker
 

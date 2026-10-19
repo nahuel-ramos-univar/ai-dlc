@@ -116,19 +116,31 @@ add skips, weaken assertions, or update snapshots only to get a green
 result. Change existing expectations only when the behavior change is
 approved, and say why.
 
-`validate-change` assesses whether the evidence is sufficient. It does not
-only rerun the author's suite.
+## Evidence record
+
+For each check, record the inspected revision and uncommitted state, the
+command or inspection, the result, and the criterion it covers. A command
+that did not run is unavailable, not passed. Name covered scope and
+limitations.
 
 ## Close-out
 
-The closing report distinguishes:
+Do not fold these dimensions into a single done status. Name the regression
+that actually ran. Do not claim the change broke nothing outside that
+scope.
 
-- new behavior verified, and what the checks actually exercised;
-- regression executed, and its scope;
-- pre-existing failures;
-- checks that failed or did not run;
-- independent review or Bugbot status, and the code state reviewed;
-- limitations that affect delivery.
+`/implement-change` reports implementation; tests, regression, and
+environment, and what those checks actually exercised; and blockers this
+skill owns. It does not own independent validation or Bugbot. Do not invent
+those statuses. Do not start `/validate-change` or Bugbot unless the user
+authorized that successor workflow. Independent validation pending does not
+apply to an implementation-only run; give a `/validate-change` handoff
+instead. An implementation-only close-out is not delivery-ready validation.
 
-Name the regression that actually ran. Do not claim the change broke nothing
-outside that scope.
+`/validate-change` reports those same implementation and test facts, then
+independent validation and criteria (verified, failed, pending, or
+not-verifiable); Bugbot status and the code state reviewed; and blockers
+and delivery readiness. The independent `validator` assesses whether the
+evidence is sufficient. The implementer's summary and suite are claims to
+verify, not that assessment. Required independent validation still pending
+means that validation flow is not complete.

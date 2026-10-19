@@ -113,7 +113,7 @@ The skill then:
 1. Checks which folder is open, which Git roots are really present, and which related repositories are only named.
 2. Reads repository boundaries, meaningful modules, relevant submodules, existing configuration, any context already written, and legacy AI-DLC markers when they are present.
 3. Separates a known fact, an assumption, a repository that is not available, and a decision that is still pending.
-4. Shows a proposal before it writes. The usual groups are context documents, project rules and `BUGBOT.md`, and legacy cleanup. A context refresh approves context documents only. Rules, `BUGBOT.md`, and cleanup stay pending until you approve those groups.
+4. Shows a proposal before it writes. The usual groups are context documents; project rules, `BUGBOT.md`, and an optional pull-request template; and legacy cleanup. A context refresh approves context documents only. Rules, `BUGBOT.md`, a pull-request template, and cleanup stay pending until you approve those groups. The template offer follows the Git host actually found; it does not assume GitHub.
 5. Writes only the approved group.
 
 After approval, look at:
@@ -126,7 +126,7 @@ After approval, look at:
 | `aidlc-docs/integration-map.md` | Written only after a verified dependency between repositories. |
 | `.ai-dlc-config.md` | Placement, repository identity, project references, and recorded Bugbot decisions. |
 
-A project rule under `.cursor/rules/<slug>.mdc` and a `.cursor/BUGBOT.md` file are separate proposals. They are not created on every sync.
+A project rule under `.cursor/rules/<slug>.mdc`, a `.cursor/BUGBOT.md` file, and an optional pull-request template are separate proposals. They are not created on every sync. Writing a template does not open a pull request.
 
 When the host can open a Canvas, the proposal and the written result can be shown there. The Canvas is a view of the same material, not a second copy. If this host cannot open one, the same sections appear in chat and the reply says Canvas is unavailable. A run that finds nothing new stays a short chat reply. See [canvas review](references/canvas-review.md).
 
@@ -176,7 +176,7 @@ If Node, Terraform, or another tool the scaffold expected is not installed, the 
 
 Initial context is written from the files this run actually created. A sibling that was not created is not described as done. This run completes that initial repository index and module context itself; you do not need to run `/sync-context` right afterward just to get it. Run `/sync-context` later, when source changes drift from the written context, or to onboard an existing project this skill did not create.
 
-The same run also looks at whether a `.cursor/BUGBOT.md` review file or a project rule is worth proposing, using evidence from the approved foundation itself, for example a declared API contract or an infrastructure boundary. It never freezes a placeholder handler's current output as a rule, and it never writes an empty or generic file just to produce one. When there is nothing concrete yet to ground a rule in, the result says so and records that as deferred, not declined, so a later `/sync-context` run can reconsider it once real contracts or behavior exist. Writing `BUGBOT.md` only records review guidance for a human or an already-configured Bugbot integration to read later; it does not install, enable, or run Bugbot.
+The same run also looks at whether a `.cursor/BUGBOT.md` review file, a project rule, or an optional pull-request template is worth proposing. Bugbot and project-rule proposals use evidence from the approved foundation itself, for example a declared API contract or an infrastructure boundary. A pull-request template uses the Git host found on the local remotes and any template already in the tree. It does not assume GitHub, and it does not overwrite an existing template. It never freezes a placeholder handler's current output as a rule, and it never writes an empty or generic file just to produce one. When there is nothing concrete yet to ground a rule in, the result says so and records that as deferred, not declined, so a later `/sync-context` run can reconsider it once real contracts or behavior exist. Writing `BUGBOT.md` only records review guidance for a human or an already-configured Bugbot integration to read later; it does not install, enable, or run Bugbot.
 
 When the change is more than a trivial file layout, the skill asks `implementation-reviewer` to check that the generated foundation runs. A trivial structural or documentation-only scaffold may skip that scaffolding review, and it must say why. It still asks `context-reviewer` to check the generated repository index and module context for accuracy, including on a trivial scaffold, because that pass covers initial context generation. The reviewer reads the documents this run generated or changed, and may also read dependencies, consumers, and relevant configuration inside the authorized scope. It does not rescan an unrelated repository. If the host cannot delegate a required review, the result says independent review was not performed and leaves it pending. The scaffold chat does not label its own check as either of those reviews. Bugbot review guidance and any project-rule proposal come after both reviews. After every approved write, including a review fix or a project-rule file, the run refreshes the affected context once — storing `content_fingerprint` of the declared scope, not `destination_freshness` — and reruns the mechanical check before reporting it as current.
 
@@ -188,9 +188,9 @@ When the change is more than a trivial file layout, the skill asks `implementati
 | `/scaffold-project` | Developer starting a repository or component | A new foundation is needed | Purpose, users, scope, and the destination folder | An approved minimal foundation, its own initial context, and an initial Bugbot or project-rule decision for what was created. Run `/sync-context` later, not immediately after, when context should be refreshed |
 | `/plan-work` | Product owner | The business work is not in Jira yet | The outcome in plain language, and a Jira target when you want it published | A proposed Epic, Story, Task, or backlog update. Jira changes wait for an approved change set |
 | `/refine-story` | Developer | A Jira item is ready for a technical plan | The issue key, for example `PROJ-123` | A technical proposal that keeps the business acceptance criteria |
-| `/implement-change` | Developer | The technical proposal is approved | The issue key and the repository to change | The code or infrastructure change in the approved scope |
-| `/validate-change` | Developer | The change is ready to check | The issue key and how to run the relevant tests | Evidence against the acceptance criteria, including tests that already exist |
-| `/create-e2e-tests` | Developer or QA | A journey needs browser coverage | The issue key or the journey | End-to-end tests. This command is optional and is not run by `/validate-change` |
+| `/implement-change` | Developer | The technical proposal is approved | The issue key and the repository to change | The code or infrastructure change in the approved scope, with a recorded test baseline and what the new checks actually exercise. Existing end-to-end tests may be updated when the authorized behavior requires it. New journeys use `/create-e2e-tests` |
+| `/validate-change` | Developer | The change is ready to check | The issue key and how to run the relevant tests | Evidence against the acceptance criteria, including whether passing tests actually covered the change |
+| `/create-e2e-tests` | Developer or QA | A journey needs end-to-end coverage | The issue key or the journey | End-to-end tests and setup. This command is optional and is not started by `/implement-change` or `/validate-change`. It does not assume a local app, a deployed environment, or Docker |
 
 A normal sequence is context or foundation, then business planning, then technical refinement, then implementation, then validation. You can start later in that sequence when the earlier artifact already exists. Naming a later command does not run it, except when you authorize `/implement-change` to continue into `/validate-change` in the same request. See [skill composition](references/skill-composition.md).
 
@@ -202,6 +202,7 @@ These files do different jobs, and the ones you approve can live in Git:
 - the product README explains how to run that product
 - a project rule is a durable instruction for the agent
 - `BUGBOT.md` is repository review guidance. Cursor's review tooling reads it when invoked -- a `/review-bugbot` run you start yourself, Bugbot's automatic pull request review, and Agent Review when it is configured to run after a commit or task. Writing the file does not install, enable, or run any of them; that is a separate Cursor configuration step this plugin does not perform
+- a pull-request template is an optional host-specific file. Writing it does not commit, push, open a pull request, or merge
 
 After validation says the change is ready, you commit, push, open the pull request, and merge with your normal Git tools. This plugin does not do those steps.
 

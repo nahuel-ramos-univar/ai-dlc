@@ -79,8 +79,8 @@ evidence is not a successful no-op.
   no approval. The closing result is still shown. This covers only `content_fingerprint`'s source
   inputs; it says nothing about a pending `## Project references` update,
   which is also part of change set A but never enters that fingerprint
-  (see below). Still evaluate pending work in set B (Bugbot and project
-  rules) and set C (legacy cleanup). Respect a declined decision, and do
+  (see below). Still evaluate pending work in set B (Bugbot, project
+  rules, and a pull-request template) and set C (legacy cleanup). Respect a declined decision, and do
   not re-prompt an unchanged deferred proposal in the same run. Existing
   approval covers only its recorded scope and content.
 - `"changed"` — set A needs a proposal.
@@ -92,19 +92,24 @@ only hashes source paths, and generated configuration never enters that
 hash on purpose, so refreshing context never invalidates itself. Treating an
 `"unchanged"` source fingerprint as "all of set A needs no update" would
 make that pending configuration change unreachable. Pass it explicitly as
-`project_reference_pending` to `context_sync_outcome` instead.
+`project_reference_pending` to `context_sync_outcome` instead. A confirmed
+membership change (`Product` or a `Related repository` entry) is the same
+shape: pass it as `membership_pending`. A pending pull-request template
+offer is set B work: pass it as `pr_template_pending`. Do not fold that
+flag into `bugbot_pending` or `project_rule_pending`.
 
 `context_sync_outcome(context_change, bugbot_pending, project_rule_pending,
-legacy_cleanup_pending, project_reference_pending=False)` returns
+legacy_cleanup_pending, project_reference_pending=False,
+membership_pending=False, pr_template_pending=False)` returns
 `"no_relevant_changes"` only when the source fingerprint is `"unchanged"`,
-no project-reference update is pending, and sets B and C have no actionable
+no project-reference or membership update is pending, and sets B and C have no actionable
 work. That is the only full no-op: no writes and no new approval question.
 It returns `"context_current_migration_pending"` when the source is
-unchanged and nothing is pending for `## Project references`, but B or C
+unchanged and nothing is pending for `## Project references` or membership, but B or C
 still has work. It returns `"relevant_updates_found"` for every other
 combination — including a pending project-reference update on its own, with
 an otherwise-unchanged source fingerprint. An unchanged source fingerprint
-must not end the run while a project-reference update, B, or C still has
+must not end the run while a project-reference update, membership update, B, or C still has
 work.
 
 ## Submodules and unavailable related repositories

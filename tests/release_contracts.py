@@ -141,12 +141,175 @@ def test_conventional_commit_validator() -> None:
         assert merge.returncode == 0
 
 
+def git_out(repo: Path, *args: str) -> str:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=repo,
+        check=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    return result.stdout.strip()
+
+
+def write_gh_stub(bin_dir: Path, log: Path, existing: Path) -> None:
+    bin_dir.mkdir(parents=True, exist_ok=True)
+    stub = bin_dir / "gh"
+    stub.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        f"printf '%s\\n' \"$*\" >> {log.as_posix()!r}\n"
+        "if [[ \"${1:-}\" == release && \"${2:-}\" == view ]]; then\n"
+        f"  [[ -f {existing.as_posix()!r} ]] && exit 0\n"
+        "  exit 1\n"
+        "fi\n"
+        "if [[ \"${1:-}\" == release && \"${2:-}\" == create ]]; then\n"
+        f"  mkdir -p {existing.parent.as_posix()!r}\n"
+        f"  printf created > {existing.as_posix()!r}\n"
+        "  exit 0\n"
+        "fi\n"
+        "exit 1\n",
+        encoding="utf-8",
+    )
+    stub.chmod(0o755)
+
+
+def release_fixture(temporary: str, version: str = "1.2.3") -> tuple[Path, Path, Path, Path]:
+    root = Path(temporary)
+    repo = root / "repo"
+    origin = root / "origin.git"
+    repo.mkdir()
+    origin.mkdir()
+    git(origin, "init", "-q", "--bare")
+    git(repo, "init", "-q")
+    git(repo, "config", "user.name", "Release Test")
+    git(repo, "config", "user.email", "release-test@example.invalid")
+    git(repo, "checkout", "-q", "-b", "main")
+    (repo / ".cursor-plugin").mkdir()
+    (repo / ".cursor-plugin" / "plugin.json").write_text(
+        json.dumps({"name": "simplified-ai-dlc-lifecycle", "version": version}) + "\n",
+        encoding="utf-8",
+    )
+    (repo / "CHANGELOG.md").write_text(
+        f"# Changelog\n\n## {version} — 2026-01-01\n\nRelease notes.\n",
+        encoding="utf-8",
+    )
+    git(repo, "add", ".")
+    git(repo, "commit", "-qm", f"chore(release): {version} [skip release]")
+    git(repo, "remote", "add", "origin", str(origin))
+    git(repo, "push", "-q", "origin", "HEAD:main")
+    bin_dir = root / "bin"
+    log = root / "gh.log"
+    existing = root / "gh-release-exists"
+    write_gh_stub(bin_dir, log, existing)
+    return repo, origin, log, existing
+
+
+def run_release_ci(repo: Path, bin_dir: Path) -> subprocess.CompletedProcess[str]:
+    env = {
+        **os.environ,
+        "RELEASE_ROOT": str(repo),
+        "PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}",
+        "SKIP_RELEASE": "0",
+        "GIT_CONFIG_COUNT": "0",
+    }
+    return subprocess.run(
+        ["bash", str(ROOT / "scripts" / "release" / "release.sh"), "--ci"],
+        cwd=repo,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+    )
+
+
+def remote_has_tag(origin: Path, tag: str) -> bool:
+    listed = git_out(origin, "tag", "-l", tag)
+    return listed == tag
+
+
+def test_release_ci_recovers_missing_tag_after_pushed_release_commit() -> None:
+    """Release commit is on origin; the tag was never created or pushed."""
+    with tempfile.TemporaryDirectory() as temporary:
+        repo, origin, log, existing = release_fixture(temporary)
+        assert not (repo / ".git" / "refs" / "tags" / "v1.2.3").exists()
+        result = run_release_ci(repo, Path(temporary) / "bin")
+        assert result.returncode == 0, result.stderr
+        assert git_out(repo, "rev-list", "-n", "1", "v1.2.3") == git_out(
+            repo, "rev-parse", "HEAD"
+        )
+        assert remote_has_tag(origin, "v1.2.3")
+        assert existing.is_file()
+        assert "release create" in log.read_text(encoding="utf-8")
+
+
+def test_release_ci_pushes_local_tag_missing_from_origin() -> None:
+    with tempfile.TemporaryDirectory() as temporary:
+        repo, origin, log, existing = release_fixture(temporary)
+        git(repo, "tag", "-a", "v1.2.3", "-m", "simplified-ai-dlc-lifecycle 1.2.3")
+        assert not remote_has_tag(origin, "v1.2.3")
+        result = run_release_ci(repo, Path(temporary) / "bin")
+        assert result.returncode == 0, result.stderr
+        assert remote_has_tag(origin, "v1.2.3")
+        assert existing.is_file()
+
+
+def test_release_ci_creates_github_release_when_remote_tag_exists() -> None:
+    with tempfile.TemporaryDirectory() as temporary:
+        repo, origin, log, existing = release_fixture(temporary)
+        git(repo, "tag", "-a", "v1.2.3", "-m", "simplified-ai-dlc-lifecycle 1.2.3")
+        git(repo, "push", "-q", "origin", "v1.2.3")
+        result = run_release_ci(repo, Path(temporary) / "bin")
+        assert result.returncode == 0, result.stderr
+        assert existing.is_file()
+        assert "release create" in log.read_text(encoding="utf-8")
+
+
+def test_release_ci_is_idempotent_when_github_release_exists() -> None:
+    with tempfile.TemporaryDirectory() as temporary:
+        repo, origin, log, existing = release_fixture(temporary)
+        git(repo, "tag", "-a", "v1.2.3", "-m", "simplified-ai-dlc-lifecycle 1.2.3")
+        git(repo, "push", "-q", "origin", "v1.2.3")
+        existing.write_text("created\n", encoding="utf-8")
+        first = run_release_ci(repo, Path(temporary) / "bin")
+        second = run_release_ci(repo, Path(temporary) / "bin")
+        assert first.returncode == 0, first.stderr
+        assert second.returncode == 0, second.stderr
+        assert git_out(repo, "rev-list", "--count", "HEAD") == "1"
+        log_text = log.read_text(encoding="utf-8")
+        assert "release create" not in log_text
+        assert log_text.count("release view") == 2
+
+
+def test_release_ci_refuses_to_move_an_existing_tag() -> None:
+    with tempfile.TemporaryDirectory() as temporary:
+        repo, origin, _log, _existing = release_fixture(temporary)
+        (repo / "earlier.txt").write_text("prior\n", encoding="utf-8")
+        git(repo, "add", "earlier.txt")
+        git(repo, "commit", "-qm", "chore: prior commit")
+        git(repo, "tag", "-a", "v1.2.3", "-m", "simplified-ai-dlc-lifecycle 1.2.3")
+        git(repo, "reset", "--hard", "HEAD^")
+        tagged = git_out(repo, "rev-list", "-n", "1", "v1.2.3")
+        head = git_out(repo, "rev-parse", "HEAD")
+        assert tagged != head
+        result = run_release_ci(repo, Path(temporary) / "bin")
+        assert result.returncode != 0
+        assert git_out(repo, "rev-list", "-n", "1", "v1.2.3") == tagged
+        assert "refusing to move the tag" in result.stderr
+
+
 if __name__ == "__main__":
     tests = [
         test_bump_rules,
         test_changelog_grouping_and_links,
         test_prepend_changelog_and_apply_version,
         test_conventional_commit_validator,
+        test_release_ci_recovers_missing_tag_after_pushed_release_commit,
+        test_release_ci_pushes_local_tag_missing_from_origin,
+        test_release_ci_creates_github_release_when_remote_tag_exists,
+        test_release_ci_is_idempotent_when_github_release_exists,
+        test_release_ci_refuses_to_move_an_existing_tag,
     ]
     for test in tests:
         test()

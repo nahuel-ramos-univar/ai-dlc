@@ -259,7 +259,8 @@ def decision_reprompt_allowed(decision: str, same_run: bool) -> bool:
     `decision` is one of `"approved"`, `"declined"`, or `"deferred"` -- the
     shape this plugin already reuses for several unrelated decisions
     recorded in `.ai-dlc-config.md`: Bugbot's `## Bugbot decisions`, a
-    project rule's `## Project rule decisions`, a distributed-context
+    project rule's `## Project rule decisions`, a pull-request template's
+    `## Pull request template decisions`, a distributed-context
     adoption choice, and `plan-work`'s `## Planning template` offer. Any
     caller recording a decision in exactly this three-value shape should
     call this function instead of inventing its own reprompt rule, so the
@@ -1962,6 +1963,7 @@ def context_sync_outcome(
     legacy_cleanup_pending: bool,
     project_reference_pending: bool = False,
     membership_pending: bool = False,
+    pr_template_pending: bool = False,
 ) -> str:
     """Combine the three change sets into Stage 2's reachable outcome.
 
@@ -1991,12 +1993,15 @@ def context_sync_outcome(
     `project_rule_pending` / `legacy_cleanup_pending`, because membership
     lives in change set A's own configuration, not in sets B or C.
 
-    `bugbot_pending`, `project_rule_pending`, and `legacy_cleanup_pending`
-    report whether change sets B and C each still have actionable,
-    not-already-declined work; callers derive these from
-    `bugbot_reprompt_allowed` and the recorded Bugbot/project-rule/legacy
-    decisions, not from re-scanning the repository. A declined or
-    already-applied proposal is not pending work in any of these inputs.
+    `bugbot_pending`, `project_rule_pending`, `pr_template_pending`, and
+    `legacy_cleanup_pending` report whether change sets B and C each still
+    have actionable, not-already-declined work; callers derive these from
+    `decision_reprompt_allowed` and the recorded
+    Bugbot/project-rule/pull-request-template/legacy decisions, not from
+    re-scanning the repository. A declined or already-applied proposal is
+    not pending work in any of these inputs. `pr_template_pending` is its
+    own flag: a pending pull-request template must not be folded into
+    `bugbot_pending` or `project_rule_pending`.
 
     Returns `"no_relevant_changes"` only when the source fingerprint is
     `"unchanged"`, no project-reference or membership update is pending,
@@ -2016,7 +2021,12 @@ def context_sync_outcome(
         and not project_reference_pending
         and not membership_pending
     )
-    other_sets_pending = bugbot_pending or project_rule_pending or legacy_cleanup_pending
+    other_sets_pending = (
+        bugbot_pending
+        or project_rule_pending
+        or pr_template_pending
+        or legacy_cleanup_pending
+    )
     if source_unchanged and not other_sets_pending:
         return "no_relevant_changes"
     if source_unchanged and other_sets_pending:

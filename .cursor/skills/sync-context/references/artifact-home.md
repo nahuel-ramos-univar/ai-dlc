@@ -83,7 +83,11 @@ the stable repository ID. A project-rule decision under
 `## Project rule decisions` (see [project-rules.md](project-rules.md)) is
 different: its identity is the pair (stable repository ID, stable policy
 slug), because one repository can hold several independent policy decisions
-at once. Do not collapse that pair into the repository ID alone.
+at once. Do not collapse that pair into the repository ID alone. A pull-request
+template decision under `## Pull request template decisions` (see
+[pull-request-template.md](pull-request-template.md)) is keyed by stable
+repository ID: one default template offer per repository. Approving Bugbot,
+a project rule, or a pull-request template does not authorize the others.
 
 ## Multi-repository `Root`
 

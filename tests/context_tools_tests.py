@@ -8,6 +8,7 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -667,20 +668,27 @@ def test_fingerprint_rejects_unavailable_scope() -> None:
         else:
             raise AssertionError("file scope must not fingerprint")
 
+        # Do not use chmod(0): as root, mode 0 remains readable and the
+        # assertion becomes host-dependent. Drive the same OSError path
+        # os.walk uses for an in-scope directory that cannot be listed.
         blocked = Path(temp) / "blocked"
-        inner = blocked / "inner"
-        inner.mkdir(parents=True)
-        (inner / "a.ts").write_text("export const a = 1;\n")
-        os.chmod(inner, 0)
-        try:
+        blocked.mkdir()
+        (blocked / "a.ts").write_text("export const a = 1;\n")
+
+        def unreadable_walk(*_args, **kwargs):
+            onerror = kwargs.get("onerror")
+            if onerror is None:
+                raise AssertionError("fingerprint walk must pass onerror")
+            onerror(PermissionError(13, "Permission denied", str(blocked / "secret")))
+            return iter(())
+
+        with patch("context_tools.os.walk", unreadable_walk):
             try:
                 content_fingerprint(blocked)
             except OSError:
                 pass
             else:
                 raise AssertionError("unreadable scope must not fingerprint")
-        finally:
-            os.chmod(inner, 0o755)
 
 
 # --- Git-aware fingerprint discovery (finding 1) ---------------------------
@@ -4237,6 +4245,17 @@ def test_context_sync_outcome_unchanged_with_pending_legacy_cleanup() -> None:
     assert outcome == "context_current_migration_pending"
 
 
+def test_context_sync_outcome_unchanged_with_pending_pr_template() -> None:
+    # Context unchanged (set A); a pull-request template offer (set B) is
+    # still pending. It must stay reachable and must not be folded into
+    # bugbot_pending or project_rule_pending.
+    outcome = context_sync_outcome(
+        "unchanged", False, False, False, pr_template_pending=True
+    )
+    assert outcome == "context_current_migration_pending"
+    assert context_sync_outcome("unchanged", False, False, False) == "no_relevant_changes"
+
+
 def test_context_sync_outcome_full_no_op_when_nothing_is_actionable() -> None:
     # No relevant changes anywhere and no pending work in any set: this is
     # the only combination that reaches a full no-op (no write, no new
@@ -5659,6 +5678,7 @@ if __name__ == "__main__":
         test_context_sync_outcome_unchanged_with_first_time_missing_bugbot_config,
         test_context_sync_outcome_unchanged_with_previously_declined_bugbot_proposal,
         test_context_sync_outcome_unchanged_with_pending_legacy_cleanup,
+        test_context_sync_outcome_unchanged_with_pending_pr_template,
         test_context_sync_outcome_full_no_op_when_nothing_is_actionable,
         test_duplicate_managed_configuration_heading_is_ambiguous,
         test_context_identities_stop_at_project_references,

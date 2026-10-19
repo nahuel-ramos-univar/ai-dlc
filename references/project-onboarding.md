@@ -113,7 +113,7 @@ There is no separate memory of declined answers. Reuse the decline and defer beh
 
 Discover existing formatters, linters, test setup, documented conventions, and project rules. Do not turn an observed pattern into a mandatory policy.
 
-A project rule is proposed only through [project-rules.md](../.cursor/skills/sync-context/references/project-rules.md), as change set B. Approving coding guidelines does not approve Bugbot configuration, and the reverse is also true.
+A project rule is proposed only through [project-rules.md](../.cursor/skills/sync-context/references/project-rules.md), as change set B. An optional pull-request template is proposed only through [pull-request-template.md](../.cursor/skills/sync-context/references/pull-request-template.md), also as change set B. Approving coding guidelines does not approve Bugbot configuration or a pull-request template, and the reverse is also true. Do not assume GitHub.
 
 `sync-context` does not install dependencies, change tooling or CI, or reformat source. If that work is needed, report it as a follow-up.
 

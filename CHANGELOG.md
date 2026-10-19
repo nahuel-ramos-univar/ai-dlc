@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.15.0 — 2026-10-19
+
+Bump: `minor`
+Compare: [v0.14.0...v0.15.0](https://github.com/nahuel-ramos-univar/ai-dlc/compare/v0.14.0...v0.15.0)
+
+### Added
+
+- feat: require independent validation with a complete evidence return ([`9e45895`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/9e45895dbd0a245f1279d86fa24f6909440331bb))
+
+### Other
+
+- Merge pull request #24 from nahuel-ramos-univar/CTY-307-validate-change-agent ([`189668f`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/189668fc5bee1a3aa4f602c755b39eb46869f615))
+
 ## 0.14.0 — 2026-10-19
 
 Bump: `minor`

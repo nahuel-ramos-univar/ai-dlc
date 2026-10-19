@@ -897,8 +897,9 @@ def test_refine_story_contract_has_required_language() -> None:
 
 
 def test_implement_and_validate_change_contract_has_required_language() -> None:
-    """Structural markers only. Does not prove Cursor invoked Bugbot, applied
-    a fix, or continued from implement-change into validate-change."""
+    """Structural markers only. Does not prove Cursor invoked Bugbot, dispatched
+    a validator agent, applied a fix, or continued from implement-change into
+    validate-change."""
     def flat_skill(name: str) -> str:
         return " ".join(
             (ROOT / ".cursor" / "skills" / name / "SKILL.md")
@@ -940,6 +941,9 @@ def test_implement_and_validate_change_contract_has_required_language() -> None:
     reviewer = " ".join(
         (ROOT / "agents" / "implementation-reviewer.md").read_text(encoding="utf-8").split()
     )
+    validator_agent = " ".join(
+        (ROOT / "agents" / "validator.md").read_text(encoding="utf-8").split()
+    )
     composition = " ".join(
         (ROOT / "references" / "skill-composition.md").read_text(encoding="utf-8").split()
     )
@@ -964,6 +968,9 @@ def test_implement_and_validate_change_contract_has_required_language() -> None:
     assert "Do not reset, clean, or move unrelated changes" in implement
     assert "Do not call a failure pre-existing without evidence" in implement
     assert "verification close-out" in implement
+    assert "does not own independent validation or Bugbot" in implement
+    assert "Do not invent those statuses" in implement
+    assert "An implementation-only close-out is not delivery-ready validation" in implement
 
     assert "authorized that successor workflow" in validate
     assert "does not require an extra `/implement-change` slash command" in validate
@@ -979,6 +986,7 @@ def test_implement_and_validate_change_contract_has_required_language() -> None:
     assert "A partial review is not passed" in validate
     assert "no bugs is not evidence that acceptance criteria passed" in validate
     assert "Static contract tests in this plugin do not prove that Bugbot was invoked" in validate
+    assert "do not prove that a validator agent was invoked" in validate
     assert "ready for the developer to deliver" in validate
     assert "does not commit" in validate
     assert "what each check actually demonstrates" in validate
@@ -986,6 +994,15 @@ def test_implement_and_validate_change_contract_has_required_language() -> None:
     assert "Do not generate a new end-to-end suite" in validate
     assert "e2e-environment.md" in validate
     assert "pre-existing failure with baseline evidence" in validate
+    assert "new independent `validator` delegation" in validate or "new independent validator delegation" in validate
+    assert "changed dependency manifests, public contracts, migrations" in validate
+    assert "prior evidence matrix" in validate
+    assert "every acceptance criterion" in validate
+    assert "Do not treat a delta-only result as complete validation" in validate
+    assert "independent validation pending" in validate
+    assert "does not evaluate its own conclusions" in validate
+    assert "when a second evidence pass reduces uncertainty" not in validate
+    assert "this chat does not evaluate its own conclusions" in implement
 
     assert "material new decision" in risk
     assert "Presence of Terraform or IAM" in risk
@@ -1005,6 +1022,11 @@ def test_implement_and_validate_change_contract_has_required_language() -> None:
     assert "Do not impose a mocking library" in verification
     assert "Do not ask for cloud credentials" in verification
     assert "Do not create a verification-plan file" in verification
+    assert "does not own independent validation or Bugbot" in verification
+    assert "Independent validation pending does not apply to an implementation-only run" in verification
+    assert "An implementation-only close-out is not delivery-ready validation" in verification
+    assert "inspected revision and uncommitted state" in verification
+    assert "Name covered scope and limitations" in verification
     assert "Do not call a failure pre-existing without evidence" in verification
     assert "Do not limit the check to failures a Jira field listed verbatim" in verification
     assert "even if the user did not name those files" in verification
@@ -1022,12 +1044,28 @@ def test_implement_and_validate_change_contract_has_required_language() -> None:
     assert "Do not invent a code review when no new implementation exists" in reviewer
     assert "must be resolved before the affected scope is edited" in reviewer
 
+    assert "The implementer's summary is not proof" in validator_agent
+    assert "verified**, **failed**, **pending**, or **not-verifiable" in validator_agent or "verified, failed, pending, or not-verifiable" in validator_agent
+    assert "Do not launch Bugbot" in validator_agent
+    assert "end-to-end environment" in validator_agent
+    assert "Do not modify code, tests, requirements" in validator_agent
+    assert "dependency manifests, public contracts, migrations" in validator_agent
+    assert "even if no acceptance criterion names them" in validator_agent
+    assert "When a shared file changed" in validator_agent
+    assert "inspected revision and local changes" in validator_agent
+    assert "checks that did not run" in validator_agent
+    assert "covered scope and limitations" in validator_agent
+    assert "prior evidence matrix" in validator_agent
+    assert "Cover every acceptance criterion" in validator_agent
+
     assert "only authorized continuous-flow exception" in composition
     assert "`/implement-change` continuing into `/validate-change`" in composition
     assert "No other skill pair is started this way" in composition
     assert "stay handoffs" in composition
     assert "Do not generalize this exception" in composition
     assert "create-e2e-tests` is never started this way" in composition
+    assert "always dispatches an independent `validator`" in composition
+    assert "A self-check in the implementing chat is not independent validation" in composition
     assert "Naming another skill or showing its slash command does not execute it." in (
         ROOT / "references" / "skill-composition.md"
     ).read_text(encoding="utf-8")
@@ -1038,11 +1076,15 @@ def test_implement_and_validate_change_contract_has_required_language() -> None:
         "Implement-change skips approach review when the refinement still covers the approach",
         "Implement-change approach review runs before code for a material new decision",
         "Implement-change then validate-change authorized continuation",
+        "Implement-change close-out does not invent validator or Bugbot status",
         "Plugin discovery in Cursor",
         "Implement-change continues into validate-change in Cursor",
         "Validate-change in-run fix stays in authorized functional scope",
         "Validate-change stops when the same failure shows no progress",
         "Validate-change Bugbot records the code it actually reviewed",
+        "Validate-change always dispatches an independent validator",
+        "Validate-change reports independent validation pending when delegation is unavailable",
+        "Validate-change fix starts a new independent review of the delta",
         "Implement-change blocking or unavailable approach review prevents affected edits",
         "Validate-change standalone run preserves unrelated changes",
         "Validate-change review-only never edits",
@@ -1053,6 +1095,7 @@ def test_implement_and_validate_change_contract_has_required_language() -> None:
         "Implement-change still adds development tests when a QA item exists",
         "Implement-change does not call a failure pre-existing without evidence",
         "Validate-change treats passing fakes as insufficient for client composition",
+        "Validate-change inspects manifests, contracts, and shared files even when no criterion names them",
         "Validate-change classifies failures instead of only rerunning the author suite",
         "Create-e2e-tests discovers the environment before assuming one",
         "Create-e2e-tests distinguishes environment classes",
@@ -1099,6 +1142,7 @@ def test_create_e2e_tests_contract_has_required_language() -> None:
     assert "Having a URL, credentials, or access does not" in environment
     assert "Do not install Docker" in environment
     assert "does not start `/create-e2e-tests`" in environment
+    assert "independent validator in `/validate-change`" in environment
     assert "create-e2e-tests` is never started this way" in composition
     assert "This skill owns new journeys" in skill
     assert "may update an existing end-to-end spec" in environment

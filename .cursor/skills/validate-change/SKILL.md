@@ -1,6 +1,6 @@
 ---
 name: validate-change
-description: Validate an approved change against acceptance criteria using tests, review, contracts, security checks, and real Bugbot results or a pending handoff.
+description: Validate an approved change against acceptance criteria by dispatching an independent validator and coordinating real Bugbot results or a pending handoff.
 disable-model-invocation: true
 ---
 
@@ -10,25 +10,42 @@ disable-model-invocation: true
 Follow the shared [compact response style](../../../references/response-style.md).
 
 ## Context retrieval
-Use [context retrieval](../../../references/context-retrieval.md). Read selected module context, then current source, tests, contracts, and reviewed diff before making validation claims.
+Use [context retrieval](../../../references/context-retrieval.md). Read selected module context, then current source, tests, contracts, and the reviewed diff only as needed to prepare a bounded handoff and to apply authorized fixes. Do not treat the implementer's summary as proof.
 
 ## Start condition
-Start when the user runs `/validate-change`, or when `/implement-change` continues here because the user authorized that successor workflow in the same request. Use the changed paths, baseline, acceptance criteria, executed tests, and known gaps from implementation.
+Start when the user runs `/validate-change`, or when `/implement-change` continues here because the user authorized that successor workflow in the same request. Every invocation, including that continuation, starts a **new** independent `validator` delegation. The chat that implemented the change coordinates; it does not evaluate its own conclusions.
 
-This skill owns Bugbot coordination and the final evidence map. It does not require an extra `/implement-change` slash command for otherwise authorized in-scope fixes.
+This skill owns Bugbot coordination, authorized in-run fixes, and the closing report. It does not require an extra `/implement-change` slash command for otherwise authorized in-scope fixes. Independent validation is the `validator` agent's assessment, not this chat's re-check.
 
 If the user asked for review only, or no modifications, propose targeted fixes and do not apply them.
 
+## Independent validator
+Use the host's real independent-delegation facility. Prefer the named plugin agent `validator`. If the host exposes only a general-purpose independent subagent, give it [validator.md](../../../agents/validator.md) as bounded task context and report that as general-purpose independent review, not native named-agent dispatch. Follow [skill composition](../../../references/skill-composition.md).
+
+If independent delegation is unavailable, report **independent validation pending**. Useful checks may still run. Do not declare independent validation completed. Do not label this chat's own assessment independent.
+
+Do not pass the whole conversation history by default. If the host cannot isolate the validator from this chat's context, say that limitation. Static contract tests in this plugin do not prove that a validator agent was invoked.
+
+Give the validator a bounded handoff:
+
+- objective and authorized Jira items, acceptance criteria, and the approved refinement;
+- repositories, baseline, and current diff state, including relevant new files;
+- changed dependency manifests, public contracts, migrations, security-sensitive paths, and shared files, when those paths are in the diff;
+- unrelated staged, unstaged, and untracked changes to preserve;
+- applicable rules, known commands, and environment restrictions;
+- prior evidence, labeled as claims the validator must verify, not as results;
+- after a fix: the prior evidence matrix labeled standing, invalidated, or still-open, plus the delta to recheck.
+
+Do not request `implementation-reviewer` for a post-code architecture review or a full code review of the diff. Approach review belongs to `/implement-change` before code. Bugbot owns the diff. The validator owns acceptance and evidence sufficiency. Do not require the validator to launch subagents.
+
 ## Workflow
 1. Run [repository preflight](../../../references/repository-preflight.md). Confirm the authorized repository, actual Git root, branch, and unrelated staged, unstaged, and untracked modifications to preserve. Capture the revision, changed paths, and acceptance criteria under review.
-2. Map every acceptance criterion to a code inspection and the narrowest applicable unit, integration, end-to-end, manual, or unavailable check. Assess what each check actually demonstrates; do not only rerun the author's suite. Follow [verification evidence](../../../references/verification-evidence.md). Run an end-to-end test only when one already exists and is relevant. Load [end-to-end environment](../../../references/e2e-environment.md) before classifying or running that check. Do not generate a new end-to-end suite, a new journey, or a first framework. Do not claim `create-e2e-tests` ran.
-3. Run only relevant checks. Report command, revision, result, duration when known, and reason for skipped or unavailable checks. Classify a failure as a regression this change introduced, a pre-existing failure with baseline evidence, an environment problem, or uncertain. Do not call a failure pre-existing without evidence.
-4. Inspect dependency manifests, public contracts, migrations, and security-sensitive code when changed. When a shared file changed, check affected contracts, consumers, and tests.
-5. The main chat may request an independent `validator` assessment when a second evidence pass reduces uncertainty. Do not request `implementation-reviewer` for a post-code architecture review or a full code review of the diff. Approach review belongs to `/implement-change` before code. Bugbot owns the diff.
-6. Coordinate Bugbot as part of this workflow — see [evidence-and-bugbot.md](references/evidence-and-bugbot.md).
-7. Invalidate affected evidence if material code or configuration changes after a check. Rerun only the checks that the change invalidates.
-8. For high-risk changes or materially stale review rules, identify the required review and approval. Dedicated governance integration is deferred.
-9. Close with distinct statuses, not a single "done": new behavior verified and what the checks exercised, regression executed and its scope, pre-existing failures, checks that failed or did not run, Bugbot status and the code state reviewed, limitations that affect delivery, and whether the change is ready for the developer to deliver. Passing mocks do not prove deployed integration. Return **ready for the developer to deliver** only when policy-required evidence is passed, including Bugbot, or an explicit applicable policy records an approved exception. A pending, partial, or execution-error Bugbot review is not passed. Delivery means the developer commits, pushes, opens the pull request, obtains approvals, and merges with normal Git and pull-request tools. This skill does not commit, push, open a pull request, or merge.
+2. Build the bounded handoff above. Then start a new independent `validator` delegation. Wait for that result, or for a documented unavailable/pending outcome, before treating the change as independently validated.
+3. Coordinate Bugbot in this chat — see [evidence-and-bugbot.md](references/evidence-and-bugbot.md). Do not ask the validator to invoke Bugbot.
+4. Keep findings, test results, and Bugbot status distinct. The independent validator assesses what each check actually demonstrates and classifies a failure as a regression this change introduced, a pre-existing failure with baseline evidence, an environment problem, or uncertain. Follow [verification evidence](../../../references/verification-evidence.md). Passing mocks do not prove deployed integration. Do not generate a new end-to-end suite, a new journey, or a first framework. Do not claim `create-e2e-tests` ran.
+5. Invalidated evidence is not current. If material code or configuration changes after a check, drop the affected validator and Bugbot results.
+6. For high-risk changes or materially stale review rules, identify the required review and approval. Dedicated governance integration is deferred. Do not widen documented review exceptions by implication.
+7. Close with separate statuses, not a single "done": implementation; independent validation and criteria; tests, regression, and environment; Bugbot; blockers and delivery readiness. Required independent validation still pending means this flow is not complete. Return **ready for the developer to deliver** only when policy-required evidence is passed, including independent validation and Bugbot, or an explicit applicable policy records an approved exception. A pending, partial, or execution-error Bugbot review is not passed. Delivery means the developer commits, pushes, opens the pull request, obtains approvals, and merges with normal Git and pull-request tools. This skill does not commit, push, open a pull request, or merge.
 
 ## In-run corrections
 Do not apply a fix when the user asked for review only or no modifications. Propose it instead.
@@ -44,11 +61,11 @@ Apply a targeted fix in this run only when all of these hold:
 
 Shared files may change when the authorized behavior requires it. Check affected contracts, consumers, and tests. Do not treat file paths as belonging to one Story. Do not require another slash command for those authorized in-scope fixes.
 
-If the same failing check returns without material progress toward the cause, stop and report the diagnosis. Do not keep retrying. Do not change tests so they pass by dropping the expected behavior. Do not delete tests, add skips, weaken assertions, or update snapshots only to get a green result.
+If the same failing check returns without material progress toward the cause, stop and report the diagnosis. Do not keep retrying. Do not change tests so they pass by dropping the expected behavior. Do not delete tests, add skips, weaken assertions, or update snapshots only to get a green result. Do not rerun the whole suite without a concrete reason.
 
 If the fix needs a new business decision, hand off to `/plan-work`. If the approved technical design no longer applies, hand off to `/refine-story`. Do not claim those slash commands ran.
 
-After an applied fix, invalidate affected test and Bugbot evidence and rerun only the checks that the change invalidates, including Bugbot for the new code state.
+After an applied fix, invalidate affected validator and Bugbot evidence. Start a **new** independent `validator` delegation for the delta and the affected tests, with a bounded handoff that includes the prior evidence matrix and those states. The new agent rechecks the delta. The closing report must still cover every acceptance criterion: keep standing evidence, drop invalidated evidence, add delta evidence, and carry open findings. Do not treat a delta-only result as complete validation. Do not rerun the whole suite without a concrete reason. Renew Bugbot for the new code state when the diff changed. Do not treat the earlier assessment as current.
 
 ## Bugbot
 `validate-change` owns Bugbot. For a code change in this flow, attempt the real supported Bugbot invocation without asking the user to request it again. Use a supported host facility to run the official review-bugbot skill or the host `bugbot` subagent. If that facility is not available, ask the developer to run `/review-bugbot` and mark Bugbot pending. Never invent findings. Never claim it ran without a real result. Static contract tests in this plugin do not prove that Bugbot was invoked.
@@ -64,6 +81,6 @@ Use **not-applicable** only with a concrete reason, for example that this run ch
 Observe remote Bugbot only when it appears in actual configured checks; do not assume it is configured. This skill does not merge.
 
 ## Output
-Return a concise acceptance-evidence matrix that says what each check proved, reviewed Git state, failures classified as regression, pre-existing, environment, or uncertain, skipped checks, remaining risks, limitations, and explicit Bugbot status with the code state it actually reviewed.
+Return distinct sections for implementation, independent validation and criteria (verified, failed, pending, or not-verifiable), tests/regression and environment, Bugbot with the code state reviewed, and blockers or delivery readiness. Required independent validation pending is not a completed flow.
 
-Read [evidence-and-bugbot.md](references/evidence-and-bugbot.md), [verification evidence](../../../references/verification-evidence.md), [repository preflight](../../../references/repository-preflight.md), and [skill composition](../../../references/skill-composition.md). Load [end-to-end environment](../../../references/e2e-environment.md) only when an existing end-to-end check is in play.
+Read [evidence-and-bugbot.md](references/evidence-and-bugbot.md), [verification evidence](../../../references/verification-evidence.md), [repository preflight](../../../references/repository-preflight.md), [skill composition](../../../references/skill-composition.md), and [validator.md](../../../agents/validator.md). Load [end-to-end environment](../../../references/e2e-environment.md) only when an existing end-to-end check is in play.

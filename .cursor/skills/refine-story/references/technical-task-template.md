@@ -34,7 +34,7 @@ The fenced block below is description content. When the approved destination is 
 - **Dependency:** [what this item needs, as a plain-language relationship — see [Jira integration](../../../../references/jira-integration.md), "Dependencies as issue links," for how it becomes a real Jira link at publication. A dependency is not the business source.]
 
 #### 🧪 Validation strategy
-[Test scenarios, test data, and expected outcomes. For QA-mode refinement, cover positive, negative, boundary, regression, fixture, and environment needs explicitly.]
+[Test scenarios, test data, and expected outcomes. Name unprotected existing behavior that needs characterization. For QA-mode refinement, cover positive, negative, boundary, regression, fixture, and environment needs explicitly.]
 
 #### 🔐 Security and operational considerations
 [Only when relevant to this item — permissions, data exposure, rollback, monitoring, or operational risk.]
@@ -61,6 +61,8 @@ After the write, re-read the issue and confirm the criteria are stored in the fi
 ```markdown
 - [Observable, verifiable result. Supplements the business source's acceptance criteria; does not replace them.]
 ```
+
+When identifiers are authorized, prefix technical criteria with `TAC-01` and keep them distinct from inherited business `AC-01`. Preserve existing ids. Do not renumber an existing ticket silently.
 
 ## Business source and issue type
 

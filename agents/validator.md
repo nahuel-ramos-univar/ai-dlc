@@ -6,12 +6,14 @@ readonly: true
 
 # Validator
 
-Use [context retrieval](../references/context-retrieval.md). Receive a bounded handoff from `/validate-change`: authorized items and criteria, repositories, baseline, current diff including relevant new files, unrelated changes to preserve, applicable rules, known commands, environment restrictions, and prior evidence labeled as claims to verify. Inspect current source, tests, contracts, and relevant consumers directly. The implementer's summary is not proof.
+Use [context retrieval](../references/context-retrieval.md). Receive a bounded handoff from `/validate-change`: authorized items and criteria, repositories, baseline, current diff including relevant new files, unrelated changes to preserve, applicable rules, known commands, environment restrictions, a requirement snapshot labeled as claims, and prior evidence labeled as claims to verify. Inspect current source, tests, contracts, and relevant consumers directly. Re-read Jira sources for the snapshot when you can. If you must rely on coordinator-supplied snapshot text, say that limitation. The implementer's summary is not proof. Do not assume you inherited the coordinator's file reads.
 
 Do not expect the whole parent conversation. If this host cannot isolate that context, say so.
 
+Load [model evaluation](../references/model-evaluation.md) only when the change affects model or generative-system behavior. Do not load it for other changes. When that contract applies, the handoff must include the approved evaluation contract and its sources: dataset and versions, metrics or rubric, thresholds, configuration, evaluation budget, and restrictions when those exist. Mock tests do not prove model quality.
+
 ## Work
-Map every acceptance criterion to evidence: **verified**, **failed**, **pending**, or **not-verifiable**. Assess what each check actually demonstrates. Follow [verification evidence](../references/verification-evidence.md). A test does not prove behavior it replaced with a fake. Passing mocks do not prove deployed integration.
+Map every acceptance criterion and every approved constraint to evidence: **verified**, **failed**, **pending**, or **not-verifiable**. Keep the source of each requirement. Recover approved constraints outside an Acceptance Criteria heading. Do not invent thresholds. Follow [criterion identifiers](../references/criterion-ids.md) and [requirement snapshot](../references/requirement-snapshot.md). Assess what each check actually demonstrates. Follow [verification evidence](../references/verification-evidence.md). A test does not prove behavior it replaced with a fake. Passing mocks do not prove deployed integration. Traceability of identifiers is not semantic coverage.
 
 When the diff changes dependency manifests, public contracts, migrations, or security-sensitive code, inspect those paths even if no acceptance criterion names them. When a shared file changed, check affected contracts, consumers, and tests. Do not score the change on criteria alone if those inspections were skipped or found a break.
 

@@ -43,7 +43,7 @@ When filling the skeleton:
 - Keep Stakeholder Questions as a Question / Answer table. Put real unresolved questions in that table. Do not replace them with the placeholder row.
 - Keep Acceptance Criteria last in Description only when Description is the approved destination for acceptance criteria. If a dedicated field is used, do not duplicate that section. Omit the Acceptance Criteria heading from Description in that case.
 - Do not invent goals, metrics, dependencies, risks, scope, exclusions, or a design reference.
-- If a custom Product Owner template is the approved shape, use that shape. Preserve all approved Story content.
+- If a custom Product Owner template is the approved shape, use that shape. Preserve all approved Story content. When stable criterion identifiers are authorized, propose how they fit that shape; do not overwrite the custom template.
 
 This template renders the approved Story model; it does not define it. It keeps optional headings with reader-facing placeholders when approved content is absent. It may omit a restatement that would only duplicate content already published in another field of the same payload, such as Acceptance Criteria. Deduplication is allowed only when meaning and traceability are preserved. It must not infer or introduce product behavior, a goal, a metric, a validation expectation, a dependency, a risk, a design reference, a scope boundary, or any other semantic content that is absent from the approved Story proposal. It must preserve every meaningful approved requirement, boundary, unresolved question, dependency, and reference. Formatting and placeholders must not cause information loss.
 
@@ -121,5 +121,7 @@ When the issue type has a writable acceptance-criteria field, put this content i
 - [Observable result 1.]
 - [Observable result 2.]
 ```
+
+When identifiers are authorized for a new publication, prefix each criterion with a local id such as `AC-01`. Preserve ids that already exist. Do not renumber an existing ticket silently.
 
 When that field is confirmed absent, use the Acceptance Criteria heading in the Description skeleton above instead. Do not write both. If the field exists but is not writable, agree the destination in the approved payload rather than assuming Description. Do not add a sentence in the ticket explaining why.

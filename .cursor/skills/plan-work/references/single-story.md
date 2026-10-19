@@ -12,6 +12,7 @@ Propose:
 - recommended parent Epic — see [epic-discovery.md](epic-discovery.md);
 - scope;
 - acceptance criteria expressed as observable, testable behavior; Given/When/Then is optional, not mandatory;
+- approved non-functional constraints when they are real requirements, each with a source, without empty headings or invented thresholds;
 - relevant scenarios;
 - exclusions;
 - dependencies;

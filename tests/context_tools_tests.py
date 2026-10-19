@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -22,7 +23,9 @@ from context_tools import (  # noqa: E402
     classify_markdown_target,
     classify_repository_role,
     classify_repository_scope,
+    cli_closeout_validate,
     cli_plan_validate,
+    cli_snapshot_compare,
     decision_reprompt_allowed,
     external_jira_dependencies,
     diff_module_sources,
@@ -56,7 +59,12 @@ from context_tools import (  # noqa: E402
     normalize_remote,
     parse_project_references,
     parse_related_repositories,
+    compare_requirement_snapshots,
+    next_local_criterion_id,
     plan_validate_proposal,
+    requirement_snapshot_digest,
+    validate_closeout,
+    validate_criterion_traceability,
     destination_freshness,
     proposal_is_current,
     relocate_workspace_folder_path,
@@ -5517,6 +5525,485 @@ def test_cli_plan_validate_exit_codes_match_check_results() -> None:
     assert "Traceback" not in crash_result.stderr
 
 
+def _ready_closeout(**overrides: object) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "criteria": [{"id": "AC-01", "status": "verified", "required": True}],
+        "independent_validation": "completed",
+        "bugbot": "passed",
+        "requirement_drift": "unchanged",
+        "blockers": [],
+        "ready_to_deliver": True,
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _complete_snapshot(**overrides: object) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "source_complete": True,
+        "acceptance_criteria": [{"id": "AC-01", "text": "Shows status"}],
+        "scope": "orders",
+        "relevant_decisions": ["Keep tenant isolation"],
+    }
+    payload.update(overrides)
+    return payload
+
+
+def _ready_check(checks: list) -> object:
+    return next(check for check in checks if check.name == "closeout:ready")
+
+
+def test_requirement_snapshot_ignores_administrative_fields() -> None:
+    baseline = _complete_snapshot(
+        assignee="alice",
+        sprint="12",
+        updated="2026-01-01",
+    )
+    current = _complete_snapshot(
+        assignee="bob",
+        sprint="13",
+        updated="2026-10-19",
+    )
+    result = compare_requirement_snapshots(baseline, current)
+    assert result.status == "unchanged"
+    assert requirement_snapshot_digest(baseline) == requirement_snapshot_digest(current)
+
+
+def test_requirement_snapshot_detects_relevant_and_incomplete_sources() -> None:
+    baseline = _complete_snapshot()
+    reordered = _complete_snapshot(
+        acceptance_criteria=[{"text": "Shows status", "id": "AC-01"}],
+    )
+    assert compare_requirement_snapshots(baseline, reordered).status == "unchanged"
+
+    changed = _complete_snapshot(
+        relevant_decisions=["Isolation is waived for batch jobs"],
+    )
+    delta = compare_requirement_snapshots(baseline, changed)
+    assert delta.status == "changed"
+    assert "relevant_decisions" in delta.changed_fields
+
+    assert compare_requirement_snapshots(None, baseline).status == "not-compared"
+    incomplete = _complete_snapshot(source_complete=False)
+    assert compare_requirement_snapshots(baseline, incomplete).status == "not-compared"
+    missing_ac = {"source_complete": True, "scope": "orders"}
+    assert compare_requirement_snapshots(baseline, missing_ac).status == "not-compared"
+
+
+def test_requirement_snapshot_incomplete_recovery_is_never_unchanged() -> None:
+    both_null = compare_requirement_snapshots(
+        {"acceptance_criteria": None},
+        {"acceptance_criteria": None},
+    )
+    assert both_null.status == "not-compared"
+    assert requirement_snapshot_digest({"acceptance_criteria": None}) is None
+
+    coerced_complete = compare_requirement_snapshots(
+        _complete_snapshot(),
+        _complete_snapshot(source_complete="false"),
+    )
+    assert coerced_complete.status == "not-compared"
+
+    malformed = compare_requirement_snapshots(
+        _complete_snapshot(),
+        _complete_snapshot(acceptance_criteria=["oops"]),
+    )
+    assert malformed.status == "not-compared"
+
+    empty_inferred = compare_requirement_snapshots(
+        _complete_snapshot(acceptance_criteria=[]),
+        _complete_snapshot(acceptance_criteria=[]),
+    )
+    assert empty_inferred.status == "not-compared"
+
+    confirmed_absent = _complete_snapshot(
+        acceptance_criteria=[],
+        absence_confirmed=True,
+        absence_reason="Jira acceptance-criteria field is empty after complete recovery",
+    )
+    assert compare_requirement_snapshots(confirmed_absent, confirmed_absent).status == "unchanged"
+
+
+def test_requirement_snapshot_detects_requirement_changes() -> None:
+    baseline = _complete_snapshot(
+        constraints=[{"id": "NFR-01", "text": "Keep tenant isolation", "source": "Description"}],
+        technical_refinement="Store status on the order row",
+    )
+    admin_and_reorder = _complete_snapshot(
+        acceptance_criteria=[{"text": "Shows status", "id": "AC-01"}],
+        constraints=[{"source": "Description", "text": "Keep tenant isolation", "id": "NFR-01"}],
+        technical_refinement="Store status on the order row",
+        assignee="bob",
+        sprint="99",
+    )
+    assert compare_requirement_snapshots(baseline, admin_and_reorder).status == "unchanged"
+
+    requirement_change = _complete_snapshot(
+        acceptance_criteria=[{"id": "AC-01", "text": "Shows status and owner"}],
+        constraints=[{"id": "NFR-01", "text": "Keep tenant isolation", "source": "Description"}],
+        technical_refinement="Store status on the order row",
+    )
+    delta = compare_requirement_snapshots(baseline, requirement_change)
+    assert delta.status == "changed"
+    assert "acceptance_criteria" in delta.changed_fields
+
+
+def test_requirement_snapshot_rejects_object_entries_in_string_fields() -> None:
+    catalog_v1 = {"id": "catalog-api", "version": "v1", "schema": {"price": "number"}}
+    catalog_v2 = {"id": "catalog-api", "version": "v2", "schema": {"price": "object"}}
+    contract_objects = compare_requirement_snapshots(
+        _complete_snapshot(contracts=[catalog_v1]),
+        _complete_snapshot(contracts=[catalog_v2]),
+    )
+    assert contract_objects.status == "not-compared"
+
+    string_contracts = compare_requirement_snapshots(
+        _complete_snapshot(contracts=["catalog-api v1"]),
+        _complete_snapshot(contracts=["catalog-api v2"]),
+    )
+    assert string_contracts.status == "changed"
+    assert "contracts" in string_contracts.changed_fields
+
+    decision_objects = compare_requirement_snapshots(
+        _complete_snapshot(relevant_decisions=[{"id": "keep-isolation", "text": "Keep tenant isolation"}]),
+        _complete_snapshot(relevant_decisions=[{"id": "keep-isolation", "text": "Waive isolation"}]),
+    )
+    assert decision_objects.status == "not-compared"
+
+    string_decisions = compare_requirement_snapshots(
+        _complete_snapshot(relevant_decisions=["Keep tenant isolation"]),
+        _complete_snapshot(relevant_decisions=["Waive isolation"]),
+    )
+    assert string_decisions.status == "changed"
+    assert "relevant_decisions" in string_decisions.changed_fields
+
+
+def test_validate_closeout_accepts_coherent_ready_and_rejects_blockers() -> None:
+    checks = validate_closeout(_ready_closeout())
+    assert all(check.status == "passed" for check in checks)
+    assert any(check.name == "closeout:ready" for check in checks)
+
+    pending = validate_closeout(_ready_closeout(criteria=[{"id": "AC-01", "status": "pending"}]))
+    assert any(check.name == "closeout:ready" and check.status == "failed" for check in pending)
+
+    validator_pending = validate_closeout(_ready_closeout(independent_validation="pending"))
+    assert any(
+        check.name == "closeout:ready" and check.status == "failed" for check in validator_pending
+    )
+
+    bugbot_pending = validate_closeout(_ready_closeout(bugbot="pending"))
+    assert any(check.name == "closeout:ready" and check.status == "failed" for check in bugbot_pending)
+
+    drift = validate_closeout(_ready_closeout(requirement_drift="changed"))
+    assert any(check.name == "closeout:ready" and check.status == "failed" for check in drift)
+
+    not_compared = validate_closeout(_ready_closeout(requirement_drift="not-compared"))
+    assert any(
+        check.name == "closeout:ready" and check.status == "failed" for check in not_compared
+    )
+
+    blocked = validate_closeout(_ready_closeout(blockers=["open product decision"]))
+    assert any(check.name == "closeout:ready" and check.status == "failed" for check in blocked)
+
+    not_ready = validate_closeout(_ready_closeout(ready_to_deliver=False, blockers=["x"]))
+    assert any(
+        check.name == "closeout:ready" and check.status == "passed" for check in not_ready
+    )
+
+
+def test_validate_closeout_fail_closed_on_unknown_status_and_blanket_exception() -> None:
+    unknown = validate_closeout(_ready_closeout(bugbot="maybe"))
+    assert any(check.name == "closeout:bugbot" and check.status == "failed" for check in unknown)
+    assert any(check.name == "closeout:ready" and check.status == "failed" for check in unknown)
+
+    missing_reason = validate_closeout(_ready_closeout(bugbot="not-applicable"))
+    assert any(check.name == "closeout:bugbot" and check.status == "failed" for check in missing_reason)
+
+    justified = validate_closeout(
+        _ready_closeout(
+            bugbot="not-applicable",
+            bugbot_not_applicable_reason="this run changed no code",
+        )
+    )
+    assert all(check.status == "passed" for check in justified)
+
+    blanket = validate_closeout(
+        _ready_closeout(
+            independent_validation="pending",
+            policy_exceptions=[{"gate": "*", "policy_id": "all", "reason": "skip"}],
+        )
+    )
+    assert any(check.name == "closeout:exceptions" and check.status == "failed" for check in blanket)
+
+    named = validate_closeout(
+        _ready_closeout(
+            independent_validation="pending",
+            policy_exceptions=[
+                {
+                    "gate": "independent_validation",
+                    "policy_id": "team-exception-1",
+                    "reason": "host cannot delegate",
+                }
+            ],
+        )
+    )
+    assert any(check.name == "closeout:ready" and check.status == "passed" for check in named)
+
+    unresolved = validate_closeout("not-an-object")
+    assert unresolved[0].status == "unresolved"
+    assert _ready_check(unresolved).status == "failed"
+
+
+def test_validate_closeout_rejects_incomplete_or_invalid_payloads() -> None:
+    empty_criteria = validate_closeout(_ready_closeout(criteria=[]))
+    assert any(check.name == "closeout:criteria" and check.status == "failed" for check in empty_criteria)
+    assert _ready_check(empty_criteria).status == "failed"
+
+    required_null = validate_closeout(
+        _ready_closeout(criteria=[{"id": "AC-01", "status": "failed", "required": None}])
+    )
+    assert any("required must be a boolean" in check.detail for check in required_null)
+    assert _ready_check(required_null).status == "failed"
+
+    missing_id = validate_closeout(
+        _ready_closeout(criteria=[{"status": "verified", "required": True}])
+    )
+    assert any("non-empty unique id" in check.detail for check in missing_id)
+    assert _ready_check(missing_id).status == "failed"
+
+    duplicate_ids = validate_closeout(
+        _ready_closeout(
+            criteria=[
+                {"id": "AC-01", "status": "verified"},
+                {"id": "AC-01", "status": "verified"},
+            ]
+        )
+    )
+    assert any("duplicate criterion identifier" in check.detail for check in duplicate_ids)
+    assert _ready_check(duplicate_ids).status == "failed"
+
+    omitted_blockers = _ready_closeout()
+    del omitted_blockers["blockers"]
+    blockers_missing = validate_closeout(omitted_blockers)
+    assert any(check.name == "closeout:blockers" and check.status == "failed" for check in blockers_missing)
+    assert _ready_check(blockers_missing).status == "failed"
+
+    invalid_with_exception = validate_closeout(
+        _ready_closeout(
+            criteria=[],
+            policy_exceptions=[
+                {
+                    "gate": "criteria",
+                    "policy_id": "skip-structure",
+                    "reason": "treat empty as verified",
+                }
+            ],
+        )
+    )
+    assert _ready_check(invalid_with_exception).status == "failed"
+    assert not any(
+        check.name == "closeout:ready" and check.status == "passed"
+        for check in invalid_with_exception
+    )
+
+    not_ready = validate_closeout(
+        _ready_closeout(
+            independent_validation="pending",
+            bugbot="pending",
+            requirement_drift="changed",
+            blockers=["open product decision"],
+            ready_to_deliver=False,
+        )
+    )
+    assert _ready_check(not_ready).status == "passed"
+    assert _ready_check(not_ready).detail == "declared not ready"
+
+
+def test_validate_closeout_traceability_matches_closed_criteria() -> None:
+    matching = validate_closeout(
+        _ready_closeout(criterion_ids=["AC-01"], evidence_refs=["AC-01"])
+    )
+    assert _ready_check(matching).status == "passed"
+    assert all(check.status == "passed" for check in matching)
+
+    mismatched = validate_closeout(
+        _ready_closeout(criterion_ids=["AC-99"], evidence_refs=["AC-99"])
+    )
+    assert any(
+        check.name == "closeout:criterion_ids" and check.status == "failed"
+        for check in mismatched
+    )
+    assert any("unknown criterion" in check.detail for check in mismatched)
+    assert _ready_check(mismatched).status == "failed"
+    assert _ready_check(mismatched) is mismatched[-1]
+
+    empty_trace = validate_closeout(_ready_closeout(criterion_ids=[], evidence_refs=[]))
+    assert _ready_check(empty_trace).status == "failed"
+    assert any(
+        check.name == "closeout:criterion_ids" and check.status == "failed"
+        for check in empty_trace
+    )
+
+    omitted = validate_closeout(_ready_closeout())
+    assert not any(check.name.startswith("traceability") for check in omitted)
+    assert _ready_check(omitted).status == "passed"
+
+
+def test_validate_closeout_rejects_unhashable_status_types() -> None:
+    for field, value in (
+        ("bugbot", []),
+        ("independent_validation", {"status": "completed"}),
+        ("requirement_drift", ["unchanged"]),
+        ("criteria", [{"id": "AC-01", "status": ["verified"]}]),
+    ):
+        checks = validate_closeout(_ready_closeout(**{field: value}))
+        assert _ready_check(checks).status == "failed"
+        assert all(isinstance(check.status, str) for check in checks)
+
+
+def test_criterion_traceability_and_local_ids() -> None:
+    assert next_local_criterion_id([]) == "AC-01"
+    assert next_local_criterion_id(["AC-01"], retired=["AC-02"]) == "AC-03"
+    assert next_local_criterion_id(["TAC-01"], prefix="TAC") == "TAC-02"
+
+    ok = validate_criterion_traceability(
+        ["AC-01", "AC-02"],
+        ["AC-01", "AC-02", "AC-01"],
+    )
+    assert ok[0].status == "passed"
+
+    unknown = validate_criterion_traceability(["AC-01"], ["AC-99"])
+    assert any(check.status == "failed" and "unknown" in check.detail for check in unknown)
+
+    missing = validate_criterion_traceability(["AC-01", "AC-02"], ["AC-01"])
+    assert any(check.status == "failed" and "AC-02" in check.detail for check in missing)
+
+    duplicates = validate_criterion_traceability(["AC-01", "AC-01"], ["AC-01"])
+    assert any(check.status == "failed" and "duplicate" in check.detail for check in duplicates)
+
+    bad_input = validate_criterion_traceability("AC-01", None)
+    assert bad_input[0].status == "unresolved"
+
+
+def test_cli_closeout_validate_exit_codes_match_check_results() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        temp_path = Path(temp)
+        passing = temp_path / "passing.json"
+        passing.write_text(
+            json.dumps(_ready_closeout()),
+            encoding="utf-8",
+        )
+        assert cli_closeout_validate([str(passing)]) == 0
+
+        failing = temp_path / "failing.json"
+        failing.write_text(
+            json.dumps(_ready_closeout(requirement_drift="changed")),
+            encoding="utf-8",
+        )
+        assert cli_closeout_validate([str(failing)]) == 1
+
+        invalid = temp_path / "invalid.json"
+        invalid.write_text("[]", encoding="utf-8")
+        assert cli_closeout_validate([str(invalid)]) == 1
+
+        missing = temp_path / "does-not-exist.json"
+        assert cli_closeout_validate([str(missing)]) == 2
+
+        result = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "context_tools.py"), "closeout-validate", "-"],
+            check=False,
+            input=json.dumps(_ready_closeout()),
+            capture_output=True,
+            text=True,
+        )
+        assert result.returncode == 0
+
+        invalid_ready = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "context_tools.py"), "closeout-validate", "-"],
+            check=False,
+            input=json.dumps(_ready_closeout(criteria=[])),
+            capture_output=True,
+            text=True,
+        )
+        assert invalid_ready.returncode == 1
+        assert any(
+            line.startswith("failed") and "closeout:ready" in line
+            for line in invalid_ready.stdout.splitlines()
+        )
+        assert not any(
+            line.startswith("passed") and "closeout:ready" in line
+            for line in invalid_ready.stdout.splitlines()
+        )
+
+        mismatched = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "context_tools.py"), "closeout-validate", "-"],
+            check=False,
+            input=json.dumps(_ready_closeout(criterion_ids=["AC-99"], evidence_refs=["AC-99"])),
+            capture_output=True,
+            text=True,
+        )
+        assert mismatched.returncode == 1
+        ready_lines = [line for line in mismatched.stdout.splitlines() if "closeout:ready" in line]
+        assert ready_lines
+        assert ready_lines[-1].startswith("failed")
+        assert not any(line.startswith("passed") for line in ready_lines)
+
+
+def test_cli_snapshot_compare_documented_stdin_from_other_cwd() -> None:
+    script = ROOT / "scripts" / "context_tools.py"
+    matching = {
+        "baseline": _complete_snapshot(assignee="alice"),
+        "current": _complete_snapshot(assignee="bob"),
+    }
+    changed = {
+        "baseline": _complete_snapshot(),
+        "current": _complete_snapshot(
+            acceptance_criteria=[{"id": "AC-01", "text": "Shows status and owner"}],
+        ),
+    }
+    incomplete = {
+        "baseline": {"acceptance_criteria": None},
+        "current": {"acceptance_criteria": None},
+    }
+    with tempfile.TemporaryDirectory() as temp:
+        other_cwd = Path(temp)
+        payload_file = other_cwd / "compare.json"
+        payload_file.write_text(json.dumps(matching), encoding="utf-8")
+        assert cli_snapshot_compare([str(payload_file)]) == 0
+        unchanged_result = subprocess.run(
+            [sys.executable, str(script), "snapshot-compare", "-"],
+            check=False,
+            input=json.dumps(matching),
+            capture_output=True,
+            text=True,
+            cwd=other_cwd,
+        )
+        assert unchanged_result.returncode == 0, unchanged_result.stderr
+        assert unchanged_result.stdout.split()[0] == "unchanged"
+
+        changed_result = subprocess.run(
+            [sys.executable, str(script), "snapshot-compare", "-"],
+            check=False,
+            input=json.dumps(changed),
+            capture_output=True,
+            text=True,
+            cwd=other_cwd,
+        )
+        assert changed_result.returncode == 1
+        assert changed_result.stdout.split()[0] == "changed"
+
+        incomplete_result = subprocess.run(
+            [sys.executable, str(script), "snapshot-compare", "-"],
+            check=False,
+            input=json.dumps(incomplete),
+            capture_output=True,
+            text=True,
+            cwd=other_cwd,
+        )
+        assert incomplete_result.returncode == 2
+        assert incomplete_result.stdout.split()[0] == "not-compared"
+
+
 if __name__ == "__main__":
     tests = [
         test_scope_classification_and_relocation,
@@ -5731,6 +6218,19 @@ if __name__ == "__main__":
         test_plan_validate_proposal_runs_every_deterministic_check,
         test_plan_validate_proposal_fail_closed_on_reported_shape_bugs,
         test_cli_plan_validate_exit_codes_match_check_results,
+        test_requirement_snapshot_ignores_administrative_fields,
+        test_requirement_snapshot_detects_relevant_and_incomplete_sources,
+        test_requirement_snapshot_incomplete_recovery_is_never_unchanged,
+        test_requirement_snapshot_detects_requirement_changes,
+        test_requirement_snapshot_rejects_object_entries_in_string_fields,
+        test_validate_closeout_accepts_coherent_ready_and_rejects_blockers,
+        test_validate_closeout_fail_closed_on_unknown_status_and_blanket_exception,
+        test_validate_closeout_rejects_incomplete_or_invalid_payloads,
+        test_validate_closeout_traceability_matches_closed_criteria,
+        test_validate_closeout_rejects_unhashable_status_types,
+        test_criterion_traceability_and_local_ids,
+        test_cli_closeout_validate_exit_codes_match_check_results,
+        test_cli_snapshot_compare_documented_stdin_from_other_cwd,
     ]
     for test in tests:
         test()

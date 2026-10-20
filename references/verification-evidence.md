@@ -86,6 +86,27 @@ Running an end-to-end test that already exists may be part of
 `/validate-change`. That skill does not generate a new suite and does not
 start `/create-e2e-tests`.
 
+## Characterization of existing behavior
+
+`/refine-story` names relevant existing behavior that current tests do not
+protect, including observable contracts and affected consumers. The
+refinement file list orients that search; it does not exclude a relevant
+dependency.
+
+`/implement-change` adds narrow characterization tests before changing that
+behavior when that is viable. Those tests are part of the authorized
+implementation when they are necessary and bounded. Ask first when the
+backfill would materially widen the work, needs important infrastructure or
+dependencies, or the observed behavior is ambiguous and may be a bug.
+
+Do not backfill the whole suite. Do not impose a coverage percentage. Do
+not replace with a fake the unit whose behavior you are trying to protect.
+Do not freeze a known bug as an approved requirement.
+
+Characterization protects previous behavior. It is not proof of the new
+acceptance criteria. If that protection cannot be obtained, report the
+risk. Do not invent a successful baseline.
+
 ## Baseline before edits
 
 Before editing, discover existing relevant tests and coverage. Run the
@@ -139,8 +160,10 @@ instead. An implementation-only close-out is not delivery-ready validation.
 
 `/validate-change` reports those same implementation and test facts, then
 independent validation and criteria (verified, failed, pending, or
-not-verifiable); Bugbot status and the code state reviewed; and blockers
-and delivery readiness. The independent `validator` assesses whether the
-evidence is sufficient. The implementer's summary and suite are claims to
-verify, not that assessment. Required independent validation still pending
-means that validation flow is not complete.
+not-verifiable); Bugbot status and the code state reviewed; requirement
+drift; and blockers and delivery readiness. The independent `validator`
+assesses whether the evidence is sufficient. The implementer's summary and
+suite are claims to verify, not that assessment. Required independent
+validation still pending means that validation flow is not complete. Invoke
+`context_tools.py closeout-validate` on the declared close-out before
+claiming ready. That helper does not replace the validator or Bugbot.

@@ -189,12 +189,12 @@ When the change is more than a trivial file layout, the skill asks `implementati
 | `/plan-work` | Product owner | The business work is not in Jira yet | The outcome in plain language, and a Jira target when you want it published | A proposed Epic, Story, Task, or backlog update. Jira changes wait for an approved change set |
 | `/refine-story` | Developer | A Jira item is ready for a technical plan | The issue key, for example `PROJ-123` | A technical proposal that keeps the business acceptance criteria |
 | `/implement-change` | Developer | The technical proposal is approved | The issue key and the repository to change | The code or infrastructure change in the approved scope, with a recorded test baseline and what the new checks actually exercise. Existing end-to-end tests may be updated when the authorized behavior requires it. New journeys use `/create-e2e-tests` |
-| `/validate-change` | Developer | The change is ready to check | The issue key and how to run the relevant tests | An independent validator's evidence map against the acceptance criteria, plus Bugbot status. The implementing chat coordinates; it does not score its own work. If the host cannot delegate, independent validation stays pending |
+| `/validate-change` | Developer | The change is ready to check | The issue key and how to run the relevant tests | An independent validator's evidence map against the acceptance criteria, plus Bugbot status. The implementing chat coordinates; it does not score its own work. If the host cannot delegate, independent validation stays pending. An optional compact Jira comment is offered after the result; it needs its own write approval |
 | `/create-e2e-tests` | Developer or QA | A journey needs end-to-end coverage | The issue key or the journey | End-to-end tests and setup. This command is optional and is not started by `/implement-change` or `/validate-change`. It does not assume a local app, a deployed environment, or Docker |
 
 A normal sequence is context or foundation, then business planning, then technical refinement, then implementation, then validation. You can start later in that sequence when the earlier artifact already exists. Naming a later command does not run it, except when you authorize `/implement-change` to continue into `/validate-change` in the same request. See [skill composition](references/skill-composition.md).
 
-Jira holds the business work items and the technical refinement. This plugin does not require a Markdown copy of each Story in the repository.
+Jira holds the business work items, the technical refinement, and any authorized validation comment. This plugin does not require a Markdown copy of each Story in the repository. See [work record](references/work-record.md).
 
 These files do different jobs, and the ones you approve can live in Git:
 

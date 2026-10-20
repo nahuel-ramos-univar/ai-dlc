@@ -685,6 +685,10 @@ def test_plan_work_contract_has_required_language() -> None:
     assert "plan-validate" in skill
     assert "../../../scripts/context_tools.py" in skill
     assert "Do not create `proposal.json` inside the consumer repository" in skill
+    assert "work-record.md" in skill
+    assert "criterion-ids.md" in skill
+    assert "Do not invent NFR headings or thresholds" in skill
+    assert "do not overwrite a custom Product Owner template" in skill
 
     # Dependencies become real Jira issue links at publication, not only
     # prose, and optional fields (Priority, Labels, Fix Version, Sprint,
@@ -845,6 +849,10 @@ def test_refine_story_contract_has_required_language() -> None:
     # criteria, and bans fabricated completeness.
     assert "does not replace them" in template
     assert "Do not invent a file path" in template
+    assert "unprotected existing behavior that needs characterization" in template
+    assert "TAC-01" in template
+    assert "criterion-ids.md" in skill
+    assert "Characterization of existing behavior" in skill
     assert "Technical acceptance criteria" in template
     assert "keep publication pending" in template
     assert "Do not leave them only in the chat" in template
@@ -1003,6 +1011,24 @@ def test_implement_and_validate_change_contract_has_required_language() -> None:
     assert "does not evaluate its own conclusions" in validate
     assert "when a second evidence pass reduces uncertainty" not in validate
     assert "this chat does not evaluate its own conclusions" in implement
+    assert "requirement-snapshot.md" in implement
+    assert "work-record.md" in implement
+    assert "characterization of unprotected existing behavior" in implement
+    assert "model-evaluation.md" in implement
+    assert "closeout-validate" in validate
+    assert "snapshot-compare" in validate
+    assert "requirement-snapshot.md" in validate
+    assert "work-record.md" in validate
+    assert "approved evaluation contract" in validate
+    assert "does not inherit this chat" in validate or "Do not assume the independent validator inherits" in validate
+    assert "optional Jira comment" in validate
+    assert "artifacts/tickets" not in validate
+    assert "If you must rely on coordinator-supplied snapshot text" in validator_agent
+    assert "approved constraint" in validator_agent
+    assert "model-evaluation.md" in validator_agent
+    assert "Do not assume you inherited the coordinator" in validator_agent
+    assert "only when the change affects model" in validator_agent
+    assert "approved evaluation contract" in validator_agent
 
     assert "material new decision" in risk
     assert "Presence of Terraform or IAM" in risk
@@ -1027,6 +1053,9 @@ def test_implement_and_validate_change_contract_has_required_language() -> None:
     assert "An implementation-only close-out is not delivery-ready validation" in verification
     assert "inspected revision and uncommitted state" in verification
     assert "Name covered scope and limitations" in verification
+    assert "Characterization of existing behavior" in verification
+    assert "Do not freeze a known bug as an approved requirement" in verification
+    assert "closeout-validate" in verification
     assert "Do not call a failure pre-existing without evidence" in verification
     assert "Do not limit the check to failures a Jira field listed verbatim" in verification
     assert "even if the user did not name those files" in verification
@@ -1097,6 +1126,14 @@ def test_implement_and_validate_change_contract_has_required_language() -> None:
         "Validate-change treats passing fakes as insufficient for client composition",
         "Validate-change inspects manifests, contracts, and shared files even when no criterion names them",
         "Validate-change classifies failures instead of only rerunning the author suite",
+        "Requirement snapshot ignores assignee and sprint",
+        "Requirement drift blocks ready-to-deliver",
+        "Implement-change adds characterization tests for unprotected behavior",
+        "Approved NFR outside the AC heading are still evaluated",
+        "Existing criterion identifiers are preserved",
+        "Validate-change invokes closeout-validate before claiming ready",
+        "Validate-change offers an optional Jira comment after the result",
+        "Model evaluation loads only when the change affects a model",
         "Create-e2e-tests discovers the environment before assuming one",
         "Create-e2e-tests distinguishes environment classes",
         "Create-e2e-tests does not force browser tests on a service without UI",
@@ -1729,9 +1766,36 @@ def test_manual_evaluation_and_shared_contracts_exist() -> None:
         "canvas-review.md",
         "verification-evidence.md",
         "e2e-environment.md",
+        "work-record.md",
+        "requirement-snapshot.md",
+        "criterion-ids.md",
+        "model-evaluation.md",
     ):
         assert (ROOT / "references" / filename).is_file()
     assert not (ROOT / ".cursor" / "skills" / "plan-work" / "references" / "approval-contract.md").exists()
+    work_record = " ".join(
+        (ROOT / "references" / "work-record.md").read_text(encoding="utf-8").split()
+    )
+    assert "Do not create `artifacts/tickets/<ID>/`" in work_record
+    assert "Markdown Story mirrors" in work_record
+    snapshot = " ".join(
+        (ROOT / "references" / "requirement-snapshot.md").read_text(encoding="utf-8").split()
+    )
+    assert "does not prove who approved" in snapshot
+    assert "snapshot-compare" in snapshot
+    assert "source_complete" in snapshot
+    assert "Incomplete recovery never equals unchanged" in snapshot
+    ids = " ".join(
+        (ROOT / "references" / "criterion-ids.md").read_text(encoding="utf-8").split()
+    )
+    assert "Do not create a parallel catalog in Git" in ids
+    model = " ".join(
+        (ROOT / "references" / "model-evaluation.md").read_text(encoding="utf-8").split()
+    )
+    assert "Load this reference only when" in model
+    assert "must not execute models" not in model
+    assert "Authorized evaluations may run" in model
+    assert "need authorization" in model
 
 
 if __name__ == "__main__":

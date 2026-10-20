@@ -4463,6 +4463,908 @@ def jira_mutation_authorized(local_plan_approved: bool, jira_mutation_approved: 
     return bool(local_plan_approved) and bool(jira_mutation_approved)
 
 
+SNAPSHOT_CONTENT_FIELDS = (
+    "scope",
+    "exclusions",
+    "acceptance_criteria",
+    "constraints",
+    "contracts",
+    "technical_refinement",
+    "relevant_decisions",
+)
+SNAPSHOT_STATUSES = frozenset({"unchanged", "changed", "not-compared"})
+CRITERION_STATUSES = frozenset(
+    {"verified", "failed", "pending", "not-verifiable"}
+)
+INDEPENDENT_VALIDATION_STATUSES = frozenset(
+    {"completed", "pending", "unavailable"}
+)
+BUGBOT_CLOSEOUT_STATUSES = frozenset(
+    {
+        "passed",
+        "failed",
+        "partial",
+        "execution-error",
+        "pending",
+        "not-applicable",
+    }
+)
+CLOSEOUT_EXCEPTION_GATES = frozenset(
+    {
+        "independent_validation",
+        "bugbot",
+        "requirement_drift",
+        "criteria",
+        "blockers",
+    }
+)
+
+
+def _canonical_json(value: object) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+SNAPSHOT_OBJECT_LIST_FIELDS = ("acceptance_criteria", "constraints")
+SNAPSHOT_STRING_LIST_FIELDS = ("contracts", "relevant_decisions")
+SNAPSHOT_TEXT_FIELDS = ("scope", "exclusions", "technical_refinement")
+
+
+def _non_empty_str(value: object) -> str | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return value.strip()
+
+
+def _normalize_object_entries(value: object, field: str) -> tuple[list[dict[str, str]] | None, str]:
+    if not isinstance(value, list):
+        return None, f"{field} must be a list"
+    entries: list[dict[str, str]] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, dict):
+            return None, f"{field}[{index}] must be an object"
+        identifier = _non_empty_str(item.get("id"))
+        text = _non_empty_str(item.get("text"))
+        if identifier is None or text is None:
+            return None, f"{field}[{index}] needs a non-empty id and text"
+        entry = {"id": identifier, "text": text}
+        if "source" in item:
+            source = item.get("source")
+            if source is not None and not isinstance(source, str):
+                return None, f"{field}[{index}].source must be a string when present"
+            if isinstance(source, str):
+                entry["source"] = source
+        entries.append(entry)
+    identifiers = [item["id"] for item in entries]
+    if len(identifiers) != len(set(identifiers)):
+        return None, f"{field} identifiers must be unique"
+    entries.sort(key=lambda item: (item["id"], item["text"]))
+    return entries, ""
+
+
+def _normalize_string_entries(value: object, field: str) -> tuple[list[str] | None, str]:
+    if not isinstance(value, list):
+        return None, f"{field} must be a list"
+    entries: list[str] = []
+    for index, item in enumerate(value):
+        text = _non_empty_str(item)
+        if text is None:
+            return None, f"{field}[{index}] must be a non-empty string"
+        entries.append(text)
+    return sorted(entries), ""
+
+
+def _is_allowed_status(value: object, allowed: frozenset[str]) -> bool:
+    return isinstance(value, str) and value in allowed
+
+
+def extract_requirement_snapshot(raw: object) -> dict[str, object] | None:
+    """Return comparable requirement fields, or None when recovery is invalid.
+
+    Administrative keys such as assignee, sprint, or timestamps are ignored.
+    `null`, empty strings, and invalid objects are not coerced into lists.
+    `source_complete` must be the boolean `true` to treat recovery as
+    complete. Omitted, `false`, or a non-boolean value is incomplete.
+    An empty criteria list is comparable only when `absence_confirmed` is
+    true, `absence_reason` is a non-empty string, and recovery is complete.
+    Returns None when the content cannot be treated as recovered.
+    """
+    extracted, _detail = _extract_requirement_snapshot(raw)
+    return extracted
+
+
+def _extract_requirement_snapshot(raw: object) -> tuple[dict[str, object] | None, str]:
+    if not isinstance(raw, dict):
+        return None, "snapshot must be a JSON object"
+    if "source_complete" not in raw:
+        return None, "source_complete is required"
+    if not isinstance(raw["source_complete"], bool):
+        return None, "source_complete must be a boolean"
+    if raw["source_complete"] is False:
+        return None, "requirement source is incomplete"
+    if "absence_confirmed" in raw and not isinstance(raw["absence_confirmed"], bool):
+        return None, "absence_confirmed must be a boolean when present"
+    snapshot: dict[str, object] = {}
+    for field in SNAPSHOT_TEXT_FIELDS:
+        if field not in raw:
+            continue
+        value = raw[field]
+        if not isinstance(value, str):
+            return None, f"{field} must be a string when present"
+        snapshot[field] = value
+    for field in SNAPSHOT_OBJECT_LIST_FIELDS:
+        if field not in raw:
+            continue
+        entries, error = _normalize_object_entries(raw[field], field)
+        if entries is None:
+            return None, error
+        if field == "acceptance_criteria" and not entries:
+            if raw.get("absence_confirmed") is not True:
+                return None, "empty acceptance criteria require absence_confirmed true"
+            reason = raw.get("absence_reason")
+            if not isinstance(reason, str) or not reason.strip():
+                return None, "empty acceptance criteria require a non-empty absence_reason"
+        snapshot[field] = entries
+    for field in SNAPSHOT_STRING_LIST_FIELDS:
+        if field not in raw:
+            continue
+        entries, error = _normalize_string_entries(raw[field], field)
+        if entries is None:
+            return None, error
+        snapshot[field] = entries
+    if "acceptance_criteria" not in snapshot:
+        return None, "acceptance criteria were not recovered"
+    snapshot["source_complete"] = True
+    if raw.get("absence_confirmed") is True:
+        snapshot["absence_confirmed"] = True
+    return snapshot, ""
+
+
+def requirement_snapshot_digest(raw: object) -> str | None:
+    """Return a hex digest of comparable requirement content, or None.
+
+    The digest is SHA-256 of canonical JSON, truncated to 16 hexadecimal
+    characters, matching the plugin's other short fingerprints. It detects
+    equality of relevant content. It is not an approval certificate.
+    """
+    snapshot, _detail = _extract_requirement_snapshot(raw)
+    if snapshot is None:
+        return None
+    comparable = {key: snapshot[key] for key in SNAPSHOT_CONTENT_FIELDS if key in snapshot}
+    return hashlib.sha256(_canonical_json(comparable).encode("utf-8")).hexdigest()[:16]
+
+
+@dataclass(frozen=True)
+class SnapshotComparison:
+    """Result of comparing two requirement snapshots."""
+
+    status: str
+    digest: str | None
+    changed_fields: tuple[str, ...]
+    detail: str
+
+
+def compare_requirement_snapshots(baseline: object, current: object) -> SnapshotComparison:
+    """Compare relevant requirement content.
+
+    Returns `not-compared` when either side is missing, malformed, or not
+    fully recovered. `null`, empty strings, and invalid objects are not
+    treated as empty lists. Administrative fields do not affect the
+    result. A comment-like decision listed under `relevant_decisions`
+    does count. The digest compares content; it is not an approval
+    certificate.
+    """
+    left, left_detail = _extract_requirement_snapshot(baseline)
+    right, right_detail = _extract_requirement_snapshot(current)
+    if left is None or right is None:
+        detail = left_detail if left is None else right_detail
+        if left is None and right is None and left_detail == right_detail:
+            detail = left_detail
+        elif left is None and right is None:
+            detail = f"baseline: {left_detail}; current: {right_detail}"
+        return SnapshotComparison("not-compared", None, (), detail)
+    changed = tuple(
+        field
+        for field in SNAPSHOT_CONTENT_FIELDS
+        if left.get(field) != right.get(field)
+    )
+    digest = requirement_snapshot_digest(current)
+    if changed:
+        return SnapshotComparison(
+            "changed",
+            digest,
+            changed,
+            "relevant requirement content differs: " + ", ".join(changed),
+        )
+    return SnapshotComparison(
+        "unchanged",
+        digest,
+        (),
+        "relevant requirement content matches",
+    )
+
+
+def next_local_criterion_id(
+    existing: list[str] | tuple[str, ...],
+    prefix: str = "AC",
+    retired: list[str] | tuple[str, ...] | None = None,
+) -> str:
+    """Return the next unused local identifier such as `AC-01`.
+
+    Skips identifiers already in `existing` or `retired`. Does not reuse a
+    retired id. Raises `ValueError` for an unsupported prefix.
+    """
+    if prefix not in {"AC", "NFR", "TAC"}:
+        raise ValueError(f"unsupported criterion prefix: {prefix!r}")
+    taken = set(existing)
+    if retired:
+        taken.update(retired)
+    number = 1
+    while True:
+        candidate = f"{prefix}-{number:02d}"
+        if candidate not in taken:
+            return candidate
+        number += 1
+
+
+def validate_criterion_traceability(
+    criterion_ids: object, evidence_refs: object
+) -> list[ValidationCheck]:
+    """Detect missing, duplicate, or dangling criterion-to-evidence links.
+
+    This is mechanical. It does not decide whether evidence demonstrates
+    the requirement. `criterion_ids` is a list of local ids. `evidence_refs`
+    is a list of those ids cited by tests or other evidence. Many-to-many
+    is allowed. An empty evidence list for an id is a failed associated-
+    evidence check. An evidence ref to an unknown id is a failed reference
+    check. Duplicate ids in `criterion_ids` fail. Invalid input is
+    unresolved, never passed.
+    """
+    checks: list[ValidationCheck] = []
+    if not isinstance(criterion_ids, list) or not isinstance(evidence_refs, list):
+        return [
+            ValidationCheck(
+                "traceability:input",
+                "unresolved",
+                "criterion_ids and evidence_refs must be lists",
+            )
+        ]
+    seen: set[str] = set()
+    valid_ids: list[str] = []
+    for identifier in criterion_ids:
+        if not isinstance(identifier, str) or not identifier.strip():
+            checks.append(
+                ValidationCheck(
+                    "traceability:id",
+                    "failed",
+                    "a criterion identifier is missing",
+                )
+            )
+            continue
+        if identifier in seen:
+            checks.append(
+                ValidationCheck(
+                    f"traceability:id:{identifier}",
+                    "failed",
+                    f"duplicate criterion identifier: {identifier}",
+                )
+            )
+            continue
+        seen.add(identifier)
+        valid_ids.append(identifier)
+    cited: set[str] = set()
+    for ref in evidence_refs:
+        if not isinstance(ref, str) or not ref.strip():
+            checks.append(
+                ValidationCheck(
+                    "traceability:ref",
+                    "failed",
+                    "an evidence reference is missing",
+                )
+            )
+            continue
+        if ref not in seen:
+            checks.append(
+                ValidationCheck(
+                    f"traceability:ref:{ref}",
+                    "failed",
+                    f"evidence cites unknown criterion: {ref}",
+                )
+            )
+            continue
+        cited.add(ref)
+    for identifier in valid_ids:
+        if identifier not in cited:
+            checks.append(
+                ValidationCheck(
+                    f"traceability:evidence:{identifier}",
+                    "failed",
+                    f"no evidence associated with {identifier}",
+                )
+            )
+    if not checks:
+        checks.append(
+            ValidationCheck(
+                "traceability",
+                "passed",
+                f"{len(valid_ids)} criteria linked to evidence",
+            )
+        )
+    return checks
+
+
+def _closeout_exceptions(raw: object) -> dict[str, str] | None:
+    if raw is None:
+        return {}
+    if not isinstance(raw, list):
+        return None
+    granted: dict[str, str] = {}
+    for item in raw:
+        if not isinstance(item, dict):
+            return None
+        gate = item.get("gate")
+        policy_id = item.get("policy_id")
+        reason = item.get("reason")
+        if not isinstance(gate, str) or gate == "*" or gate not in CLOSEOUT_EXCEPTION_GATES:
+            return None
+        if not isinstance(policy_id, str) or not policy_id.strip():
+            return None
+        if not isinstance(reason, str) or not reason.strip():
+            return None
+        granted[str(gate)] = policy_id
+    return granted
+
+
+def _emit_closeout_ready(
+    checks: list[ValidationCheck],
+    *,
+    structure_ok: bool,
+    ready: bool,
+    blocking: list[str],
+) -> None:
+    if not structure_ok:
+        checks.append(
+            ValidationCheck(
+                "closeout:ready",
+                "failed",
+                "payload is not structurally valid",
+            )
+        )
+        return
+    if ready and blocking:
+        checks.append(
+            ValidationCheck(
+                "closeout:ready",
+                "failed",
+                "ready_to_deliver is true while " + "; ".join(blocking),
+            )
+        )
+        return
+    if ready:
+        checks.append(
+            ValidationCheck(
+                "closeout:ready",
+                "passed",
+                "declared ready and required gates are coherent",
+            )
+        )
+        return
+    checks.append(
+        ValidationCheck(
+            "closeout:ready",
+            "passed",
+            "declared not ready",
+        )
+    )
+
+
+def validate_closeout(payload: object) -> list[ValidationCheck]:
+    """Check declared validation close-out coherence.
+
+    This inspects the JSON the caller supplies. It does not prove that a
+    validator, Bugbot, or test command ran. Unknown statuses and invalid
+    types fail closed. Policy exceptions cannot repair structure or type
+    errors. `ready_to_deliver` true is rejected when a required criterion
+    is not verified, independent validation is not completed, Bugbot is
+    not passed (or justified not-applicable), requirement drift is changed
+    or not-compared, or blockers remain — unless an explicit exception
+    names that one gate, a policy id, and a reason. A blanket exception is
+    rejected. Omitting `ready_to_deliver` is treated as false. A valid
+    payload that declares not ready can pass coherence; that is not
+    delivery approval. An invalid payload never emits `closeout:ready`
+    passed. Optional `criterion_ids` and `evidence_refs` are checked
+    against the criteria being closed when present. Ready is recorded
+    after those checks.
+    """
+    if not isinstance(payload, dict):
+        return [
+            ValidationCheck(
+                "closeout:payload",
+                "unresolved",
+                "close-out payload must be a JSON object",
+            ),
+            ValidationCheck(
+                "closeout:ready",
+                "failed",
+                "payload is not structurally valid",
+            ),
+        ]
+    checks: list[ValidationCheck] = []
+    structure_ok = True
+    exceptions = _closeout_exceptions(payload.get("policy_exceptions"))
+    if exceptions is None:
+        checks.append(
+            ValidationCheck(
+                "closeout:exceptions",
+                "failed",
+                "policy exceptions must name one known gate, a policy id, and a reason",
+            )
+        )
+        exceptions = {}
+        structure_ok = False
+    else:
+        checks.append(
+            ValidationCheck(
+                "closeout:exceptions",
+                "passed",
+                "policy exceptions are well formed",
+            )
+        )
+
+    independent_type_ok = True
+    bugbot_type_ok = True
+    drift_type_ok = True
+    required_unverified: list[str] = []
+    independent_ok = False
+    bugbot_ok = False
+    drift_ok = False
+    blockers_ok = False
+    seen_ids: set[str] = set()
+    ready_recorded = False
+
+    criteria = payload.get("criteria")
+    if not isinstance(criteria, list):
+        checks.append(
+            ValidationCheck(
+                "closeout:criteria",
+                "failed",
+                "criteria must be a list",
+            )
+        )
+        structure_ok = False
+    elif not criteria:
+        checks.append(
+            ValidationCheck(
+                "closeout:criteria",
+                "failed",
+                "an empty criteria list is not sufficient for delivery",
+            )
+        )
+        structure_ok = False
+    else:
+        for index, item in enumerate(criteria):
+            if not isinstance(item, dict):
+                checks.append(
+                    ValidationCheck(
+                        f"closeout:criteria:{index}",
+                        "failed",
+                        "each criterion must be an object",
+                    )
+                )
+                structure_ok = False
+                continue
+            identifier = item.get("id")
+            if not isinstance(identifier, str) or not identifier.strip():
+                checks.append(
+                    ValidationCheck(
+                        f"closeout:criteria:{index}",
+                        "failed",
+                        "each criterion needs a non-empty unique id",
+                    )
+                )
+                structure_ok = False
+                continue
+            identifier = identifier.strip()
+            if identifier in seen_ids:
+                checks.append(
+                    ValidationCheck(
+                        f"closeout:criteria:{identifier}",
+                        "failed",
+                        f"duplicate criterion identifier: {identifier}",
+                    )
+                )
+                structure_ok = False
+                continue
+            seen_ids.add(identifier)
+            if "required" not in item:
+                required = True
+            elif not isinstance(item["required"], bool):
+                checks.append(
+                    ValidationCheck(
+                        f"closeout:criteria:{identifier}",
+                        "failed",
+                        "required must be a boolean when present",
+                    )
+                )
+                structure_ok = False
+                continue
+            else:
+                required = item["required"]
+            status = item.get("status")
+            if not _is_allowed_status(status, CRITERION_STATUSES):
+                checks.append(
+                    ValidationCheck(
+                        f"closeout:criteria:{identifier}",
+                        "failed",
+                        f"unknown criterion status: {status!r}",
+                    )
+                )
+                structure_ok = False
+                if required:
+                    required_unverified.append(identifier)
+                continue
+            checks.append(
+                ValidationCheck(
+                    f"closeout:criteria:{identifier}",
+                    "passed",
+                    f"status {status}",
+                )
+            )
+            if required and status != "verified":
+                required_unverified.append(identifier)
+
+    independent = payload.get("independent_validation")
+    if not _is_allowed_status(independent, INDEPENDENT_VALIDATION_STATUSES):
+        checks.append(
+            ValidationCheck(
+                "closeout:independent_validation",
+                "failed",
+                f"unknown independent validation status: {independent!r}",
+            )
+        )
+        independent_type_ok = False
+        independent_ok = False
+        structure_ok = False
+    else:
+        independent_ok = independent == "completed"
+        checks.append(
+            ValidationCheck(
+                "closeout:independent_validation",
+                "passed",
+                f"status {independent}",
+            )
+        )
+
+    bugbot = payload.get("bugbot")
+    bugbot_reason = payload.get("bugbot_not_applicable_reason")
+    if not _is_allowed_status(bugbot, BUGBOT_CLOSEOUT_STATUSES):
+        checks.append(
+            ValidationCheck(
+                "closeout:bugbot",
+                "failed",
+                f"unknown Bugbot status: {bugbot!r}",
+            )
+        )
+        bugbot_type_ok = False
+        bugbot_ok = False
+        structure_ok = False
+    elif bugbot == "not-applicable":
+        if not isinstance(bugbot_reason, str) or not bugbot_reason.strip():
+            checks.append(
+                ValidationCheck(
+                    "closeout:bugbot",
+                    "failed",
+                    "not-applicable Bugbot requires a concrete reason",
+                )
+            )
+            bugbot_type_ok = False
+            bugbot_ok = False
+            structure_ok = False
+        else:
+            checks.append(
+                ValidationCheck(
+                    "closeout:bugbot",
+                    "passed",
+                    "not-applicable with reason",
+                )
+            )
+            bugbot_ok = True
+    else:
+        bugbot_ok = bugbot == "passed"
+        checks.append(
+            ValidationCheck(
+                "closeout:bugbot",
+                "passed",
+                f"status {bugbot}",
+            )
+        )
+
+    drift = payload.get("requirement_drift")
+    if not _is_allowed_status(drift, SNAPSHOT_STATUSES):
+        checks.append(
+            ValidationCheck(
+                "closeout:requirement_drift",
+                "failed",
+                f"unknown requirement drift status: {drift!r}",
+            )
+        )
+        drift_type_ok = False
+        drift_ok = False
+        structure_ok = False
+    else:
+        drift_ok = drift == "unchanged"
+        checks.append(
+            ValidationCheck(
+                "closeout:requirement_drift",
+                "passed",
+                f"status {drift}",
+            )
+        )
+
+    if "blockers" not in payload:
+        checks.append(
+            ValidationCheck(
+                "closeout:blockers",
+                "failed",
+                "blockers is required",
+            )
+        )
+        structure_ok = False
+        blockers_ok = False
+    elif not isinstance(payload["blockers"], list):
+        checks.append(
+            ValidationCheck(
+                "closeout:blockers",
+                "failed",
+                "blockers must be a list",
+            )
+        )
+        structure_ok = False
+        blockers_ok = False
+    elif any(not isinstance(item, str) for item in payload["blockers"]):
+        checks.append(
+            ValidationCheck(
+                "closeout:blockers",
+                "failed",
+                "each blocker must be a string",
+            )
+        )
+        structure_ok = False
+        blockers_ok = False
+    else:
+        blockers_ok = len(payload["blockers"]) == 0
+        checks.append(
+            ValidationCheck(
+                "closeout:blockers",
+                "passed",
+                "no blockers" if blockers_ok else f"{len(payload['blockers'])} blocker(s)",
+            )
+        )
+
+    if "ready_to_deliver" not in payload:
+        ready = False
+    elif not isinstance(payload["ready_to_deliver"], bool):
+        checks.append(
+            ValidationCheck(
+                "closeout:ready",
+                "failed",
+                "ready_to_deliver must be a boolean",
+            )
+        )
+        ready = False
+        structure_ok = False
+        ready_recorded = True
+    else:
+        ready = payload["ready_to_deliver"]
+
+    provided_ids = "criterion_ids" in payload
+    provided_refs = "evidence_refs" in payload
+    if provided_ids or provided_refs:
+        derived_ids = sorted(seen_ids)
+        if provided_ids:
+            declared_ids = payload.get("criterion_ids")
+            if not isinstance(declared_ids, list):
+                checks.append(
+                    ValidationCheck(
+                        "closeout:criterion_ids",
+                        "failed",
+                        "criterion_ids must be a list",
+                    )
+                )
+                structure_ok = False
+            else:
+                normalized_ids: list[str] = []
+                seen_declared: set[str] = set()
+                ids_ok = True
+                for index, item in enumerate(declared_ids):
+                    if not isinstance(item, str) or not item.strip():
+                        checks.append(
+                            ValidationCheck(
+                                "closeout:criterion_ids",
+                                "failed",
+                                f"criterion_ids[{index}] must be a non-empty string",
+                            )
+                        )
+                        ids_ok = False
+                        structure_ok = False
+                        break
+                    identifier = item.strip()
+                    if identifier in seen_declared:
+                        checks.append(
+                            ValidationCheck(
+                                f"closeout:criterion_ids:{identifier}",
+                                "failed",
+                                f"duplicate criterion identifier: {identifier}",
+                            )
+                        )
+                        ids_ok = False
+                        structure_ok = False
+                        break
+                    seen_declared.add(identifier)
+                    normalized_ids.append(identifier)
+                if ids_ok and set(normalized_ids) != seen_ids:
+                    checks.append(
+                        ValidationCheck(
+                            "closeout:criterion_ids",
+                            "failed",
+                            "criterion_ids must match the criteria being closed",
+                        )
+                    )
+                    structure_ok = False
+        if provided_refs:
+            declared_refs = payload.get("evidence_refs")
+            if not isinstance(declared_refs, list):
+                checks.append(
+                    ValidationCheck(
+                        "closeout:evidence_refs",
+                        "failed",
+                        "evidence_refs must be a list",
+                    )
+                )
+                structure_ok = False
+            else:
+                trace_checks = validate_criterion_traceability(
+                    derived_ids, declared_refs
+                )
+                checks.extend(trace_checks)
+                if any(check.status != "passed" for check in trace_checks):
+                    structure_ok = False
+
+    blocking: list[str] = []
+    if required_unverified and "criteria" not in exceptions:
+        blocking.append("required criteria are not verified")
+    if independent_type_ok and not independent_ok and "independent_validation" not in exceptions:
+        blocking.append("independent validation is not completed")
+    if bugbot_type_ok and not bugbot_ok and "bugbot" not in exceptions:
+        blocking.append("Bugbot is not passed")
+    if drift_type_ok and not drift_ok and "requirement_drift" not in exceptions:
+        blocking.append("requirement drift is not unchanged")
+    if "blockers" in payload and isinstance(payload.get("blockers"), list) and not blockers_ok:
+        if "blockers" not in exceptions:
+            blocking.append("blockers remain")
+
+    if not ready_recorded:
+        _emit_closeout_ready(
+            checks,
+            structure_ok=structure_ok,
+            ready=ready,
+            blocking=blocking,
+        )
+    return checks
+
+
+def cli_closeout_validate(argv: list[str]) -> int:
+    """Command-line entry point: `context_tools.py closeout-validate ...`.
+
+    Pass `-` to read JSON from stdin, or a temporary file path that is not
+    inside the consumer repository. Do not write that file into the
+    consumer repository. This never writes to Jira. Invalid input becomes
+    a failed or unresolved check. It does not print a traceback.
+
+    Exit code 1 means at least one check failed. That takes precedence
+    over an unresolved check. Exit code 2 means no check failed, but at
+    least one is unresolved, or the input could not be read as JSON.
+    Exit code 0 means every check passed.
+    """
+    parser = argparse.ArgumentParser(prog="context_tools.py closeout-validate")
+    parser.add_argument(
+        "payload_path",
+        help="path to close-out JSON, or - to read stdin",
+    )
+    args = parser.parse_args(argv)
+
+    try:
+        if args.payload_path == "-":
+            raw_text = sys.stdin.read()
+            source = "stdin"
+        else:
+            raw_text = Path(args.payload_path).read_text(encoding="utf-8")
+            source = args.payload_path
+        payload = json.loads(raw_text)
+    except OSError as error:
+        print(
+            f"error: cannot read close-out file {args.payload_path}: {error}",
+            file=sys.stderr,
+        )
+        return 2
+    except json.JSONDecodeError as error:
+        print(f"error: {source} is not valid JSON: {error}", file=sys.stderr)
+        return 2
+
+    try:
+        checks = validate_closeout(payload)
+    except Exception as error:
+        print(f"{'failed':14} {'closeout:payload':40} validator error: {error}")
+        return 1
+    failed = [c for c in checks if c.status == "failed"]
+    unresolved = [c for c in checks if c.status == "unresolved"]
+    for check in checks:
+        print(f"{check.status:14} {check.name:40} {check.detail}")
+
+    if failed:
+        return 1
+    if unresolved:
+        return 2
+    return 0
+
+
+def cli_snapshot_compare(argv: list[str]) -> int:
+    """Command-line entry point: `context_tools.py snapshot-compare ...`.
+
+    Pass `-` to read JSON from stdin, or a temporary file path that is not
+    inside the consumer repository. Do not write that file into the
+    consumer repository. Resolve this script from the plugin. The payload
+    is one object with `baseline` and `current` snapshot objects.
+
+    Exit code 0 is `unchanged`. Exit code 1 is `changed`. Exit code 2 is
+    `not-compared`, or the input could not be read as JSON.
+    """
+    parser = argparse.ArgumentParser(prog="context_tools.py snapshot-compare")
+    parser.add_argument(
+        "payload_path",
+        help="path to snapshot comparison JSON, or - to read stdin",
+    )
+    args = parser.parse_args(argv)
+
+    try:
+        if args.payload_path == "-":
+            raw_text = sys.stdin.read()
+            source = "stdin"
+        else:
+            raw_text = Path(args.payload_path).read_text(encoding="utf-8")
+            source = args.payload_path
+        payload = json.loads(raw_text)
+    except OSError as error:
+        print(
+            f"error: cannot read snapshot file {args.payload_path}: {error}",
+            file=sys.stderr,
+        )
+        return 2
+    except json.JSONDecodeError as error:
+        print(f"error: {source} is not valid JSON: {error}", file=sys.stderr)
+        return 2
+
+    if not isinstance(payload, dict) or "baseline" not in payload or "current" not in payload:
+        print(
+            f"{'not-compared':14} {'-':16} payload must be an object with baseline and current",
+        )
+        return 2
+
+    try:
+        result = compare_requirement_snapshots(payload["baseline"], payload["current"])
+    except Exception as error:
+        print(f"{'not-compared':14} {'-':16} comparator error: {error}")
+        return 2
+
+    print(f"{result.status:14} {(result.digest or '-'):16} {result.detail}")
+    if result.changed_fields:
+        print("changed_fields " + ",".join(result.changed_fields))
+    if result.status == "unchanged":
+        return 0
+    if result.status == "changed":
+        return 1
+    return 2
+
+
 def plan_validate_proposal(proposal: object) -> list[ValidationCheck]:
     """Run every deterministic plan-work check against one staged proposal.
 
@@ -4860,6 +5762,12 @@ if __name__ == "__main__":
         raise SystemExit(cli_validate(sys.argv[2:]))
     if len(sys.argv) > 1 and sys.argv[1] == "plan-validate":
         raise SystemExit(cli_plan_validate(sys.argv[2:]))
+    if len(sys.argv) > 1 and sys.argv[1] == "closeout-validate":
+        raise SystemExit(cli_closeout_validate(sys.argv[2:]))
+    if len(sys.argv) > 1 and sys.argv[1] == "snapshot-compare":
+        raise SystemExit(cli_snapshot_compare(sys.argv[2:]))
     print("usage: context_tools.py validate <index-path> --root ID=PATH [...]", file=sys.stderr)
     print("       context_tools.py plan-validate <proposal.json|->", file=sys.stderr)
+    print("       context_tools.py closeout-validate <payload.json|->", file=sys.stderr)
+    print("       context_tools.py snapshot-compare <payload.json|->", file=sys.stderr)
     raise SystemExit(2)

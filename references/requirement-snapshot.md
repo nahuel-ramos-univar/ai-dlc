@@ -16,6 +16,9 @@ Include:
 - scope and exclusions;
 - acceptance criteria;
 - approved NFR or other constraints, each with its source;
+- applicable accepted architecture decisions as `constraints`, using the
+  binding clause as `text` and the decision file as `source` — see
+  [architecture-decisions.md](architecture-decisions.md);
 - relevant contracts;
 - approved technical refinement.
 
@@ -39,7 +42,10 @@ Each snapshot is one JSON object:
   `absence_reason` is a non-empty string. Do not infer confirmed absence from
   `[]` alone.
 - optional text: `scope`, `exclusions`, `technical_refinement` (strings).
-- optional `constraints`: same object shape as criteria.
+- optional `constraints`: same object shape as criteria. Architecture
+  decisions use this list, not `relevant_decisions`. Qualify a decision
+  id with the persisted repository ID (`web/ADR-001`). Copy the binding
+  clause into `text` with no paraphrase.
 - optional `contracts` and `relevant_decisions`: lists of non-empty strings.
 
 Administrative keys are ignored. Do not coerce `null`, empty strings, or
@@ -79,13 +85,17 @@ in-process callers. Comparison is independent of criterion order.
 
 - **unchanged** — both sides were recovered completely and relevant content
   matches.
-- **changed** — relevant content differs. Show the relevant delta, invalidate
-  affected evidence, and ask for a product decision or `/refine-story` as
-  appropriate. Do not declare the work ready against outdated requirements.
-  Do not promise that only one criterion is affected when the impact may
-  span the whole item.
+- **changed** — relevant content differs. Show the relevant delta, including
+  constraint `clause-changed`, `removed`, and `added` ids when that list
+  moved. A disappeared, replaced, or no-longer-applicable architecture
+  decision is that delta. Invalidate affected evidence, and ask for a
+  product decision or `/refine-story` as appropriate. Do not declare the
+  work ready against outdated requirements. Do not promise that only one
+  criterion is affected when the impact may span the whole item.
 - **not-compared** — there is no baseline, recovery failed, or the payload is
-  malformed. Incomplete recovery never equals unchanged.
+  malformed. An unreadable or unsupported architecture decision source that
+  this work depended on is incomplete recovery. Incomplete recovery never
+  equals unchanged.
 
 The independent `validator` must re-read the Jira sources when it can. If it
 must rely on coordinator-supplied snapshot text, say that limitation.

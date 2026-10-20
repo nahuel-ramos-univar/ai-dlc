@@ -20,6 +20,10 @@ The artifact home owns:
 
 - `aidlc-docs/repository-context.md`
 - optional `aidlc-docs/integration-map.md`
+- optional `aidlc-docs/architecture.md`, or a link to an existing ADR
+  location — created only by `/scaffold-project` or `/refine-story` after
+  approval, never by `/sync-context`. See
+  [architecture-decisions.md](../../../../references/architecture-decisions.md).
 - fallback `aidlc-docs/context/<repo-id>/<module-id>.md`
 - `.ai-dlc-config.md`
 

@@ -111,7 +111,9 @@ architecture details for the dimensions that actually matter, a canonical
 evidence catalog, freshness, and explicit unknowns. It is verified
 technical context for that module. It is not a backlog, a Story mirror, or
 a sprint tracker. Durable architectural decisions stay in their own records
-and are linked when a module needs them. The Coverage table is
+and are linked when a module needs them. Follow
+[architecture-decisions.md](../../../../references/architecture-decisions.md).
+This skill does not write `architecture.md` or an ADR file. The Coverage table is
 a summary of what was considered; `## Material architecture details`
 preserves the discovered knowledge a downstream agent needs. `## Evidence
 and existing docs` is the canonical catalog of repository-relative local
@@ -198,7 +200,10 @@ targeted diff. Current code and contracts override a stale summary. Create
 dependencies. When a legacy solution-wide integration map is migrated, each
 repository's file includes only the verified relationships that repository
 participates in, not a copy of the whole map. Link existing ADRs when
-relevant; never invent one.
+relevant; never invent one. If `aidlc-docs/architecture.md` or another
+authoritative ADR path exists, link it from the index and from any module
+that the decision constrains. Do not copy the decision log into generated
+context.
 
 Use [context-templates.md](context-templates.md) for generated structure and
 size budgets. Generated sections may refresh in place. Preserve human-authored

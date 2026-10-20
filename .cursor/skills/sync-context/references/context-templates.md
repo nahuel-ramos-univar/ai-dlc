@@ -112,6 +112,10 @@ that has no Git root.
 
 <Link to integration map only when verified.>
 
+## Architecture decisions
+
+<Link `aidlc-docs/architecture.md` or the existing ADR location when that record exists. Omit this heading when it does not. Do not copy the decision log here.>
+
 ## Unknowns
 
 - <Unknown, evidence gap, or intentionally unexamined area.>
@@ -146,6 +150,10 @@ which shape this is.
 ## Verified integration boundaries
 
 <Link to integration map only when verified.>
+
+## Architecture decisions
+
+<Link each repository's own record, or the one explicit shared path. Do not duplicate a shared decision file.>
 
 ## Unknowns
 
@@ -248,6 +256,7 @@ architecture details, or constraints must also appear here.>
 
 - `services/payments/handler.ts`
 - document-relative Markdown link to `services/payments/handler.ts`
+- `aidlc-docs/architecture.md` (only when this module is constrained by that record)
 
 ## Unknowns
 

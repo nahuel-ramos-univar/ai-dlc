@@ -8,6 +8,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from contextlib import redirect_stdout
+from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -25,6 +27,7 @@ from context_tools import (  # noqa: E402
     classify_repository_scope,
     cli_closeout_validate,
     cli_plan_validate,
+    cli_architecture_decisions,
     cli_snapshot_compare,
     decision_reprompt_allowed,
     external_jira_dependencies,
@@ -60,6 +63,8 @@ from context_tools import (  # noqa: E402
     parse_project_references,
     parse_related_repositories,
     compare_requirement_snapshots,
+    extract_architecture_decisions,
+    qualify_decision_id,
     next_local_criterion_id,
     plan_validate_proposal,
     requirement_snapshot_digest,
@@ -5949,6 +5954,531 @@ def test_cli_closeout_validate_exit_codes_match_check_results() -> None:
         assert not any(line.startswith("passed") for line in ready_lines)
 
 
+def _architecture_markdown(
+    local_id: str,
+    clause: str,
+    *,
+    status: str = "accepted",
+    title: str = "Example",
+    extra: str = "",
+) -> str:
+    return (
+        f"## {local_id}: {title}\n\n"
+        f"- Status: {status}\n"
+        f"- Binding clause: {clause}\n"
+        f"{extra}"
+    )
+
+
+def test_architecture_decision_helper_copies_binding_clause_and_qualifies_ids() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        record = root / "aidlc-docs"
+        record.mkdir()
+        path = record / "architecture.md"
+        private = "Objects go to a private bucket. Public-read is not allowed."
+        path.write_text(
+            _architecture_markdown("ADR-001", private, extra="- Rationale: Prefix rules are weaker.\n"),
+            encoding="utf-8",
+        )
+        extracted = extract_architecture_decisions(path, "web", repository_root=root)
+        assert extracted.status == "ok"
+        assert extracted.constraints == (
+            {
+                "id": "web/ADR-001",
+                "text": private,
+                "source": "aidlc-docs/architecture.md#ADR-001",
+            },
+        )
+        assert extracted.constraints[0]["text"] == private
+
+        path.write_text(
+            _architecture_markdown("ADR-001", private)
+            + "\n"
+            + _architecture_markdown(
+                "ADR-001",
+                "Objects go to a public bucket.",
+                title="Duplicate",
+            ),
+            encoding="utf-8",
+        )
+        collision = extract_architecture_decisions(path, "web", repository_root=root)
+        assert collision.status == "error"
+        assert "duplicate" in collision.detail
+
+        missing = extract_architecture_decisions(root / "missing.md", "web", repository_root=root)
+        assert missing.status == "absent"
+        assert missing.constraints == ()
+
+        path.write_text("## ADR-001: Hidden\n\n- Status: accepted\n", encoding="utf-8")
+        incomplete = extract_architecture_decisions(path, "web", repository_root=root)
+        assert incomplete.status == "error"
+        assert "Binding clause" in incomplete.detail
+
+        path.write_text(
+            _architecture_markdown("ADR-001", private, status="superseded")
+            + "\n"
+            + _architecture_markdown("ADR-002", "Use a private bucket and a signed URL."),
+            encoding="utf-8",
+        )
+        accepted_only = extract_architecture_decisions(path, "web", repository_root=root)
+        assert accepted_only.status == "ok"
+        assert [item["id"] for item in accepted_only.constraints] == ["web/ADR-002"]
+
+
+def test_architecture_decision_ids_distinguish_homonyms_across_repositories() -> None:
+    assert qualify_decision_id("web", "ADR-001") == "web/ADR-001"
+    assert qualify_decision_id("api", "ADR-001") == "api/ADR-001"
+    assert qualify_decision_id("web", "web/ADR-001") == "web/ADR-001"
+    clause = "Keep the catalog API on version 1."
+    web = _complete_snapshot(
+        constraints=[{"id": "web/ADR-001", "text": clause, "source": "aidlc-docs/architecture.md#ADR-001"}],
+    )
+    api = _complete_snapshot(
+        constraints=[{"id": "api/ADR-001", "text": clause, "source": "aidlc-docs/architecture.md#ADR-001"}],
+    )
+    both = _complete_snapshot(
+        constraints=[
+            {"id": "api/ADR-001", "text": clause, "source": "services/api/aidlc-docs/architecture.md#ADR-001"},
+            {"id": "web/ADR-001", "text": clause, "source": "apps/web/aidlc-docs/architecture.md#ADR-001"},
+        ],
+    )
+    assert compare_requirement_snapshots(web, api).status == "changed"
+    assert compare_requirement_snapshots(both, both).status == "unchanged"
+
+
+def test_requirement_snapshot_reports_architecture_constraint_deltas() -> None:
+    private = "Objects go to a private bucket. Public-read is not allowed."
+    public = "Objects go to a public bucket."
+    baseline = _complete_snapshot(
+        constraints=[{"id": "web/ADR-001", "text": private, "source": "aidlc-docs/architecture.md#ADR-001"}],
+    )
+    clause_change = compare_requirement_snapshots(
+        baseline,
+        _complete_snapshot(
+            constraints=[{"id": "web/ADR-001", "text": public, "source": "aidlc-docs/architecture.md#ADR-001"}],
+        ),
+    )
+    assert clause_change.status == "changed"
+    assert "constraints" in clause_change.changed_fields
+    assert "clause-changed web/ADR-001" in clause_change.detail
+
+    superseded = compare_requirement_snapshots(
+        baseline,
+        _complete_snapshot(
+            constraints=[
+                {
+                    "id": "web/ADR-002",
+                    "text": public,
+                    "source": "aidlc-docs/architecture.md#ADR-002",
+                }
+            ],
+        ),
+    )
+    assert superseded.status == "changed"
+    assert "removed web/ADR-001" in superseded.detail
+    assert "added web/ADR-002" in superseded.detail
+
+    dropped = compare_requirement_snapshots(
+        baseline,
+        _complete_snapshot(),
+    )
+    assert dropped.status == "changed"
+    assert "removed web/ADR-001" in dropped.detail
+
+    inaccessible = compare_requirement_snapshots(
+        baseline,
+        _complete_snapshot(source_complete=False),
+    )
+    assert inaccessible.status == "not-compared"
+
+    collision = compare_requirement_snapshots(
+        baseline,
+        _complete_snapshot(
+            constraints=[
+                {"id": "web/ADR-001", "text": private, "source": "aidlc-docs/architecture.md#ADR-001"},
+                {"id": "web/ADR-001", "text": public, "source": "other.md#ADR-001"},
+            ],
+        ),
+    )
+    assert collision.status == "not-compared"
+
+
+def test_cli_architecture_decisions_reports_absent_and_errors() -> None:
+    script = ROOT / "scripts" / "context_tools.py"
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        missing = subprocess.run(
+            [
+                sys.executable,
+                str(script),
+                "architecture-decisions",
+                str(root / "missing.md"),
+                "--repository-id",
+                "web",
+                "--root",
+                str(root),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert missing.returncode == 0
+        payload = json.loads(missing.stdout)
+        assert payload["status"] == "absent"
+        assert payload["constraints"] == []
+
+        record = root / "architecture.md"
+        record.write_text(_architecture_markdown("ADR-001", "Keep objects private."), encoding="utf-8")
+        ok = cli_architecture_decisions(
+            [str(record), "--repository-id", "web", "--root", str(root)]
+        )
+        assert ok == 0
+
+        missing_root = subprocess.run(
+            [
+                sys.executable,
+                str(script),
+                "architecture-decisions",
+                str(record),
+                "--repository-id",
+                "web",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert missing_root.returncode != 0
+        assert "status" not in missing_root.stdout or "ok" not in missing_root.stdout
+        help_text = subprocess.run(
+            [sys.executable, str(script), "architecture-decisions", "-h"],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        assert help_text.returncode == 0
+        assert "--root" in help_text.stdout
+        assert "[--root" not in help_text.stdout
+
+
+def test_architecture_decision_unsupported_legacy_format_is_not_empty_ok() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        path = root / "docs" / "adr" / "001-private-storage.md"
+        path.parent.mkdir(parents=True)
+        path.write_text(
+            "# ADR-001: Private storage\n\n"
+            "## Status\n\n"
+            "Accepted\n\n"
+            "## Decision\n\n"
+            "All objects must remain private.\n",
+            encoding="utf-8",
+        )
+        extracted = extract_architecture_decisions(path, "web", repository_root=root)
+        assert extracted.status == "unsupported"
+        assert extracted.constraints == ()
+        assert "ADR-001" in extracted.detail
+        assert "recognized" in extracted.detail
+
+        sibling = root / "docs" / "adr" / "architecture.md"
+        sibling.write_text(
+            "## ADR-001: Private storage\n\n"
+            "## Status\n\n"
+            "Accepted\n\n"
+            "## Decision\n\n"
+            "All objects must remain private.\n",
+            encoding="utf-8",
+        )
+        hashed = extract_architecture_decisions(sibling, "web", repository_root=root)
+        assert hashed.status == "unsupported"
+        assert hashed.constraints == ()
+
+        buf = StringIO()
+        with redirect_stdout(buf):
+            code = cli_architecture_decisions(
+                [str(path), "--repository-id", "web", "--root", str(root)]
+            )
+        payload = json.loads(buf.getvalue())
+        assert code == 2
+        assert payload["status"] == "unsupported"
+        assert payload["constraints"] == []
+
+
+def test_architecture_decision_recognized_empty_and_superseded_only_are_ok() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        empty = root / "aidlc-docs" / "architecture.md"
+        empty.parent.mkdir()
+        empty.write_text("# Architecture decisions\n\nNo accepted decisions yet.\n", encoding="utf-8")
+        absent_live = extract_architecture_decisions(empty, "web", repository_root=root)
+        assert absent_live.status == "ok"
+        assert absent_live.constraints == ()
+        assert "no accepted" in absent_live.detail
+
+        superseded = root / "docs" / "adr"
+        superseded.mkdir(parents=True)
+        (superseded / "README.md").write_text(
+            "# ADR index\n\n## ADR-001: Example in a table of contents\n",
+            encoding="utf-8",
+        )
+        (superseded / "001.md").write_text(
+            _architecture_markdown("ADR-001", "Old private-storage rule.", status="superseded"),
+            encoding="utf-8",
+        )
+        replaced = extract_architecture_decisions(superseded, "web", repository_root=root)
+        assert replaced.status == "ok"
+        assert replaced.constraints == ()
+
+
+def test_architecture_decision_ignores_fenced_examples_and_html_comments() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        path = root / "architecture.md"
+        live = "Objects go to a private bucket. Public-read is not allowed."
+        path.write_text(
+            _architecture_markdown("ADR-001", live)
+            + "\n```markdown\n"
+            + _architecture_markdown(
+                "ADR-999",
+                "Example text must never become an accepted constraint.",
+            )
+            + "```\n\n"
+            + "~~~\n"
+            + _architecture_markdown(
+                "ADR-998",
+                "Tilde example text must never become an accepted constraint.",
+            )
+            + "~~~\n\n"
+            + "<!--\n"
+            + _architecture_markdown(
+                "ADR-997",
+                "Commented text must never become an accepted constraint.",
+            )
+            + "-->\n",
+            encoding="utf-8",
+        )
+        extracted = extract_architecture_decisions(path, "web", repository_root=root)
+        assert extracted.status == "ok"
+        assert [item["id"] for item in extracted.constraints] == ["web/ADR-001"]
+        assert extracted.constraints[0]["text"] == live
+
+
+def test_architecture_decision_rejects_duplicate_fields_and_ids() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        path = root / "architecture.md"
+        path.write_text(
+            "## ADR-001: Private storage\n\n"
+            "- Status: accepted\n"
+            "- Status: superseded\n"
+            "- Binding clause: Keep objects private.\n",
+            encoding="utf-8",
+        )
+        duplicate_status = extract_architecture_decisions(path, "web", repository_root=root)
+        assert duplicate_status.status == "error"
+        assert duplicate_status.constraints == ()
+        assert "architecture.md#ADR-001" in duplicate_status.detail
+        assert "duplicate Status" in duplicate_status.detail
+
+        path.write_text(
+            "## ADR-001: Private storage\n\n"
+            "- Status: accepted\n"
+            "- Binding clause: Keep objects private.\n"
+            "- Binding clause: Keep objects public.\n",
+            encoding="utf-8",
+        )
+        duplicate_binding = extract_architecture_decisions(path, "web", repository_root=root)
+        assert duplicate_binding.status == "error"
+        assert duplicate_binding.constraints == ()
+        assert "duplicate Binding clause" in duplicate_binding.detail
+
+        path.write_text(
+            _architecture_markdown("ADR-001", "Old private-storage rule.", status="superseded")
+            + "\n"
+            + _architecture_markdown("ADR-001", "Keep objects private."),
+            encoding="utf-8",
+        )
+        duplicate_id = extract_architecture_decisions(path, "web", repository_root=root)
+        assert duplicate_id.status == "error"
+        assert duplicate_id.constraints == ()
+        assert "duplicate decision id" in duplicate_id.detail
+        assert "ADR-001" in duplicate_id.detail
+
+        path.write_text(
+            _architecture_markdown("ADR-001", "Keep objects private.")
+            + "\n"
+            + "## ADR-002: Ambiguous\n\n"
+            "- Status: accepted\n"
+            "- Status: superseded\n"
+            "- Binding clause: Keep a second rule.\n",
+            encoding="utf-8",
+        )
+        partial = extract_architecture_decisions(path, "web", repository_root=root)
+        assert partial.status == "error"
+        assert partial.constraints == ()
+
+
+def test_architecture_decision_respects_markdown_section_boundaries() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        path = root / "architecture.md"
+        path.write_text(
+            "## ADR-001: Private storage\n\n"
+            "- Status: accepted\n"
+            "- Binding clause: Keep objects private.\n\n"
+            "## Later notes\n\n"
+            "- Status: accepted\n"
+            "- Binding clause: This later heading is not part of ADR-001.\n\n"
+            "### Nested detail\n\n"
+            "- Binding clause: Nested notes stay inside the previous heading.\n\n"
+            "## ADR-002: Signed URLs\n\n"
+            "- Status: accepted\n"
+            "- Binding clause: Callers use a signed URL.\n",
+            encoding="utf-8",
+        )
+        extracted = extract_architecture_decisions(path, "web", repository_root=root)
+        assert extracted.status == "ok"
+        assert extracted.constraints == (
+            {
+                "id": "web/ADR-001",
+                "text": "Keep objects private.",
+                "source": "architecture.md#ADR-001",
+            },
+            {
+                "id": "web/ADR-002",
+                "text": "Callers use a signed URL.",
+                "source": "architecture.md#ADR-002",
+            },
+        )
+
+
+def test_architecture_decision_source_paths_require_an_owning_root() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        owner = Path(temp) / "api"
+        other = Path(temp) / "web"
+        nested = owner / "apps" / "api" / "aidlc-docs" / "architecture.md"
+        nested.parent.mkdir(parents=True)
+        other.mkdir()
+        nested.write_text(
+            _architecture_markdown("ADR-001", "Keep catalog objects private."),
+            encoding="utf-8",
+        )
+        extracted = extract_architecture_decisions(
+            nested, "api", repository_root=owner
+        )
+        assert extracted.status == "ok"
+        assert extracted.constraints[0]["source"] == (
+            "apps/api/aidlc-docs/architecture.md#ADR-001"
+        )
+        assert extracted.constraints[0]["id"] == "api/ADR-001"
+
+        outside = extract_architecture_decisions(nested, "web", repository_root=other)
+        assert outside.status == "error"
+        assert outside.constraints == ()
+        assert "outside repository root" in outside.detail
+        assert outside.detail.endswith("architecture.md#ADR-001") is False
+
+        missing_root = extract_architecture_decisions(
+            nested, "api", repository_root=owner / "missing"
+        )
+        assert missing_root.status == "error"
+        assert missing_root.constraints == ()
+
+        none_root = extract_architecture_decisions(nested, "api", repository_root=None)
+        assert none_root.status == "error"
+        assert "repository root is required" in none_root.detail
+
+        try:
+            extract_architecture_decisions(nested, "api")
+        except TypeError:
+            pass
+        else:
+            raise AssertionError("repository_root must be required")
+
+
+def test_architecture_decision_unreadable_sources_fail_closed_without_traceback() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        path = root / "architecture.md"
+        path.write_bytes(b"\xff\xfe not utf-8")
+        decoded = extract_architecture_decisions(path, "web", repository_root=root)
+        assert decoded.status == "error"
+        assert decoded.constraints == ()
+        assert "UTF-8" in decoded.detail
+
+        buf = StringIO()
+        with redirect_stdout(buf):
+            code = cli_architecture_decisions(
+                [str(path), "--repository-id", "web", "--root", str(root)]
+            )
+        payload = json.loads(buf.getvalue())
+        assert code == 2
+        assert payload["status"] == "error"
+        assert payload["constraints"] == []
+
+        docs = root / "docs"
+        docs.mkdir()
+        original_glob = Path.glob
+
+        def glob_or_boom(self: Path, pattern: str, *args: object, **kwargs: object):
+            if self.resolve() == docs.resolve() and pattern == "*.md":
+                raise PermissionError("Permission denied")
+            return original_glob(self, pattern, *args, **kwargs)
+
+        with patch.object(Path, "glob", glob_or_boom):
+            listing = extract_architecture_decisions(docs, "web", repository_root=root)
+        assert listing.status == "error"
+        assert listing.constraints == ()
+
+        with patch(
+            "context_tools.extract_architecture_decisions",
+            side_effect=RuntimeError("boom"),
+        ):
+            unexpected = StringIO()
+            with redirect_stdout(unexpected):
+                unexpected_code = cli_architecture_decisions(
+                    [str(path), "--repository-id", "web", "--root", str(root)]
+                )
+        unexpected_payload = json.loads(unexpected.getvalue())
+        assert unexpected_code == 2
+        assert unexpected_payload["status"] == "error"
+        assert "boom" in unexpected_payload["detail"]
+
+
+def test_requirement_snapshot_reports_binding_clause_change_and_incomplete_recovery() -> None:
+    private = "Objects go to a private bucket. Public-read is not allowed."
+    public = "Objects go to a public bucket."
+    baseline = _complete_snapshot(
+        constraints=[{"id": "web/ADR-001", "text": private, "source": "aidlc-docs/architecture.md#ADR-001"}],
+    )
+    changed = compare_requirement_snapshots(
+        baseline,
+        _complete_snapshot(
+            constraints=[{"id": "web/ADR-001", "text": public, "source": "aidlc-docs/architecture.md#ADR-001"}],
+        ),
+    )
+    assert changed.status == "changed"
+    assert "clause-changed web/ADR-001" in changed.detail
+
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        path = root / "aidlc-docs" / "architecture.md"
+        path.parent.mkdir()
+        path.write_text(
+            "# ADR-001: Private storage\n\n"
+            "## Status\nAccepted\n\n"
+            "## Decision\nAll objects must remain private.\n",
+            encoding="utf-8",
+        )
+        recovered = extract_architecture_decisions(path, "web", repository_root=root)
+        assert recovered.status == "unsupported"
+        incomplete = compare_requirement_snapshots(
+            baseline,
+            _complete_snapshot(source_complete=False, constraints=[]),
+        )
+        assert incomplete.status == "not-compared"
+
+
 def test_cli_snapshot_compare_documented_stdin_from_other_cwd() -> None:
     script = ROOT / "scripts" / "context_tools.py"
     matching = {
@@ -6230,6 +6760,18 @@ if __name__ == "__main__":
         test_validate_closeout_rejects_unhashable_status_types,
         test_criterion_traceability_and_local_ids,
         test_cli_closeout_validate_exit_codes_match_check_results,
+        test_architecture_decision_helper_copies_binding_clause_and_qualifies_ids,
+        test_architecture_decision_ids_distinguish_homonyms_across_repositories,
+        test_requirement_snapshot_reports_architecture_constraint_deltas,
+        test_cli_architecture_decisions_reports_absent_and_errors,
+        test_architecture_decision_unsupported_legacy_format_is_not_empty_ok,
+        test_architecture_decision_recognized_empty_and_superseded_only_are_ok,
+        test_architecture_decision_ignores_fenced_examples_and_html_comments,
+        test_architecture_decision_rejects_duplicate_fields_and_ids,
+        test_architecture_decision_respects_markdown_section_boundaries,
+        test_architecture_decision_source_paths_require_an_owning_root,
+        test_architecture_decision_unreadable_sources_fail_closed_without_traceback,
+        test_requirement_snapshot_reports_binding_clause_change_and_incomplete_recovery,
         test_cli_snapshot_compare_documented_stdin_from_other_cwd,
     ]
     for test in tests:

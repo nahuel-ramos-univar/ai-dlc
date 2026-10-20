@@ -2,7 +2,7 @@
 
 Use this template for the Jira technical item `refine-story` proposes or updates — a Task, a Subtask, or an updated existing technical issue. It supplements the business source's acceptance criteria; it does not replace them.
 
-Omit a section that has no real content for this change. Do not fill a section with generic boilerplate just to appear complete, and do not require every section for trivial work. Do not invent a file path, an API, an architecture decision, or a test command that was not actually read or run. Leave an open question open rather than promising implementation will never need clarification.
+Omit a section that has no real content for this change. Do not fill a section with generic boilerplate just to appear complete, and do not require every section for trivial work. Do not invent a file path, an API, an architecture decision, or a test command that was not actually read or run. A proposed architecture-decision update belongs in the same reviewable change set and is persisted only after approval, per [architecture-decisions.md](../../../../references/architecture-decisions.md). Leave an open question open rather than promising implementation will never need clarification.
 
 The fenced block below is description content. When the approved destination is the writable acceptance-criteria field, technical acceptance criteria stay out of this block.
 

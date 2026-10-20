@@ -12,6 +12,8 @@ When the host exposes a general-purpose independent subagent but cannot invoke a
 
 `/validate-change` always dispatches an independent `validator` for the evidence assessment. That dispatch is work inside the skill, not a second slash command and not a new skill pair. A self-check in the implementing chat is not independent validation.
 
+`/scaffold-project` dispatches an independent `implementation-reviewer` in scaffolding mode except for a documented docs-only skip, always dispatches an independent `context-reviewer` for generated context, and for a code change attempts Bugbot in the main chat. Those dispatches are work inside the skill, not slash commands and not a new skill pair. A self-check in the scaffolding chat is not independent review. A paragraph claiming a review ran is not the review. Writing `BUGBOT.md` is not the Bugbot run.
+
 Do not create circular calls. A later skill can return a focused question or finding to an earlier skill, but it must not claim that the earlier slash command ran automatically.
 
 All reference paths are relative to the installed plugin. Do not use machine-specific absolute paths.

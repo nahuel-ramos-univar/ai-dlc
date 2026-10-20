@@ -130,3 +130,5 @@ vendor, build, cache, generated, or inaccessible sibling directories.
 Do not create an integration map for imports within one module. Create it only after observing a dependency across services, repositories, deployable systems, or a public contract boundary.
 
 ADRs record approved architectural decisions. Discovery alone is not an ADR trigger.
+Link an existing record per [architecture-decisions.md](../../../../references/architecture-decisions.md).
+Do not invent one, and do not rewrite an accepted binding clause to match the code.

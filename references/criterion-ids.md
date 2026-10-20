@@ -20,6 +20,10 @@ Preserve identifiers that already exist. When new ones are needed, propose
 local ids on that issue, for example `AC-01`. The fully qualified form may
 be `AID-32/AC-01`. Technical criteria on a Subtask use a distinct prefix
 such as `TAC-01` and stay distinct from inherited business `AC-01`.
+Accepted architecture decisions use the same qualification with the
+persisted repository ID, for example `web/ADR-001`. See
+[architecture-decisions.md](architecture-decisions.md). They are not a
+parallel NFR catalog.
 
 Assign or persist identifiers only in an approved publication payload.
 On an existing ticket, do not renumber and do not edit silently. If there

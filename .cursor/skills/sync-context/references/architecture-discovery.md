@@ -103,7 +103,10 @@ non-empty answer.
 19. **Architectural decisions and constraints** — a real constraint
     (performance, compliance, a platform limit) or a linked ADR that
     explains why the code is shaped the way it is; link an existing ADR,
-    never invent one.
+    never invent one. `/scaffold-project` and `/refine-story` may write an
+    accepted entry after approval, per
+    [architecture-decisions.md](../../../../references/architecture-decisions.md).
+    This discovery pass still does not create that record.
 20. **Known gaps and risk areas** — a part of the module nobody has
     verified recently, a workaround, or a known limitation worth a future
     engineer's attention.

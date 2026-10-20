@@ -454,6 +454,8 @@ def test_architecture_discovery_contract_has_required_language() -> None:
     # context-generation.md hands drafting off to architecture discovery.
     assert "architecture-discovery.md" in generation
     assert "context-quality.md" in generation
+    assert "This skill does not write `architecture.md`" in generation
+    assert "architecture-decisions.md" in generation
 
     # SKILL.md wires the three-tier model and progressive disclosure.
     assert "Initial or full sync" in skill
@@ -688,6 +690,8 @@ def test_plan_work_contract_has_required_language() -> None:
     assert "work-record.md" in skill
     assert "criterion-ids.md" in skill
     assert "Do not invent NFR headings or thresholds" in skill
+    assert "architecture-decisions.md" in skill
+    assert "Do not turn a product wish into an accepted technical decision" in skill
     assert "do not overwrite a custom Product Owner template" in skill
 
     # Dependencies become real Jira issue links at publication, not only
@@ -849,6 +853,12 @@ def test_refine_story_contract_has_required_language() -> None:
     # criteria, and bans fabricated completeness.
     assert "does not replace them" in template
     assert "Do not invent a file path" in template
+    assert "architecture-decisions.md" in skill
+    assert "Persist a new or superseded entry only after the existing approval" in skill
+    assert "A routine implementation choice is not an ADR" in skill
+    assert "minimum index and module navigation-link edits" in skill
+    assert "Do not start `/sync-context` to finish that handoff" in skill
+    assert "report partial completion" in skill
     assert "unprotected existing behavior that needs characterization" in template
     assert "TAC-01" in template
     assert "criterion-ids.md" in skill
@@ -1012,11 +1022,20 @@ def test_implement_and_validate_change_contract_has_required_language() -> None:
     assert "when a second evidence pass reduces uncertainty" not in validate
     assert "this chat does not evaluate its own conclusions" in implement
     assert "requirement-snapshot.md" in implement
+    assert "architecture-decisions.md" in implement
+    assert "Copy each binding clause exactly" in implement
+    assert "Extract with `--repository-id` and `--root`" in implement
+    assert "Qualify each decision id with the persisted repository ID" in implement
+    assert "is unsupported, or its navigation link is missing" in implement
     assert "work-record.md" in implement
     assert "characterization of unprotected existing behavior" in implement
     assert "model-evaluation.md" in implement
     assert "closeout-validate" in validate
     assert "snapshot-compare" in validate
+    assert "architecture-decisions.md" in validate
+    assert "Extract with `--repository-id` and `--root`" in validate
+    assert "clause-changed" in validate
+    assert "An unreadable or unsupported architecture source is `not-compared`" in validate
     assert "requirement-snapshot.md" in validate
     assert "work-record.md" in validate
     assert "approved evaluation contract" in validate
@@ -1025,6 +1044,9 @@ def test_implement_and_validate_change_contract_has_required_language() -> None:
     assert "artifacts/tickets" not in validate
     assert "If you must rely on coordinator-supplied snapshot text" in validator_agent
     assert "approved constraint" in validator_agent
+    assert "architecture decision sources directly" in validator_agent
+    assert "Copy each binding clause exactly" in validator_agent
+    assert "owning repository id and authorized root" in validator_agent
     assert "model-evaluation.md" in validator_agent
     assert "Do not assume you inherited the coordinator" in validator_agent
     assert "only when the change affects model" in validator_agent
@@ -1095,6 +1117,10 @@ def test_implement_and_validate_change_contract_has_required_language() -> None:
     assert "create-e2e-tests` is never started this way" in composition
     assert "always dispatches an independent `validator`" in composition
     assert "A self-check in the implementing chat is not independent validation" in composition
+    assert "dispatches an independent `implementation-reviewer`" in composition
+    assert "A self-check in the scaffolding chat is not independent review" in composition
+    assert "A paragraph claiming a review ran is not the review" in composition
+    assert "Writing `BUGBOT.md` is not the Bugbot run" in composition
     assert "Naming another skill or showing its slash command does not execute it." in (
         ROOT / "references" / "skill-composition.md"
     ).read_text(encoding="utf-8")
@@ -1130,6 +1156,14 @@ def test_implement_and_validate_change_contract_has_required_language() -> None:
         "Requirement drift blocks ready-to-deliver",
         "Implement-change adds characterization tests for unprotected behavior",
         "Approved NFR outside the AC heading are still evaluated",
+        "Initial scaffold with approved architectural choices",
+        "Existing architecture documentation reused",
+        "Significant refinement decision versus routine implementation detail",
+        "Requirement or design conflict with an accepted decision",
+        "Changed approved architecture decision",
+        "Multi-repo shared decision without duplication",
+        "Architecture source inaccessible during validation",
+        "Homonymous ADR ids in two repositories",
         "Existing criterion identifiers are preserved",
         "Validate-change invokes closeout-validate before claiming ready",
         "Validate-change offers an optional Jira comment after the result",
@@ -1335,6 +1369,7 @@ def test_scaffold_project_contract_has_required_language() -> None:
         "A generated file tree alone does not prove the foundation works",
         "Review completion does not replace executable validation",
         "references/foundation-and-review.md",
+        "architecture-decisions.md",
         "Before identifying a stack, establish the product's purpose",
         "references/product-purpose.md",
         "allow an explicit generic-starter choice instead of inventing a purpose",
@@ -1363,6 +1398,9 @@ def test_scaffold_project_contract_has_required_language() -> None:
         "Directory without a Git root",
         "Git repository without a remote",
         "Established identity",
+        "minimum index and module navigation links",
+        "Do not start `/sync-context` to finish that handoff",
+        "report partial completion",
         "content_fingerprint",
         "stable_repository_id",
         "no-commit",
@@ -1470,6 +1508,9 @@ def test_scaffold_project_contract_has_required_language() -> None:
         "Partial apply reported honestly",
         "Independent reviewer unavailable",
         "Real defect caught during review",
+        "Scaffold-project always dispatches independent reviewers",
+        "Scaffold-project code changes trigger Bugbot by default",
+        "Scaffold-project does not skip Bugbot after reviewer findings",
         "Generic product request with no detail",
         "Detailed request already supplies the facts",
         "Explicitly generic starter",
@@ -1710,6 +1751,15 @@ def test_scaffold_project_completes_its_own_review_configuration() -> None:
         "pull-request-template.md",
         "project-rule status (created, unchanged, declined, not applicable, or deferred)",
         "Bugbot review guidance status (created, unchanged, declined, or deferred)",
+        "Start a new independent `implementation-reviewer` delegation",
+        "Start a new independent `context-reviewer` delegation",
+        "attempt the real supported Bugbot invocation",
+        "do not prove that a reviewer agent was invoked",
+        "do not prove that Bugbot was invoked",
+        "Bugbot review of the generated code",
+        "A paragraph in this chat claiming a review ran is not the review",
+        "Do not treat writing `BUGBOT.md`, or explaining that it is later guidance, as a substitute for attempting Bugbot",
+        "Independent scaffolding and context reviews are not Bugbot",
         "recompute the fingerprint and re-read the destination instead of reusing the read from before steps 10–11 ran",
         "step 11's result stays valid only when the refresh was mechanical",
     ):
@@ -1724,6 +1774,16 @@ def test_scaffold_project_completes_its_own_review_configuration() -> None:
         "Record that outcome as `deferred`",
         "is different from an explicit `declined`",
         "does not install, enable, or configure the Bugbot service",
+        "## Scaffold Bugbot review",
+        "Writing `BUGBOT.md` is not a Bugbot review",
+        "attempt the real supported Bugbot invocation",
+        "Start a new independent `implementation-reviewer` delegation",
+        "Start a new independent `context-reviewer` delegation",
+        "A generated web app, API, infrastructure, or multi-component foundation is not that skip",
+        "Do not treat writing `BUGBOT.md`, or explaining that it is later guidance, as a substitute for attempting Bugbot",
+        "Independent scaffolding and context reviews are not Bugbot",
+        "A paragraph in this chat claiming a review ran is not the review",
+        "do not treat it as a reason to skip Bugbot",
         "is not excluded from `content_fingerprint`",
         "The persisted `Fingerprint:` field is `content_fingerprint` of the declared scope",
         "Do not store `destination_freshness` in `Fingerprint:`",
@@ -1747,6 +1807,8 @@ def test_scaffold_project_completes_its_own_review_configuration() -> None:
 
     assert "`content_fingerprint` or `destination_freshness`" not in foundation
     assert "## scaffold-project" in canvas
+    assert "Bugbot review of the generated code: passed, failed, pending, not-applicable, or unavailable" in canvas
+    assert "architecture-decision record: created, linked to an existing location, unchanged, or not applicable" in canvas
     assert "Bugbot review guidance: created, unchanged, declined, or deferred" in canvas
     assert "project rules: created, unchanged, declined, not applicable, or deferred" in canvas
     assert "pull-request template: created, unchanged, declined, not applicable, or deferred" in canvas
@@ -1768,6 +1830,7 @@ def test_manual_evaluation_and_shared_contracts_exist() -> None:
         "e2e-environment.md",
         "work-record.md",
         "requirement-snapshot.md",
+        "architecture-decisions.md",
         "criterion-ids.md",
         "model-evaluation.md",
     ):
@@ -1785,6 +1848,27 @@ def test_manual_evaluation_and_shared_contracts_exist() -> None:
     assert "snapshot-compare" in snapshot
     assert "source_complete" in snapshot
     assert "Incomplete recovery never equals unchanged" in snapshot
+    architecture = " ".join(
+        (ROOT / "references" / "architecture-decisions.md").read_text(encoding="utf-8").split()
+    )
+    assert "Binding clause" in architecture
+    assert "Do not use `relevant_decisions`" in architecture
+    assert "web/ADR-001" in architecture
+    assert "Do not add this file to `EXCLUDED_PARTS`" in architecture
+    assert "--root" in architecture
+    assert "unsupported" in architecture
+    assert "Do not fall back to a basename" in architecture
+    assert "same approved change set" in architecture
+    assert "Do not start `/sync-context`" in architecture
+    assert "Do not scan for an unlinked file" in architecture
+    retrieval = " ".join(
+        (ROOT / "references" / "context-retrieval.md").read_text(encoding="utf-8").split()
+    )
+    assert "treat architecture recovery as incomplete" in retrieval
+    assert "do not scan for an unlinked file as a substitute" in retrieval
+    manual = " ".join((ROOT / "MANUAL_EVALUATION.md").read_text(encoding="utf-8").split())
+    assert "Refine writes a linked architecture record a later session can load" in manual
+    assert "Static contract tests do not prove live agent execution" in manual
     ids = " ".join(
         (ROOT / "references" / "criterion-ids.md").read_text(encoding="utf-8").split()
     )
@@ -1796,6 +1880,61 @@ def test_manual_evaluation_and_shared_contracts_exist() -> None:
     assert "must not execute models" not in model
     assert "Authorized evaluations may run" in model
     assert "need authorization" in model
+
+
+def test_architecture_decision_write_to_retrieval_handoff_is_documented() -> None:
+    """Static coverage for refine → linked record → later implement/validate.
+
+    This does not prove live agent execution. It only checks that the
+    plugin documents the same-change-set navigation-link handoff.
+    """
+    architecture = " ".join(
+        (ROOT / "references" / "architecture-decisions.md").read_text(encoding="utf-8").split()
+    )
+    retrieval = " ".join(
+        (ROOT / "references" / "context-retrieval.md").read_text(encoding="utf-8").split()
+    )
+    refine = " ".join(
+        (ROOT / ".cursor" / "skills" / "refine-story" / "SKILL.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    foundation = " ".join(
+        (
+            ROOT
+            / ".cursor"
+            / "skills"
+            / "scaffold-project"
+            / "references"
+            / "foundation-and-review.md"
+        )
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    implement = " ".join(
+        (ROOT / ".cursor" / "skills" / "implement-change" / "SKILL.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    validate = " ".join(
+        (ROOT / ".cursor" / "skills" / "validate-change" / "SKILL.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    manual = " ".join((ROOT / "MANUAL_EVALUATION.md").read_text(encoding="utf-8").split())
+    assert "same approved change set adds the minimum navigation link" in architecture
+    assert "Do not start `/sync-context` to finish that handoff" in architecture
+    assert "Do not scan for an unlinked file as a substitute" in architecture
+    assert "treat architecture recovery as incomplete" in retrieval
+    assert "do not scan for an unlinked file as a substitute" in retrieval
+    assert "minimum index and module navigation-link edits" in refine
+    assert "Do not start `/sync-context` to finish that handoff" in refine
+    assert "minimum index and module navigation links" in foundation
+    assert "Extract with `--repository-id` and `--root`" in implement
+    assert "navigation link is missing" in implement
+    assert "unreadable or unsupported architecture source" in validate
+    assert "Refine writes a linked architecture record a later session can load" in manual
+    assert "Static contract tests do not prove live agent execution" in manual
 
 
 if __name__ == "__main__":
@@ -1828,6 +1967,7 @@ if __name__ == "__main__":
         test_manual_evaluation_covers_context_quality_scenarios,
         test_legacy_aidlc_migration_contract_is_specific,
         test_manual_evaluation_and_shared_contracts_exist,
+        test_architecture_decision_write_to_retrieval_handoff_is_documented,
     ]
     for test in tests:
         test()

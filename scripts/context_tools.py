@@ -37,6 +37,12 @@ GENERATED_FILENAMES = {"aidlc_context.md", ".ai-dlc-config.md"}
 SECRET_FILENAMES = {".env", "id_rsa", "id_ed25519"}
 ENV_TEMPLATE_FILENAMES = {".env.example", ".env.sample", ".env.template", ".env.dist"}
 REPOSITORY_ID_PATTERN = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+LOCAL_DECISION_ID_PATTERN = re.compile(r"^ADR-\d+$")
+ARCHITECTURE_HEADING_PATTERN = re.compile(r"^(#{1,6})\s+(ADR-\d+)\b")
+ARCHITECTURE_STATUS_PATTERN = re.compile(r"^- Status:\s*(.+?)\s*$")
+ARCHITECTURE_BINDING_PATTERN = re.compile(r"^- Binding clause:\s*(.+?)\s*$")
+HTML_COMMENT_PATTERN = re.compile(r"<!--.*?-->", re.DOTALL)
+README_NAME_PATTERN = re.compile(r"^readme(?:\.(?:md|markdown|txt))?$", re.IGNORECASE)
 PROJECT_REFERENCE_HEADING = "## Project references"
 CONTEXT_IDENTITIES_HEADING = "## Context identities"
 RELATED_REPOSITORY_LABEL = "Related repository"
@@ -4643,6 +4649,298 @@ class SnapshotComparison:
     detail: str
 
 
+def qualify_decision_id(repository_id: str, local_id: str) -> str:
+    """Return `{repository-id}/{local-id}` using the persisted repository ID.
+
+    Local headings stay `ADR-001`. The qualified form distinguishes the
+    same local id in two repositories. A value that is already qualified
+    for this repository is returned unchanged.
+    """
+    if not isinstance(repository_id, str) or not REPOSITORY_ID_PATTERN.fullmatch(
+        repository_id
+    ):
+        raise ValueError("repository ID must match [a-z0-9-]")
+    if not isinstance(local_id, str) or not local_id.strip():
+        raise ValueError("local decision id is required")
+    candidate = local_id.strip()
+    prefix = f"{repository_id}/"
+    if candidate.startswith(prefix):
+        candidate = candidate[len(prefix) :]
+    if not LOCAL_DECISION_ID_PATTERN.fullmatch(candidate):
+        raise ValueError("local decision id must match ADR-<digits>")
+    return f"{repository_id}/{candidate}"
+
+
+@dataclass(frozen=True)
+class ArchitectureDecisionExtraction:
+    """Result of reading accepted architecture decisions from disk."""
+
+    status: str
+    constraints: tuple[dict[str, str], ...]
+    detail: str
+
+
+def extract_architecture_decisions(
+    source: Path,
+    repository_id: str,
+    *,
+    repository_root: Path,
+) -> ArchitectureDecisionExtraction:
+    """Copy accepted binding clauses from a decision file or directory.
+
+    Missing path is `absent`. A recognized file with no accepted entries,
+    including superseded-only, is `ok` with an empty list. An existing ADR
+    that is not the recognized list shape is `unsupported`, never `ok`.
+    Unreadable content, a missing repository root, a path outside that
+    root, duplicate fields or ids, or a malformed recognized entry is
+    `error`. Constraint `id` values are qualified with `repository_id`.
+    `text` is the binding clause line with no paraphrase. `source` is the
+    repository-relative path plus `#` and the local id.
+    """
+    try:
+        qualify_decision_id(repository_id, "ADR-001")
+    except ValueError as error:
+        return ArchitectureDecisionExtraction("error", (), str(error))
+    if repository_root is None:
+        return ArchitectureDecisionExtraction("error", (), "repository root is required")
+    root = Path(repository_root)
+    if not root.exists():
+        return ArchitectureDecisionExtraction(
+            "error",
+            (),
+            f"repository root does not exist: {root}",
+        )
+    if not root.is_dir():
+        return ArchitectureDecisionExtraction(
+            "error",
+            (),
+            f"repository root is not a directory: {root}",
+        )
+    path = Path(source)
+    if not path.exists():
+        return ArchitectureDecisionExtraction("absent", (), "architecture decision record is absent")
+    files, list_error = _architecture_markdown_files(path)
+    if files is None:
+        return ArchitectureDecisionExtraction("error", (), list_error)
+    collected: list[dict[str, str]] = []
+    seen: dict[str, str] = {}
+    for file_path in files:
+        relative, path_error = _architecture_source_path(file_path, root)
+        if relative is None:
+            return ArchitectureDecisionExtraction("error", (), path_error)
+        text, read_error = read_text_document(file_path)
+        if text is None:
+            return ArchitectureDecisionExtraction(
+                "error",
+                (),
+                f"{relative}: {read_error}",
+            )
+        parsed, status, detail = _parse_architecture_decision_markdown(
+            text, repository_id, relative
+        )
+        if status != "ok":
+            return ArchitectureDecisionExtraction(status, (), detail)
+        for entry in parsed:
+            local_id = entry["local_id"]
+            if local_id in seen:
+                return ArchitectureDecisionExtraction(
+                    "error",
+                    (),
+                    f"{relative}#{local_id}: duplicate decision id also in {seen[local_id]}",
+                )
+            seen[local_id] = f"{relative}#{local_id}"
+            if entry["status"] != "accepted":
+                continue
+            collected.append(
+                {
+                    "id": entry["id"],
+                    "text": entry["text"],
+                    "source": entry["source"],
+                }
+            )
+    collected.sort(key=lambda item: item["id"])
+    detail = (
+        "accepted binding clauses recovered"
+        if collected
+        else "recognized architecture record has no accepted binding clauses"
+    )
+    return ArchitectureDecisionExtraction("ok", tuple(collected), detail)
+
+
+def _architecture_markdown_files(path: Path) -> tuple[list[Path] | None, str]:
+    if path.is_file():
+        return [path], ""
+    if path.is_dir():
+        try:
+            files = sorted(
+                item
+                for item in path.glob("*.md")
+                if item.is_file() and README_NAME_PATTERN.match(item.name) is None
+            )
+        except OSError as error:
+            return None, f"architecture decision source is unreadable: {error}"
+        return files, ""
+    return None, "architecture decision source is not a file or directory"
+
+
+def _architecture_source_path(
+    file_path: Path, repository_root: Path
+) -> tuple[str | None, str]:
+    try:
+        relative = file_path.resolve().relative_to(repository_root.resolve())
+    except ValueError:
+        return (
+            None,
+            f"{file_path} is outside repository root {repository_root}",
+        )
+    return relative.as_posix(), ""
+
+
+def _architecture_live_text(markdown_text: str) -> str:
+    """Drop fenced examples, then HTML comments, from live Markdown."""
+    live = "\n".join(_live_lines(markdown_text))
+    return HTML_COMMENT_PATTERN.sub("", live)
+
+
+def _parse_architecture_decision_markdown(
+    text: str, repository_id: str, relative_path: str
+) -> tuple[list[dict[str, str]], str, str]:
+    """Return recognized entries, a status, and a detail string."""
+    live = _architecture_live_text(text)
+    sections = _architecture_sections(live)
+    if not sections:
+        return [], "ok", ""
+    entries: list[dict[str, str]] = []
+    for local_id, level, body in sections:
+        location = f"{relative_path}#{local_id}"
+        if level != 2:
+            return (
+                [],
+                "unsupported",
+                f"{location}: existing ADR is not the recognized ## ADR-N list shape",
+            )
+        fields, field_error = _architecture_entry_fields(body, location)
+        if field_error:
+            return [], "error", field_error
+        if fields is None:
+            return (
+                [],
+                "unsupported",
+                f"{location}: existing ADR is not the recognized ## ADR-N list shape",
+            )
+        status = fields["status"]
+        binding = fields["binding"]
+        if status not in {"accepted", "superseded"}:
+            return [], "error", f"{location}: status must be accepted or superseded"
+        if status == "accepted" and not binding:
+            return [], "error", f"{location}: missing Binding clause"
+        try:
+            qualified = qualify_decision_id(repository_id, local_id)
+        except ValueError as error:
+            return [], "error", f"{location}: {error}"
+        entries.append(
+            {
+                "local_id": local_id,
+                "id": qualified,
+                "status": status,
+                "text": binding,
+                "source": location,
+            }
+        )
+    return entries, "ok", ""
+
+
+def _architecture_sections(live_text: str) -> list[tuple[str, int, list[str]]]:
+    lines = live_text.splitlines()
+    sections: list[tuple[str, int, list[str]]] = []
+    index = 0
+    while index < len(lines):
+        heading = ARCHITECTURE_HEADING_PATTERN.match(lines[index].strip())
+        if heading is None:
+            index += 1
+            continue
+        level = len(heading.group(1))
+        local_id = heading.group(2)
+        index += 1
+        body: list[str] = []
+        while index < len(lines):
+            next_heading = HEADING_PATTERN.match(lines[index].strip())
+            if next_heading and len(next_heading.group(1)) <= level:
+                break
+            body.append(lines[index])
+            index += 1
+        sections.append((local_id, level, body))
+    return sections
+
+
+def _architecture_entry_fields(
+    body: list[str], location: str
+) -> tuple[dict[str, str] | None, str]:
+    status = ""
+    binding = ""
+    saw_recognized_field = False
+    for raw_line in body:
+        line = raw_line.strip()
+        status_match = ARCHITECTURE_STATUS_PATTERN.match(line)
+        if status_match:
+            saw_recognized_field = True
+            if status:
+                return None, f"{location}: duplicate Status field"
+            status = status_match.group(1).strip().lower()
+            continue
+        binding_match = ARCHITECTURE_BINDING_PATTERN.match(line)
+        if binding_match:
+            saw_recognized_field = True
+            if binding:
+                return None, f"{location}: duplicate Binding clause field"
+            binding = binding_match.group(1).strip()
+    if not saw_recognized_field:
+        return None, ""
+    return {"status": status, "binding": binding}, ""
+
+
+def _object_list_delta(
+    field: str, left: object, right: object
+) -> str:
+    left_items = left if isinstance(left, list) else []
+    right_items = right if isinstance(right, list) else []
+    left_map = {
+        item["id"]: item
+        for item in left_items
+        if isinstance(item, dict) and "id" in item
+    }
+    right_map = {
+        item["id"]: item
+        for item in right_items
+        if isinstance(item, dict) and "id" in item
+    }
+    removed = sorted(set(left_map) - set(right_map))
+    added = sorted(set(right_map) - set(left_map))
+    clause_changed = sorted(
+        identifier
+        for identifier in set(left_map) & set(right_map)
+        if left_map[identifier].get("text") != right_map[identifier].get("text")
+    )
+    source_changed = sorted(
+        identifier
+        for identifier in set(left_map) & set(right_map)
+        if left_map[identifier].get("text") == right_map[identifier].get("text")
+        and left_map[identifier].get("source") != right_map[identifier].get("source")
+    )
+    parts: list[str] = []
+    if clause_changed:
+        parts.append("clause-changed " + ", ".join(clause_changed))
+    if source_changed:
+        parts.append("source-changed " + ", ".join(source_changed))
+    if removed:
+        parts.append("removed " + ", ".join(removed))
+    if added:
+        parts.append("added " + ", ".join(added))
+    if not parts:
+        return ""
+    return f"{field}: " + "; ".join(parts)
+
+
 def compare_requirement_snapshots(baseline: object, current: object) -> SnapshotComparison:
     """Compare relevant requirement content.
 
@@ -4651,7 +4949,8 @@ def compare_requirement_snapshots(baseline: object, current: object) -> Snapshot
     treated as empty lists. Administrative fields do not affect the
     result. A comment-like decision listed under `relevant_decisions`
     does count. The digest compares content; it is not an approval
-    certificate.
+    certificate. Constraint and criterion list changes include an
+    explicit id delta: `clause-changed`, `removed`, and `added`.
     """
     left, left_detail = _extract_requirement_snapshot(baseline)
     right, right_detail = _extract_requirement_snapshot(current)
@@ -4669,11 +4968,17 @@ def compare_requirement_snapshots(baseline: object, current: object) -> Snapshot
     )
     digest = requirement_snapshot_digest(current)
     if changed:
+        parts = ["relevant requirement content differs: " + ", ".join(changed)]
+        for field in SNAPSHOT_OBJECT_LIST_FIELDS:
+            if field in changed:
+                delta = _object_list_delta(field, left.get(field), right.get(field))
+                if delta:
+                    parts.append(delta)
         return SnapshotComparison(
             "changed",
             digest,
             changed,
-            "relevant requirement content differs: " + ", ".join(changed),
+            "; ".join(parts),
         )
     return SnapshotComparison(
         "unchanged",
@@ -5365,6 +5670,55 @@ def cli_snapshot_compare(argv: list[str]) -> int:
     return 2
 
 
+def cli_architecture_decisions(argv: list[str]) -> int:
+    """Command-line entry point: `context_tools.py architecture-decisions`.
+
+    Prints one JSON object with `status`, `constraints`, and `detail`.
+    `--root` is the owning repository root and is required. Exit `0` is
+    `ok` or `absent`. Exit `2` is `unsupported`, `error`, or unreadable
+    input. Resolve this script from the plugin. Do not write output into
+    the consumer repository.
+    """
+    parser = argparse.ArgumentParser(prog="context_tools.py architecture-decisions")
+    parser.add_argument("source_path", help="architecture.md path or ADR directory")
+    parser.add_argument(
+        "--repository-id",
+        required=True,
+        help="owning repository ID used to qualify local ADR ids",
+    )
+    parser.add_argument(
+        "--root",
+        required=True,
+        help="owning repository root used for repository-relative source paths",
+    )
+    args = parser.parse_args(argv)
+    try:
+        result = extract_architecture_decisions(
+            Path(args.source_path),
+            args.repository_id,
+            repository_root=Path(args.root),
+        )
+    except Exception as error:
+        result = ArchitectureDecisionExtraction(
+            "error",
+            (),
+            f"architecture decision extractor error: {error}",
+        )
+    print(
+        json.dumps(
+            {
+                "status": result.status,
+                "constraints": list(result.constraints),
+                "detail": result.detail,
+            },
+            ensure_ascii=False,
+        )
+    )
+    if result.status in {"error", "unsupported"}:
+        return 2
+    return 0
+
+
 def plan_validate_proposal(proposal: object) -> list[ValidationCheck]:
     """Run every deterministic plan-work check against one staged proposal.
 
@@ -5766,8 +6120,14 @@ if __name__ == "__main__":
         raise SystemExit(cli_closeout_validate(sys.argv[2:]))
     if len(sys.argv) > 1 and sys.argv[1] == "snapshot-compare":
         raise SystemExit(cli_snapshot_compare(sys.argv[2:]))
+    if len(sys.argv) > 1 and sys.argv[1] == "architecture-decisions":
+        raise SystemExit(cli_architecture_decisions(sys.argv[2:]))
     print("usage: context_tools.py validate <index-path> --root ID=PATH [...]", file=sys.stderr)
     print("       context_tools.py plan-validate <proposal.json|->", file=sys.stderr)
     print("       context_tools.py closeout-validate <payload.json|->", file=sys.stderr)
     print("       context_tools.py snapshot-compare <payload.json|->", file=sys.stderr)
+    print(
+        "       context_tools.py architecture-decisions <path> --repository-id ID --root PATH",
+        file=sys.stderr,
+    )
     raise SystemExit(2)

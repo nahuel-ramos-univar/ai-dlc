@@ -9,7 +9,12 @@ directory is the artifact home.
 Read only the selected colocated `<module-root>/AIDLC_CONTEXT.md` files. If the
 index identifies an artifact-home fallback, read that linked file instead. Read
 `integration-map.md` and adjacent module context only when the change crosses a
-verified boundary. If a context link is missing, stale, or broken, say so,
+verified boundary. When the index or module context links an architecture
+decision record, and this task is constrained by those decisions, read that
+linked file. Copy each applicable binding clause exactly. Follow
+[architecture-decisions.md](architecture-decisions.md). If this work needs
+the record and the link is missing or broken, treat architecture recovery as
+incomplete; do not scan for an unlinked file as a substitute. If a context link is missing, stale, or broken, say so,
 inspect current source selectively, and offer `/sync-context`; do not silently
 load every module context.
 

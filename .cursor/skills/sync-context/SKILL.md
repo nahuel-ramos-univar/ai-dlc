@@ -473,6 +473,8 @@ related-repository resolution procedure,
 [repository preflight](../../../references/repository-preflight.md),
 [canvas review](../../../references/canvas-review.md), and
 [skill composition](../../../references/skill-composition.md).
+Link an existing architecture decision record; do not invent one. See
+[architecture-decisions.md](../../../references/architecture-decisions.md).
 Read [Jira integration](../../../references/jira-integration.md) when a Jira
 key or URL is supplied.
 

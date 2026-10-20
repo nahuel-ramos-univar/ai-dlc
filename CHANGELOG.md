@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.15.0 — 2026-10-20
+
+Bump: `minor`
+Compare: [v0.14.0...v0.15.0](https://github.com/nahuel-ramos-univar/ai-dlc/compare/v0.14.0...v0.15.0)
+
+### Added
+
+- feat: persist work records and fail closed on invalid validation close-out ([`21b004a`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/21b004a2edd496f5c8a7cd73566f2913cd1fe959))
+- feat: require independent validation with a complete evidence return ([`9e45895`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/9e45895dbd0a245f1279d86fa24f6909440331bb))
+
+### Other
+
+- Merge pull request #25 from nahuel-ramos-univar/CTY-311-skills-validation ([`95ddc5a`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/95ddc5ac91b77ca5c8903b525273664426710865))
+- Merge pull request #24 from nahuel-ramos-univar/CTY-307-validate-change-agent ([`189668f`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/189668fc5bee1a3aa4f602c755b39eb46869f615))
+
 ## 0.15.0 — 2026-10-19
 
 Bump: `minor`

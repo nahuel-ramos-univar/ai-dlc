@@ -6167,36 +6167,67 @@ def test_architecture_decision_unsupported_legacy_format_is_not_empty_ok() -> No
         path = root / "docs" / "adr" / "001-private-storage.md"
         path.parent.mkdir(parents=True)
         path.write_text(
-            "# ADR-001: Private storage\n\n"
+            "# 1. Private storage\n\n"
             "## Status\n\n"
             "Accepted\n\n"
             "## Decision\n\n"
             "All objects must remain private.\n",
             encoding="utf-8",
         )
-        extracted = extract_architecture_decisions(path, "web", repository_root=root)
-        assert extracted.status == "unsupported"
-        assert extracted.constraints == ()
-        assert "ADR-001" in extracted.detail
-        assert "recognized" in extracted.detail
+        numbered = extract_architecture_decisions(path, "web", repository_root=root)
+        assert numbered.status == "ok"
+        assert numbered.constraints == (
+            {
+                "id": "web/ADR-001",
+                "text": "All objects must remain private.",
+                "source": "docs/adr/001-private-storage.md#ADR-001",
+            },
+        )
 
-        sibling = root / "docs" / "adr" / "architecture.md"
-        sibling.write_text(
-            "## ADR-001: Private storage\n\n"
-            "## Status\n\n"
-            "Accepted\n\n"
-            "## Decision\n\n"
-            "All objects must remain private.\n",
+        yaml_path = root / "docs" / "adr" / "002-yaml.md"
+        yaml_path.write_text(
+            "---\n"
+            "id: ADR-002\n"
+            "status: accepted\n"
+            "---\n\n"
+            "Keep catalog objects in private storage.\n",
             encoding="utf-8",
         )
-        hashed = extract_architecture_decisions(sibling, "web", repository_root=root)
-        assert hashed.status == "unsupported"
-        assert hashed.constraints == ()
+        yaml_extracted = extract_architecture_decisions(
+            yaml_path, "web", repository_root=root
+        )
+        assert yaml_extracted.status == "ok"
+        assert yaml_extracted.constraints[0]["id"] == "web/ADR-002"
+        assert yaml_extracted.constraints[0]["text"] == (
+            "Keep catalog objects in private storage."
+        )
+
+        mixed = root / "architecture.md"
+        mixed.write_text(
+            _architecture_markdown("ADR-001", "Keep objects private.")
+            + "\n# 2. Future storage\n\nWe might change this later.\n",
+            encoding="utf-8",
+        )
+        mixed_extracted = extract_architecture_decisions(
+            mixed, "web", repository_root=root
+        )
+        assert mixed_extracted.status == "unsupported"
+        assert [item["id"] for item in mixed_extracted.constraints] == ["web/ADR-001"]
+        assert mixed_extracted.constraints[0]["text"] == "Keep objects private."
+
+        incomplete = root / "notes.md"
+        incomplete.write_text("# 3. Unspecified storage\n\nA heading without a decision.\n", encoding="utf-8")
+        unrecovered = extract_architecture_decisions(
+            incomplete, "web", repository_root=root
+        )
+        assert unrecovered.status == "unsupported"
+        assert unrecovered.status != "ok"
+        assert unrecovered.constraints == ()
 
         buf = StringIO()
         with redirect_stdout(buf):
             code = cli_architecture_decisions(
-                [str(path), "--repository-id", "web", "--root", str(root)]
+                [str(incomplete), "--repository-id", "web", "--root", str(root)]
             )
         payload = json.loads(buf.getvalue())
         assert code == 2
@@ -6228,6 +6259,58 @@ def test_architecture_decision_recognized_empty_and_superseded_only_are_ok() -> 
         replaced = extract_architecture_decisions(superseded, "web", repository_root=root)
         assert replaced.status == "ok"
         assert replaced.constraints == ()
+
+
+def test_architecture_decision_comment_fence_opener_does_not_hide_later_adr() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        path = root / "architecture.md"
+        live = "Objects go to a private bucket. Public-read is not allowed."
+        path.write_text(
+            "<!--\n"
+            "```markdown\n"
+            "-->\n"
+            + _architecture_markdown("ADR-001", live),
+            encoding="utf-8",
+        )
+        extracted = extract_architecture_decisions(path, "web", repository_root=root)
+        assert extracted.status == "ok"
+        assert extracted.constraints[0]["text"] == live
+
+        hidden = root / "hidden.md"
+        hidden.write_text(
+            _architecture_markdown("ADR-001", live) + "\n```markdown\nnever closed\n",
+            encoding="utf-8",
+        )
+        unclosed = extract_architecture_decisions(hidden, "web", repository_root=root)
+        assert unclosed.status == "unsupported"
+        assert unclosed.constraints[0]["text"] == live
+
+
+def test_architecture_decision_nested_directory_is_not_empty_success() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        nested = root / "adrs" / "storage" / "001.md"
+        nested.parent.mkdir(parents=True)
+        nested.write_text(
+            _architecture_markdown("ADR-001", "Keep objects private."),
+            encoding="utf-8",
+        )
+        extracted = extract_architecture_decisions(
+            root / "adrs", "web", repository_root=root
+        )
+        assert extracted.status == "ok"
+        assert extracted.constraints[0]["source"] == "adrs/storage/001.md#ADR-001"
+
+        empty_top = root / "docs"
+        empty_top.mkdir()
+        outside = root / "outside.md"
+        outside.write_text(_architecture_markdown("ADR-009", "Do not take this."), encoding="utf-8")
+        linked = empty_top / "escaped.md"
+        linked.symlink_to(outside)
+        skipped = extract_architecture_decisions(empty_top, "web", repository_root=root)
+        assert skipped.status != "ok"
+        assert skipped.constraints == ()
 
 
 def test_architecture_decision_ignores_fenced_examples_and_html_comments() -> None:
@@ -6395,6 +6478,430 @@ def test_architecture_decision_source_paths_require_an_owning_root() -> None:
         else:
             raise AssertionError("repository_root must be required")
 
+        foreign_missing = Path(temp) / "outside" / "missing.md"
+        unauthorized_missing = extract_architecture_decisions(
+            foreign_missing, "web", repository_root=other
+        )
+        assert unauthorized_missing.status == "error"
+        assert unauthorized_missing.status != "absent"
+        assert unauthorized_missing.constraints == ()
+        assert "outside repository root" in unauthorized_missing.detail
+        assert "absent" not in unauthorized_missing.detail
+        assert str(foreign_missing) not in unauthorized_missing.detail
+
+
+def test_architecture_decision_recovery_is_fail_closed() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        path = root / "architecture.md"
+
+        path.write_text(
+            "---\n"
+            "id: ADR-001\n"
+            "status: proposed\n"
+            "status: accepted\n"
+            "decision: Must use X.\n"
+            "---\n",
+            encoding="utf-8",
+        )
+        duplicate_status = extract_architecture_decisions(
+            path, "web", repository_root=root
+        )
+        assert duplicate_status.status != "ok"
+        assert duplicate_status.constraints == ()
+        assert duplicate_status.status in {"unsupported", "error"}
+        assert "accepted" not in [
+            item.get("text", "") for item in duplicate_status.constraints
+        ]
+
+        path.write_text(
+            "---\n"
+            "id: ADR-001\n"
+            "status: accepted\n"
+            "decision: Must use X.\n"
+            "decision: Must use Y.\n"
+            "---\n",
+            encoding="utf-8",
+        )
+        duplicate_decision = extract_architecture_decisions(
+            path, "web", repository_root=root
+        )
+        assert duplicate_decision.status != "ok"
+        assert duplicate_decision.constraints == ()
+
+        path.write_text(
+            "---\n"
+            "id: ADR-001\n"
+            "status: accepted\n"
+            "decision: >\n"
+            "  Keep objects private.\n"
+            "---\n",
+            encoding="utf-8",
+        )
+        folded = extract_architecture_decisions(path, "web", repository_root=root)
+        assert all(item["text"] != ">" for item in folded.constraints)
+        if folded.status == "ok":
+            assert folded.constraints[0]["text"] == "Keep objects private."
+        else:
+            assert folded.status == "unsupported"
+            assert folded.constraints == ()
+
+        path.write_text(
+            "---\n"
+            "id: ADR-001\n"
+            "status: accepted\n"
+            "decision: |\n"
+            "  Keep objects private.\n"
+            "---\n",
+            encoding="utf-8",
+        )
+        literal = extract_architecture_decisions(path, "web", repository_root=root)
+        assert all(item["text"] != "|" for item in literal.constraints)
+        if literal.status == "ok":
+            assert literal.constraints[0]["text"] == "Keep objects private."
+        else:
+            assert literal.status == "unsupported"
+            assert literal.constraints == ()
+
+        path.write_text(
+            "---\n"
+            "id: ADR-001\n"
+            "status: accepted\n"
+            "decision: >\n"
+            "---\n",
+            encoding="utf-8",
+        )
+        bare_folded = extract_architecture_decisions(path, "web", repository_root=root)
+        assert bare_folded.status != "ok"
+        assert bare_folded.constraints == ()
+        assert all(item.get("text") != ">" for item in bare_folded.constraints)
+
+        path.write_text(
+            "---\n"
+            "id: ADR-001\n"
+            "status: proposed\n"
+            "decision: Must use Y.\n"
+            "---\n\n"
+            "# ADR-001: Storage\n\n"
+            "- Status: accepted\n"
+            "- Binding clause: Must use X.\n",
+            encoding="utf-8",
+        )
+        status_conflict = extract_architecture_decisions(
+            path, "web", repository_root=root
+        )
+        assert status_conflict.status != "ok"
+        assert status_conflict.constraints == ()
+
+        path.write_text(
+            "---\n"
+            "id: ADR-001\n"
+            "status: accepted\n"
+            "decision: Must use X.\n"
+            "---\n\n"
+            "# ADR-001: Storage\n\n"
+            "- Status: accepted\n"
+            "- Binding clause: Must use Y.\n",
+            encoding="utf-8",
+        )
+        decision_conflict = extract_architecture_decisions(
+            path, "web", repository_root=root
+        )
+        assert decision_conflict.status != "ok"
+        assert decision_conflict.constraints == ()
+
+        path.write_text(
+            "---\n"
+            "id: ADR-001\n"
+            "status: accepted\n"
+            "decision: Must use X.\n"
+            "---\n\n"
+            "# ADR-001: Storage\n\n"
+            "- Status: accepted\n"
+            "- Binding clause: Must use X.\n",
+            encoding="utf-8",
+        )
+        matching = extract_architecture_decisions(path, "web", repository_root=root)
+        assert matching.status == "ok"
+        assert matching.constraints == (
+            {
+                "id": "web/ADR-001",
+                "text": "Must use X.",
+                "source": "architecture.md#ADR-001",
+            },
+        )
+
+        path.write_text(
+            "# ADR-001: Storage\n\n"
+            "## Status\n"
+            "Proposed\n\n"
+            "## Status\n"
+            "Accepted\n\n"
+            "## Decision\n"
+            "Must use X.\n",
+            encoding="utf-8",
+        )
+        duplicate_section = extract_architecture_decisions(
+            path, "web", repository_root=root
+        )
+        assert duplicate_section.status != "ok"
+        assert duplicate_section.constraints == ()
+
+        missing = extract_architecture_decisions(
+            root / "missing.md", "web", repository_root=root
+        )
+        assert missing.status == "absent"
+        assert missing.constraints == ()
+
+        foreign_missing = Path(temp).parent / f"{root.name}-outside" / "missing.md"
+        unauthorized = extract_architecture_decisions(
+            foreign_missing, "web", repository_root=root
+        )
+        assert unauthorized.status == "error"
+        assert unauthorized.status != "absent"
+        assert unauthorized.constraints == ()
+        assert str(foreign_missing) not in unauthorized.detail
+
+        broken = root / "broken.md"
+        broken.symlink_to(root / "missing-target.md")
+        broken_extracted = extract_architecture_decisions(
+            broken, "web", repository_root=root
+        )
+        assert broken_extracted.status != "absent"
+        assert broken_extracted.status in {"unsupported", "error"}
+        assert broken_extracted.constraints == ()
+
+        target = root / "docs" / "adr" / "001.md"
+        target.parent.mkdir(parents=True)
+        target.write_text(
+            _architecture_markdown("ADR-001", "Keep objects private."),
+            encoding="utf-8",
+        )
+        linked = root / "linked-architecture.md"
+        linked.symlink_to(target)
+        valid_link = extract_architecture_decisions(
+            linked, "web", repository_root=root
+        )
+        assert valid_link.status == "ok"
+        assert valid_link.constraints[0]["text"] == "Keep objects private."
+
+        bounded = root / "bounded"
+        bounded.mkdir()
+        outside = root / "escaped.md"
+        outside.write_text(
+            _architecture_markdown("ADR-009", "Do not take this."),
+            encoding="utf-8",
+        )
+        escaped = bounded / "escaped-architecture.md"
+        escaped.symlink_to(outside)
+        escaped_extracted = extract_architecture_decisions(
+            escaped, "web", repository_root=bounded
+        )
+        assert escaped_extracted.status == "error"
+        assert escaped_extracted.constraints == ()
+        assert str(outside) not in escaped_extracted.detail
+
+        path.write_text(
+            "---\n"
+            "id: ADR-001\n"
+            "status: proposed\n"
+            "decision: Must use X.\n"
+            "---\n",
+            encoding="utf-8",
+        )
+        proposed = extract_architecture_decisions(path, "web", repository_root=root)
+        assert proposed.status == "ok"
+        assert proposed.constraints == ()
+
+        path.write_text(
+            "---\n"
+            "id: ADR-001\n"
+            "status: rejected\n"
+            "decision: Must use X.\n"
+            "---\n",
+            encoding="utf-8",
+        )
+        rejected = extract_architecture_decisions(path, "web", repository_root=root)
+        assert rejected.status == "ok"
+        assert rejected.constraints == ()
+
+        path.write_text(
+            "---\n"
+            "id: ADR-001\n"
+            "status: draft\n"
+            "decision: Must use X.\n"
+            "---\n",
+            encoding="utf-8",
+        )
+        draft = extract_architecture_decisions(path, "web", repository_root=root)
+        assert draft.status == "ok"
+        assert draft.constraints == ()
+
+        path.write_text(
+            "---\n"
+            "id: ADR-001\n"
+            "status: accepted\n"
+            "decision: Keep objects private.\n"
+            "---\n",
+            encoding="utf-8",
+        )
+        accepted = extract_architecture_decisions(path, "web", repository_root=root)
+        assert accepted.status == "ok"
+        assert accepted.constraints[0]["text"] == "Keep objects private."
+
+
+def test_architecture_decision_parser_does_not_guess_headings_status_or_yaml() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        path = root / "architecture.md"
+
+        path.write_text(
+            "# ADR-001: Storage\n\n"
+            "## Status\n"
+            "Accepted\n\n"
+            "## Decision Rationale\n"
+            "This rationale must not become the binding clause.\n\n"
+            "## Decision\n"
+            "Keep objects private.\n",
+            encoding="utf-8",
+        )
+        rationale = extract_architecture_decisions(path, "web", repository_root=root)
+        assert rationale.status == "ok"
+        assert rationale.constraints[0]["text"] == "Keep objects private."
+        assert "rationale" not in rationale.constraints[0]["text"].lower()
+
+        path.write_text(
+            "# ADR-001: Storage\n\n"
+            "## Status\n"
+            "Accepted\n\n"
+            "## Decision Drivers\n"
+            "This driver text must not become the binding clause.\n\n"
+            "## Decision\n"
+            "Keep objects private.\n",
+            encoding="utf-8",
+        )
+        drivers = extract_architecture_decisions(path, "web", repository_root=root)
+        assert drivers.status == "ok"
+        assert drivers.constraints[0]["text"] == "Keep objects private."
+        assert "driver" not in drivers.constraints[0]["text"].lower()
+
+        path.write_text(
+            "# ADR-001: Storage\n\n"
+            "## Status History\n"
+            "Accepted\n\n"
+            "## Status\n"
+            "Proposed\n\n"
+            "## Decision\n"
+            "Keep objects private.\n",
+            encoding="utf-8",
+        )
+        history = extract_architecture_decisions(path, "web", repository_root=root)
+        assert history.status == "ok"
+        assert history.constraints == ()
+
+        path.write_text(
+            "# ADR-001: Storage\n\n"
+            "## Status History\n"
+            "Accepted\n\n"
+            "## Decision\n"
+            "Keep objects private.\n",
+            encoding="utf-8",
+        )
+        history_only = extract_architecture_decisions(path, "web", repository_root=root)
+        assert history_only.status != "ok"
+        assert history_only.constraints == ()
+
+        path.write_text(
+            "---\n"
+            "id: ADR-001\n"
+            "status: accepted-ish\n"
+            "decision: Keep objects private.\n"
+            "---\n",
+            encoding="utf-8",
+        )
+        accepted_ish = extract_architecture_decisions(path, "web", repository_root=root)
+        assert accepted_ish.status != "ok"
+        assert accepted_ish.constraints == ()
+
+        path.write_text(
+            "---\n"
+            "id: ADR-001\n"
+            "status: accepted pending review\n"
+            "decision: Keep objects private.\n"
+            "---\n",
+            encoding="utf-8",
+        )
+        pending = extract_architecture_decisions(path, "web", repository_root=root)
+        assert pending.status != "ok"
+        assert pending.constraints == ()
+
+        path.write_text(
+            "## ADR-001: Storage\n\n"
+            "- Status: accepted?\n"
+            "- Binding clause: Keep objects private.\n",
+            encoding="utf-8",
+        )
+        accepted_q = extract_architecture_decisions(path, "web", repository_root=root)
+        assert accepted_q.status != "ok"
+        assert accepted_q.constraints == ()
+
+        bounded = root / "repo"
+        bounded.mkdir()
+        outside_dir = root / "outside"
+        outside_dir.mkdir()
+        (outside_dir / "missing.md").write_text(
+            _architecture_markdown("ADR-009", "Do not take this."),
+            encoding="utf-8",
+        )
+        escape = bounded / "escape"
+        escape.symlink_to(outside_dir)
+        nested_missing = bounded / "escape" / "not-there.md"
+        escaped_missing = extract_architecture_decisions(
+            nested_missing, "web", repository_root=bounded
+        )
+        assert escaped_missing.status != "absent"
+        assert escaped_missing.status in {"unsupported", "error"}
+        assert escaped_missing.constraints == ()
+        assert str(outside_dir) not in escaped_missing.detail
+
+        escaped_existing = extract_architecture_decisions(
+            bounded / "escape" / "missing.md", "web", repository_root=bounded
+        )
+        assert escaped_existing.status != "absent"
+        assert escaped_existing.status == "error"
+        assert escaped_existing.constraints == ()
+
+        path.write_text(
+            "---\n"
+            "id: ADR-001\n"
+            "status: accepted\n"
+            'decision: "Keep \\"objects\\" private."\n'
+            "---\n",
+            encoding="utf-8",
+        )
+        escaped_quote = extract_architecture_decisions(
+            path, "web", repository_root=root
+        )
+        assert escaped_quote.status != "ok"
+        assert escaped_quote.constraints == ()
+        assert all("\\" not in item["text"] for item in escaped_quote.constraints)
+        assert all(item["text"] != '"Keep \\"objects\\" private."' for item in escaped_quote.constraints)
+
+        path.write_text(
+            "---\n"
+            "id: ADR-001\n"
+            "status: accepted\n"
+            "decision: Keep objects private. # not the clause\n"
+            "---\n",
+            encoding="utf-8",
+        )
+        inline_comment = extract_architecture_decisions(
+            path, "web", repository_root=root
+        )
+        assert inline_comment.status != "ok"
+        assert inline_comment.constraints == ()
+        assert all("#" not in item["text"] for item in inline_comment.constraints)
+
 
 def test_architecture_decision_unreadable_sources_fail_closed_without_traceback() -> None:
     with tempfile.TemporaryDirectory() as temp:
@@ -6418,14 +6925,11 @@ def test_architecture_decision_unreadable_sources_fail_closed_without_traceback(
 
         docs = root / "docs"
         docs.mkdir()
-        original_glob = Path.glob
 
-        def glob_or_boom(self: Path, pattern: str, *args: object, **kwargs: object):
-            if self.resolve() == docs.resolve() and pattern == "*.md":
-                raise PermissionError("Permission denied")
-            return original_glob(self, pattern, *args, **kwargs)
+        def walk_boom(*args: object, **kwargs: object):
+            raise PermissionError("Permission denied")
 
-        with patch.object(Path, "glob", glob_or_boom):
+        with patch("context_tools.os.walk", walk_boom):
             listing = extract_architecture_decisions(docs, "web", repository_root=root)
         assert listing.status == "error"
         assert listing.constraints == ()
@@ -6460,23 +6964,46 @@ def test_requirement_snapshot_reports_binding_clause_change_and_incomplete_recov
     assert changed.status == "changed"
     assert "clause-changed web/ADR-001" in changed.detail
 
+    recovered_path = None
     with tempfile.TemporaryDirectory() as temp:
         root = Path(temp)
         path = root / "aidlc-docs" / "architecture.md"
         path.parent.mkdir()
         path.write_text(
-            "# ADR-001: Private storage\n\n"
+            "# 1. Private storage\n\n"
             "## Status\nAccepted\n\n"
-            "## Decision\nAll objects must remain private.\n",
+            "## Decision\n"
+            f"{private}\n",
             encoding="utf-8",
         )
         recovered = extract_architecture_decisions(path, "web", repository_root=root)
-        assert recovered.status == "unsupported"
+        assert recovered.status == "ok"
+        assert recovered.constraints[0]["text"] == private
+        recovered_match = compare_requirement_snapshots(
+            baseline,
+            _complete_snapshot(constraints=list(recovered.constraints)),
+        )
+        assert recovered_match.status == "unchanged"
+
+        incomplete_path = root / "aidlc-docs" / "notes.md"
+        incomplete_path.write_text("# 2. Unknown storage\n\nNo decision text.\n", encoding="utf-8")
+        unrecovered = extract_architecture_decisions(
+            incomplete_path, "web", repository_root=root
+        )
+        assert unrecovered.status == "unsupported"
+        assert unrecovered.constraints == ()
+        empty_success = compare_requirement_snapshots(
+            baseline,
+            _complete_snapshot(constraints=[]),
+        )
+        assert empty_success.status == "changed"
         incomplete = compare_requirement_snapshots(
             baseline,
             _complete_snapshot(source_complete=False, constraints=[]),
         )
         assert incomplete.status == "not-compared"
+        recovered_path = path
+    del recovered_path
 
 
 def test_cli_snapshot_compare_documented_stdin_from_other_cwd() -> None:
@@ -6766,10 +7293,14 @@ if __name__ == "__main__":
         test_cli_architecture_decisions_reports_absent_and_errors,
         test_architecture_decision_unsupported_legacy_format_is_not_empty_ok,
         test_architecture_decision_recognized_empty_and_superseded_only_are_ok,
+        test_architecture_decision_comment_fence_opener_does_not_hide_later_adr,
+        test_architecture_decision_nested_directory_is_not_empty_success,
         test_architecture_decision_ignores_fenced_examples_and_html_comments,
         test_architecture_decision_rejects_duplicate_fields_and_ids,
         test_architecture_decision_respects_markdown_section_boundaries,
         test_architecture_decision_source_paths_require_an_owning_root,
+        test_architecture_decision_recovery_is_fail_closed,
+        test_architecture_decision_parser_does_not_guess_headings_status_or_yaml,
         test_architecture_decision_unreadable_sources_fail_closed_without_traceback,
         test_requirement_snapshot_reports_binding_clause_change_and_incomplete_recovery,
         test_cli_snapshot_compare_documented_stdin_from_other_cwd,

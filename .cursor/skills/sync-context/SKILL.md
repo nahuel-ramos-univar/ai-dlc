@@ -379,7 +379,11 @@ false, stop writing that part of the proposal, recalculate the affected
 changes, preserve any intervening user edit, and present the material
 difference for renewed approval before writing it. Write only the approved
 candidate content, and only to the paths authorized
-in [context-generation.md](references/context-generation.md). A second sync
+in [context-generation.md](references/context-generation.md). Ordinary sync
+does not write `architecture.md` or an ADR file. An explicitly approved
+legacy migration may relocate or faithfully consolidate existing records
+per [legacy-migration.md](references/legacy-migration.md). That approval
+does not imply acceptance of the architectural decision. A second sync
 with nothing relevant changed must produce no content changes.
 
 For a migration, apply in the recoverable, per-repository sequence in

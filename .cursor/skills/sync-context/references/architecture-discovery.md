@@ -103,10 +103,13 @@ non-empty answer.
 19. **Architectural decisions and constraints** — a real constraint
     (performance, compliance, a platform limit) or a linked ADR that
     explains why the code is shaped the way it is; link an existing ADR,
-    never invent one. `/scaffold-project` and `/refine-story` may write an
-    accepted entry after approval, per
+    never invent one. `/scaffold-project` and `/refine-story` persist a
+    material approved decision after that exact content is in the approval
+    scope, per
     [architecture-decisions.md](../../../../references/architecture-decisions.md).
-    This discovery pass still does not create that record.
+    This discovery pass still does not create that record. Ordinary sync
+    still does not accept a decision or rewrite a binding clause to match
+    code. Migration approval does not imply acceptance.
 20. **Known gaps and risk areas** — a part of the module nobody has
     verified recently, a workaround, or a known limitation worth a future
     engineer's attention.

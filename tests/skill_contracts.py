@@ -454,7 +454,9 @@ def test_architecture_discovery_contract_has_required_language() -> None:
     # context-generation.md hands drafting off to architecture discovery.
     assert "architecture-discovery.md" in generation
     assert "context-quality.md" in generation
-    assert "This skill does not write `architecture.md`" in generation
+    assert "Ordinary sync does not write `architecture.md`" in generation
+    assert "explicitly approved legacy migration may relocate" in generation
+    assert "Migration approval does not imply acceptance" in discovery
     assert "architecture-decisions.md" in generation
 
     # SKILL.md wires the three-tier model and progressive disclosure.
@@ -840,7 +842,10 @@ def test_refine_story_contract_has_required_language() -> None:
     # a business-scope change back to the Product Owner through /plan-work.
     assert "Approval must come from the role the calling skill authorizes" in approval_contract
     assert "allows the authorized developer to approve technical implementation content" in approval_contract
-    assert "An authorized developer may approve the technical Jira change set" in skill
+    assert "An authorized developer may approve one complete, reviewable change set" in skill
+    assert "does not implicitly authorize unlisted repository writes" in skill
+    assert "Retry only the unresolved mutation" in skill
+    assert "If the user approves Jira changes and excludes the ADR, do not write the ADR" in skill
     assert "requires Product Owner approval through `/plan-work`" in skill
     assert "Do not resolve it unilaterally" in skill
 
@@ -859,6 +864,9 @@ def test_refine_story_contract_has_required_language() -> None:
     assert "minimum index and module navigation-link edits" in skill
     assert "Do not start `/sync-context` to finish that handoff" in skill
     assert "report partial completion" in skill
+    assert "do not leave it only in chat" in skill
+    assert "Do not create an empty or duplicate record" in skill
+    assert "do not claim the decision was recorded" in skill
     assert "unprotected existing behavior that needs characterization" in template
     assert "TAC-01" in template
     assert "criterion-ids.md" in skill
@@ -1310,9 +1318,25 @@ def test_legacy_aidlc_migration_contract_is_specific() -> None:
         "does not publish to Jira",
         "not a copy of the global map",
         "If Jira cannot be inspected, report that verification as unavailable",
+        "Architecture decision records",
+        "aidlc-docs/design_stories/adrs/",
+        "Approval to migrate a document is not approval of its architectural decision",
+        "Ordinary `/sync-context` still cannot author, accept, or rewrite",
+        "explicitly approved legacy migration",
+        "Do not automatically delete originals merely because a destination file exists",
+        "prevent retiring the only source",
+        "Do not duplicate shared decisions",
+        "Do not convert them into accepted entries",
+        "Migration approval does not imply acceptance",
+        "A legacy `proposed` record remains `proposed`",
+        "does not manufacture architectural authority",
     ):
         assert phrase in legacy
     assert "Known legacy AI-DLC installation" in skill
+    skill_flat = " ".join(skill.split())
+    assert "Ordinary sync does not write `architecture.md`" in skill_flat
+    assert "explicitly approved legacy migration may relocate" in skill_flat
+    assert "does not imply acceptance of the architectural decision" in skill_flat
     assert "The Python helpers do not execute this skill." in manual
 
 
@@ -1401,6 +1425,9 @@ def test_scaffold_project_contract_has_required_language() -> None:
         "minimum index and module navigation links",
         "Do not start `/sync-context` to finish that handoff",
         "report partial completion",
+        "do not leave it only in chat",
+        "Do not create an empty or duplicate record",
+        "do not claim the decision was recorded",
         "content_fingerprint",
         "stable_repository_id",
         "no-commit",
@@ -1857,10 +1884,19 @@ def test_manual_evaluation_and_shared_contracts_exist() -> None:
     assert "Do not add this file to `EXCLUDED_PARTS`" in architecture
     assert "--root" in architecture
     assert "unsupported" in architecture
+    assert "Duplicate semantic fields" in architecture
+    assert "error`, not `absent`" in architecture or "error, not `absent`" in architecture
+    assert "broken symlink is incomplete recovery" in architecture
+    assert "does not implicitly authorize unlisted repository writes" in architecture
     assert "Do not fall back to a basename" in architecture
     assert "same approved change set" in architecture
     assert "Do not start `/sync-context`" in architecture
     assert "Do not scan for an unlinked file" in architecture
+    assert "Persist material, explicitly approved architectural decisions" in architecture
+    assert "Recording a material approved decision is not optional" in architecture
+    assert "the small read fallback" in architecture or "read fallback" in architecture
+    assert "nested Markdown files" in architecture
+    assert "fence opener inside a comment" in architecture
     retrieval = " ".join(
         (ROOT / "references" / "context-retrieval.md").read_text(encoding="utf-8").split()
     )
@@ -1869,6 +1905,19 @@ def test_manual_evaluation_and_shared_contracts_exist() -> None:
     manual = " ".join((ROOT / "MANUAL_EVALUATION.md").read_text(encoding="utf-8").split())
     assert "Refine writes a linked architecture record a later session can load" in manual
     assert "Static contract tests do not prove live agent execution" in manual
+    assert "Legacy accepted ADR relocated with provenance and links intact" in manual
+    assert "Draft ADR preserved without promotion to accepted" in manual
+    assert "Shared decision has one destination across multiple repos" in manual
+    assert "ADR identifier collision handled explicitly" in manual
+    assert "Unsupported ADR content preserved with incomplete recovery" in manual
+    assert "Source retirement blocked when a required decision is not preserved" in manual
+    assert "Static contract tests do not prove a live migration" in manual
+    assert "Ambiguous legacy ADR is not resolved by guessing" in manual
+    assert "Proposed legacy ADR migration keeps proposed" in manual
+    assert "Refine-story material ADR shows Jira and repository mutations" in manual
+    assert "User approves Jira but declines the ADR" in manual
+    assert "Partial Jira and repository failure is reported honestly" in manual
+    assert "Broken ADR link is incomplete recovery" in manual
     ids = " ".join(
         (ROOT / "references" / "criterion-ids.md").read_text(encoding="utf-8").split()
     )
@@ -1928,13 +1977,20 @@ def test_architecture_decision_write_to_retrieval_handoff_is_documented() -> Non
     assert "treat architecture recovery as incomplete" in retrieval
     assert "do not scan for an unlinked file as a substitute" in retrieval
     assert "minimum index and module navigation-link edits" in refine
+    assert "do not leave it only in chat" in refine
     assert "Do not start `/sync-context` to finish that handoff" in refine
+    assert "does not implicitly authorize unlisted repository writes" in refine
+    assert "Retry only the unresolved mutation" in refine
     assert "minimum index and module navigation links" in foundation
     assert "Extract with `--repository-id` and `--root`" in implement
     assert "navigation link is missing" in implement
     assert "unreadable or unsupported architecture source" in validate
     assert "Refine writes a linked architecture record a later session can load" in manual
     assert "Static contract tests do not prove live agent execution" in manual
+    assert "Static contract tests do not prove a live migration" in manual
+    assert "does not implicitly authorize unlisted repository writes" in refine
+    assert "Ambiguous legacy ADR is not resolved by guessing" in manual
+    assert "Partial Jira and repository failure is reported honestly" in manual
 
 
 if __name__ == "__main__":

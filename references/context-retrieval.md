@@ -14,7 +14,8 @@ decision record, and this task is constrained by those decisions, read that
 linked file. Copy each applicable binding clause exactly. Follow
 [architecture-decisions.md](architecture-decisions.md). If this work needs
 the record and the link is missing or broken, treat architecture recovery as
-incomplete; do not scan for an unlinked file as a substitute. If a context link is missing, stale, or broken, say so,
+incomplete; do not treat a broken architecture link as an absent record,
+and do not scan for an unlinked file as a substitute. If a context link is missing, stale, or broken, say so,
 inspect current source selectively, and offer `/sync-context`; do not silently
 load every module context.
 

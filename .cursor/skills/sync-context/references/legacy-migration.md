@@ -195,9 +195,10 @@ Propose treatment per source:
   and link. Do not create a competing `aidlc-docs/architecture.md`.
 - ADRs inside a coordinator proposed for retirement: propose explicit
   destination ownership and preserve them before source retirement.
-- Consolidation into `architecture.md`: optional, only when the user
-  approves that exact transformation and no competing authoritative location
-  is introduced.
+- Consolidation into `architecture.md`: only when the user approves that
+  exact transformation and no competing authoritative location is
+  introduced. Creating that file is conditional. Recording a material
+  approved decision is not optional.
 - Draft, proposed, rejected, ambiguous, or unsupported records: preserve as
   such. Do not convert them into accepted entries and do not discard them.
   Migration approval does not imply acceptance of the architectural

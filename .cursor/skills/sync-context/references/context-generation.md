@@ -117,7 +117,8 @@ Ordinary sync does not write `architecture.md` or an ADR file. An
 explicitly approved legacy migration may relocate or faithfully consolidate
 existing records per [legacy-migration.md](legacy-migration.md); it still
 does not invent an accepted decision or rewrite a binding clause to match
-code. The Coverage table is
+code. Creating `architecture.md` is conditional. Recording a material
+approved decision is not optional. The Coverage table is
 a summary of what was considered; `## Material architecture details`
 preserves the discovered knowledge a downstream agent needs. `## Evidence
 and existing docs` is the canonical catalog of repository-relative local

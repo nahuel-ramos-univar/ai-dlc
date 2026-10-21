@@ -456,6 +456,7 @@ def test_architecture_discovery_contract_has_required_language() -> None:
     assert "context-quality.md" in generation
     assert "Ordinary sync does not write `architecture.md`" in generation
     assert "explicitly approved legacy migration may relocate" in generation
+    assert "Recording a material approved decision is not optional" in generation
     assert "Migration approval does not imply acceptance" in discovery
     assert "architecture-decisions.md" in generation
 
@@ -865,6 +866,8 @@ def test_refine_story_contract_has_required_language() -> None:
     assert "Do not start `/sync-context` to finish that handoff" in skill
     assert "report partial completion" in skill
     assert "do not leave it only in chat" in skill
+    assert "Creating the file is conditional" in skill
+    assert "Recording a material approved decision is not optional" in skill
     assert "Do not create an empty or duplicate record" in skill
     assert "do not claim the decision was recorded" in skill
     assert "unprotected existing behavior that needs characterization" in template
@@ -1330,6 +1333,8 @@ def test_legacy_aidlc_migration_contract_is_specific() -> None:
         "Migration approval does not imply acceptance",
         "A legacy `proposed` record remains `proposed`",
         "does not manufacture architectural authority",
+        "Creating that file is conditional",
+        "Recording a material approved decision is not optional",
     ):
         assert phrase in legacy
     assert "Known legacy AI-DLC installation" in skill
@@ -1394,6 +1399,7 @@ def test_scaffold_project_contract_has_required_language() -> None:
         "Review completion does not replace executable validation",
         "references/foundation-and-review.md",
         "architecture-decisions.md",
+        "Recording a material approved decision is not optional",
         "Before identifying a stack, establish the product's purpose",
         "references/product-purpose.md",
         "allow an explicit generic-starter choice instead of inventing a purpose",
@@ -1426,6 +1432,8 @@ def test_scaffold_project_contract_has_required_language() -> None:
         "Do not start `/sync-context` to finish that handoff",
         "report partial completion",
         "do not leave it only in chat",
+        "Creating the file is conditional",
+        "Recording a material approved decision is not optional",
         "Do not create an empty or duplicate record",
         "do not claim the decision was recorded",
         "content_fingerprint",

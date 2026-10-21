@@ -24,9 +24,10 @@ The artifact home owns:
   to an existing ADR location. `/scaffold-project` and `/refine-story`
   create `aidlc-docs/architecture.md` only when the first material approved
   decision needs a record and no authoritative location already exists.
-  Ordinary `/sync-context` discovers and links that record; it does not
-  invent one. An explicitly approved legacy migration may relocate or
-  faithfully consolidate existing records per
+  Creating that file is conditional. Recording a material approved
+  decision is not optional. Ordinary `/sync-context` discovers and links
+  that record; it does not invent one. An explicitly approved legacy
+  migration may relocate or faithfully consolidate existing records per
   [legacy-migration.md](legacy-migration.md). See
   [architecture-decisions.md](../../../../references/architecture-decisions.md).
 - fallback `aidlc-docs/context/<repo-id>/<module-id>.md`

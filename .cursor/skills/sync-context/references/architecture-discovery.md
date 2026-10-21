@@ -109,7 +109,9 @@ non-empty answer.
     [architecture-decisions.md](../../../../references/architecture-decisions.md).
     This discovery pass still does not create that record. Ordinary sync
     still does not accept a decision or rewrite a binding clause to match
-    code. Migration approval does not imply acceptance.
+    code. Creating `architecture.md` is conditional. Recording a material
+    approved decision is not optional. Migration approval does not imply
+    acceptance.
 20. **Known gaps and risk areas** — a part of the module nobody has
     verified recently, a workaround, or a known limitation worth a future
     engineer's attention.

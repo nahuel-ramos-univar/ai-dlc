@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.16.0 — 2026-10-21
+
+Bump: `minor`
+Compare: [v0.15.0...v0.16.0](https://github.com/nahuel-ramos-univar/ai-dlc/compare/v0.15.0...v0.16.0)
+
+### Added
+
+- feat: recover accepted architecture decisions and dispatch scaffold reviews ([`c1194a0`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/c1194a01a585335fef277dc6f2cd85dd2ac36742))
+
+### Fixed
+
+- fix: fail closed on ambiguous ADR recovery ([`eaf44df`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/eaf44df6c96fce3911fe45b2105cc710d6942d37))
+
+### Other
+
+- Merge pull request #26 from nahuel-ramos-univar/CTY-313-validate-and-improve-worflow ([`a5ecf08`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/a5ecf082481770ebcb7969f0388b688d0a958a3f))
+
 ## 0.15.0 — 2026-10-20
 
 Bump: `minor`

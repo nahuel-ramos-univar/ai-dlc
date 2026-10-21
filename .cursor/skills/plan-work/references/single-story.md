@@ -13,6 +13,7 @@ Propose:
 - scope;
 - acceptance criteria expressed as observable, testable behavior; Given/When/Then is optional, not mandatory;
 - approved non-functional constraints when they are real requirements, each with a source, without empty headings or invented thresholds;
+- conflicts with an accepted architecture decision, when that record exists, without turning a product wish into a new accepted decision;
 - relevant scenarios;
 - exclusions;
 - dependencies;

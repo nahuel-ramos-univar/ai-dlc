@@ -20,6 +20,15 @@ The artifact home owns:
 
 - `aidlc-docs/repository-context.md`
 - optional `aidlc-docs/integration-map.md`
+- the repository's authoritative architecture-decision record, or a link
+  to an existing ADR location. `/scaffold-project` and `/refine-story`
+  create `aidlc-docs/architecture.md` only when the first material approved
+  decision needs a record and no authoritative location already exists.
+  Ordinary `/sync-context` discovers and links that record; it does not
+  invent one. An explicitly approved legacy migration may relocate or
+  faithfully consolidate existing records per
+  [legacy-migration.md](legacy-migration.md). See
+  [architecture-decisions.md](../../../../references/architecture-decisions.md).
 - fallback `aidlc-docs/context/<repo-id>/<module-id>.md`
 - `.ai-dlc-config.md`
 

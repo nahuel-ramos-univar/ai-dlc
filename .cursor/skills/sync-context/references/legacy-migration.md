@@ -142,7 +142,7 @@ review.
 | `*.code-workspace` | Reconcile | Migrate it. Preserve settings. Recalculate paths. Remove the original only after the replacement is verified. |
 | `aidlc-docs/discovery/output/{repo}/` technical profiles and `aidlc-docs/discovery/output/integration_map.md` | Reconcile | Evidence for current technical context. Each product repository gets its own `aidlc-docs/integration-map.md` containing the verified relationships that repository participates in, not a copy of the global map. |
 | `.ai-dlc-config.md` operating model, stack, testing, and design-source sections | Reconcile | Identity, sibling relationships, and technical settings move into each product repository's own config. Do not recreate the operating-model table. |
-| `aidlc-docs/design_stories/adrs/`, other architecture decision records | Preserve | Durable decisions stay in their own records. Link them when a module context needs them. Do not paste them into `AIDLC_CONTEXT.md`. |
+| `aidlc-docs/design_stories/adrs/`, other architecture decision records | Preserve, or relocate only under the approved migration exception below | Durable decisions stay in their own records. Link them when a module context needs them. Do not paste them into `AIDLC_CONTEXT.md`. See "Architecture decision records" below. |
 | `aidlc-docs/shipped_features/`, story reports, implementation plans, completion reports, `STREAM_SUMMARY_*.md`, `aidlc-docs/audit.md` | Preserve the information, do not auto-copy the corpus | See "Generators and historical outputs" below. |
 
 `.cursor/commands/` files that only launch a prompt named above take that
@@ -172,7 +172,82 @@ system.
 Call `historical_content_blocks_checkout_deletion` for the checkout. An
 unresolved historical document blocks deletion of its only recoverable copy.
 It does not block preparing the new distributed context. Report context
-migration and legacy retirement as separate outcomes.
+migration and legacy retirement as separate outcomes. An architecture
+decision that has not been preserved, linked, or relocated with verified
+destination ownership is unresolved historical content. Do not automatically
+delete originals merely because a destination file exists.
+
+## Architecture decision records
+
+Inspect known legacy ADR locations, including
+`aidlc-docs/design_stories/adrs/`, and every architecture-decision source
+already linked from authorized context. Stay inside authorized repositories
+and those relevant legacy artifact paths. Do not scan unrelated directories.
+
+Distinguish an actual decision record from a template, a fenced example, a
+proposal, an architecture description, and an NFR document. Do not infer an
+accepted decision or a historical approval from code or from the presence of
+a file.
+
+Propose treatment per source:
+
+- Existing authoritative ADRs in a repository that remains active: preserve
+  and link. Do not create a competing `aidlc-docs/architecture.md`.
+- ADRs inside a coordinator proposed for retirement: propose explicit
+  destination ownership and preserve them before source retirement.
+- Consolidation into `architecture.md`: optional, only when the user
+  approves that exact transformation and no competing authoritative location
+  is introduced.
+- Draft, proposed, rejected, ambiguous, or unsupported records: preserve as
+  such. Do not convert them into accepted entries and do not discard them.
+  Migration approval does not imply acceptance of the architectural
+  decision. A legacy `proposed` record remains `proposed`. A legacy
+  `rejected` record remains `rejected`. A legacy `draft` record remains
+  `draft`. Never rewrite those statuses to `accepted` because the
+  migration was approved. Only statuses already defined as binding by the
+  architecture contract contribute snapshot constraints. Incomplete or
+  ambiguous recovery is preserved as evidence, not as architectural
+  authority: do not invent missing values, do not promote the record, and
+  do not silently drop it.
+
+Preserve known ids, status, rationale, alternatives, consequences,
+supersession relationships, and provenance. Missing information remains
+unknown. Do not invent historical author, approval, or dates. Approval to
+migrate a document is not approval of its architectural decision.
+Migration preserves the record; it does not manufacture architectural
+authority. Preserve binding meaning. If extraction into the supported
+write format requires interpretation, show that text for review. Resolve
+id collisions explicitly. Update affected links when an approved
+relocation or identifier mapping requires it.
+
+NFRs encountered during migration must be preserved and reported for
+appropriate treatment. Do not automatically create a Git NFR catalog and do
+not write Jira. NFRs stay in Jira.
+
+Repo-specific decisions go to the relevant approved owner. Shared decisions
+have one explicitly agreed authoritative location and links from
+participating repositories. Do not duplicate shared decisions and do not
+create a mandatory coordinator.
+
+Ordinary `/sync-context` still cannot author, accept, or rewrite
+architectural decisions to match code. The narrow write exception is this:
+an explicitly approved legacy migration (change set C, with destination
+context in set A when required) may relocate or faithfully consolidate
+existing records inside that approved change set. Preserve unexpected
+destination edits. Report partial completion honestly. Creating
+`architecture.md` remains conditional: only when the approved migration
+needs that file and no authoritative ADR location already exists. Recording
+a material approved decision is not optional; leaving it only in chat is
+not persistence.
+
+Read back destinations and verify content, status preservation, qualified
+identities, and navigation links. Later `/implement-change` and
+`/validate-change` sessions must be able to recover applicable accepted
+decisions with correct repository-relative source paths. Unresolved
+preservation, ownership, or migration gaps prevent declaring migration
+complete and prevent retiring the only source. Checkout deletion stays a
+separate authorization through `checkout_deletion_readiness`. Do not
+automatically delete originals merely because a destination file exists.
 
 ### Legacy CI workflows
 

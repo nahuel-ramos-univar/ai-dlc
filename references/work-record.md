@@ -20,7 +20,9 @@ not add automatic cleanup at merge.
   that should not sit in the comment body.
 - **Code, tests, configuration, sanitized fixtures:** Git.
 - **Repository context and durable architecture decisions:** existing
-  context documents and architecture decision records.
+  context documents and architecture decision records. Follow
+  [architecture-decisions.md](architecture-decisions.md). Do not copy
+  that log into module context.
 - **Intermediate drafts:** chat, Canvas, or throwaway files. They do not
   need versioning.
 

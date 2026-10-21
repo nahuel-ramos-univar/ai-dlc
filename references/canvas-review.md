@@ -35,12 +35,14 @@ Show, after [finalization order](../.cursor/skills/scaffold-project/references/f
 
 - the foundation created, and how to run and validate it;
 - the repository index and each module context, with their paths;
+- Bugbot review of the generated code: passed, failed, pending, not-applicable, or unavailable;
 - Bugbot review guidance: created, unchanged, declined, or deferred, and why;
 - project rules: created, unchanged, declined, not applicable, or deferred, and why;
 - pull-request template: created, unchanged, declined, not applicable, or deferred, and why;
 - the final deterministic validation result, from after every write;
 - implementation-review status and any unresolved finding;
 - context-review status and any unresolved finding;
+- architecture-decision record: created, linked to an existing location, unchanged, or not applicable;
 - missing tools or remaining prerequisites.
 
 Do not open a Canvas just to restate the pre-approval proposal again after it was already shown in chat; refresh it from the files actually written. A trivial, documentation-only scaffold with a short result gets a short chat reply instead.
@@ -67,6 +69,7 @@ Show the approval-ready proposal, and refresh it from the Jira record just read 
 - the routed issue type (Epic, Story, Task, or Bug);
 - the identified business source, distinct from the Jira parent when they differ, and the business acceptance criteria the technical content must preserve;
 - the challenge-and-response from the always-on technical discussion step, or a short "nothing material found" result;
+- proposed architecture-decision updates in the same change set, or that none were needed;
 - the proposed technical item(s) using [technical-task-template.md](../.cursor/skills/refine-story/references/technical-task-template.md), and the reason for a split when more than one item is proposed;
 - dependencies, as the plain-language relationships that will become Jira links;
 - review readiness: fast skip with its reason, completed independent review, or required review still pending;

@@ -2,6 +2,8 @@
 
 Each skill is a manual slash entry point. Naming another skill or showing its slash command does not execute it.
 
+`sync-context` is the natural-language exception: Cursor may also select it from a plain request such as "refresh the repository context" because `disable-model-invocation` is absent on purpose. The other six skills stay slash-only. That exception does not start another skill, and it does not approve a write.
+
 The only authorized continuous-flow exception is `/implement-change` continuing into `/validate-change` when the user asked for that sequence in the same request. No other skill pair is started this way. `create-e2e-tests` is never started this way. After implementation finishes, load and follow the validate-change workflow and report the seam. Do not claim the user typed `/validate-change`.
 
 Use local references as shared instructions inside the current workflow. When work must move to another skill, provide a clear handoff such as `/refine-story PAY-123` and state what evidence the user should carry forward. Plan-work, refine-story, sync-context, scaffold-project, and create-e2e-tests stay handoffs. Do not generalize this exception.
@@ -17,3 +19,5 @@ When the host exposes a general-purpose independent subagent but cannot invoke a
 Do not create circular calls. A later skill can return a focused question or finding to an earlier skill, but it must not claim that the earlier slash command ran automatically.
 
 All reference paths are relative to the installed plugin. Do not use machine-specific absolute paths.
+
+Optional Cursor run observation is not part of the methodology core. Load [host-run-observation.md](host-run-observation.md) only when installing or using that adapter. Do not install it in consumer repositories automatically.

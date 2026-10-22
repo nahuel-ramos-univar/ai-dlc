@@ -4,7 +4,14 @@ The product owner owns the draft. **Ready for review** is when the Product Owner
 
 When review is due, request an independent `product-reviewer` assessment through a supported host agent facility, following [skill composition](../../../../references/skill-composition.md). If the host cannot invoke that named agent, a general-purpose independent subagent may take the `product-reviewer` file as bounded task context; report that as general-purpose independent review, not native named-agent dispatch. If no independent subagent is available, say so and keep review unavailable or pending. Never present the main chat's own assessment as independent review.
 
-Give the reviewer the draft version, affected work, scoped context, the deterministic validation result, open product questions, and any obvious duplicate noticed in passing while reading a candidate parent Epic. Do not pass a duplicate-candidates list as if a search ran, and do not ask the reviewer to search Jira for duplicates. This skill does not run a dedicated duplicate search, so there are no search limits to report. The reviewer evaluates open questions and names which ones block implementation or publication. It returns evidence-based blocking findings, optional improvements, open questions, and a readiness recommendation.
+Give the reviewer a bounded handoff. Every handoff names:
+
+- pass reason: first review after this drafting round, or re-review of a material revision;
+- draft version identifier;
+- delta since the previous review when this is a re-review: what changed, and what is unchanged;
+- the sources the reviewer must read: affected work, scoped context, the deterministic validation result, open product questions, and any obvious duplicate noticed in passing while reading a candidate parent Epic.
+
+Do not send the full conversation. Do not re-review unchanged scope. Do not pass a duplicate-candidates list as if a search ran, and do not ask the reviewer to search Jira for duplicates. This skill does not run a dedicated duplicate search, so there are no search limits to report. The reviewer evaluates open questions and names which ones block implementation or publication. It returns evidence-based blocking findings, optional improvements, open questions, and a readiness recommendation.
 
 Report the reviewed scope and draft version, findings or a visible "no findings" result, and the actual delegation outcome, in the same closing view the Product Owner sees. Do not replace that with a status phrase. Mark review `completed` only when the reviewer responded. If delegation is unavailable, keep the requirement visible. A named human review or a policy-permitted exception may satisfy it; otherwise publication stays blocked while drafting can continue.
 

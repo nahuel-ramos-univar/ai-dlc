@@ -28,6 +28,7 @@ Do not pass the whole conversation history by default. If the host cannot isolat
 
 Give the validator a bounded handoff:
 
+- pass reason: first validation of this change, or delta review after an in-run fix;
 - objective and authorized Jira items, acceptance criteria, approved constraints with sources, and the approved refinement;
 - the requirement snapshot (scope, exclusions, criteria, constraints including applicable architecture decisions, contracts, refinement) labeled as claims to re-read, not as proof;
 - repositories, baseline, and current diff state, including relevant new files;
@@ -85,4 +86,18 @@ Observe remote Bugbot only when it appears in actual configured checks; do not a
 ## Output
 Return distinct sections for implementation, independent validation and criteria (verified, failed, pending, or not-verifiable), tests/regression and environment, Bugbot with the code state reviewed, and blockers or delivery readiness. Required independent validation pending is not a completed flow.
 
-Read [evidence-and-bugbot.md](references/evidence-and-bugbot.md), [verification evidence](../../../references/verification-evidence.md), [requirement snapshot](../../../references/requirement-snapshot.md), [work record](../../../references/work-record.md), [criterion identifiers](../../../references/criterion-ids.md), [architecture decisions](../../../references/architecture-decisions.md), [repository preflight](../../../references/repository-preflight.md), [skill composition](../../../references/skill-composition.md), [approval-contract.md](../../../references/approval-contract.md), and [validator.md](../../../agents/validator.md). Load [end-to-end environment](../../../references/e2e-environment.md) only when an existing end-to-end check is in play. Load [model evaluation](../../../references/model-evaluation.md) only when the change affects model or generative-system behavior.
+## Reference loading
+The links below are an allowlist. Do not open every file at the start of the run.
+
+- [repository preflight](../../../references/repository-preflight.md) at the start of the run.
+- [requirement snapshot](../../../references/requirement-snapshot.md) when capturing or comparing requirements.
+- [architecture decisions](../../../references/architecture-decisions.md) when recovering constraints.
+- [skill composition](../../../references/skill-composition.md) when dispatching the validator.
+- [validator.md](../../../agents/validator.md) when using a general-purpose subagent as bounded task context.
+- [evidence-and-bugbot.md](references/evidence-and-bugbot.md) when coordinating Bugbot.
+- [verification evidence](../../../references/verification-evidence.md) when classifying checks and failures.
+- [approval-contract.md](../../../references/approval-contract.md) when a write or exception needs approval.
+- [work record](../../../references/work-record.md) when offering the optional Jira comment.
+- [criterion identifiers](../../../references/criterion-ids.md) when criteria ids are in play.
+- [end-to-end environment](../../../references/e2e-environment.md) only when an existing end-to-end check is in play.
+- [model evaluation](../../../references/model-evaluation.md) only when the change affects model or generative-system behavior.

@@ -21,3 +21,5 @@ jobs:
           python3 tests/skill_contracts.py
           python3 tests/context_tools_tests.py
           python3 tests/release_contracts.py
+          python3 tests/aidlc_explorer_tests.py
+          python3 tests/host_observation_tests.py

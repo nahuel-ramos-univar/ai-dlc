@@ -78,4 +78,19 @@ Show the ready-for-review draft, and the result after an approved write, with th
 ## Outputs
 Return the route, evidence sources, editable proposal, approval-ready Jira payload or update diff, assumptions, and unresolved questions. Do not create Story mirrors, empty subtasks, or capacity commitments. A suggested Priority, Label, Fix Version, Sprint, or Story Points value is optional, sourced from existing evidence per "Optional suggested fields" in [Jira integration](../../../references/jira-integration.md), always shown as a suggestion, and included in the same publication confirmation as the rest of the payload. Return each approved dependency as the plain-language relationship that was confirmed, then the issue link created after the issues exist and checked by a re-read.
 
-Read only the routed reference, [jira-story-template.md](references/jira-story-template.md), [epic-discovery.md](references/epic-discovery.md), [product-review.md](references/product-review.md), [approval-contract.md](../../../references/approval-contract.md), [canvas review](../../../references/canvas-review.md), [Jira integration](../../../references/jira-integration.md), [skill composition](../../../references/skill-composition.md), [work record](../../../references/work-record.md), [criterion identifiers](../../../references/criterion-ids.md), and [architecture decisions](../../../references/architecture-decisions.md). Load [model evaluation](../../../references/model-evaluation.md) only when the planned work affects model or generative-system behavior. Do not invent NFR headings or thresholds. Propose local criterion identifiers only in the approved publication payload; do not overwrite a custom Product Owner template.
+## Reference loading
+The links below are an allowlist. Do not open every file at the start of the run.
+
+- The routed drafting reference (`single-story.md`, `task.md`, `feature-or-epic.md`, `sprint-backlog.md`, or `update-existing.md`) when that route is selected.
+- [epic-discovery.md](references/epic-discovery.md) when recommending a parent for a new Story or Task.
+- [product-review.md](references/product-review.md) when independent review is due.
+- [jira-story-template.md](references/jira-story-template.md) only when preparing a User Story Jira write payload, as in "Story description template" above. Do not open it during product questions or while drafting.
+- [approval-contract.md](../../../references/approval-contract.md) when requesting approval or a Jira write.
+- [canvas review](../../../references/canvas-review.md) when closing with the review view.
+- [Jira integration](../../../references/jira-integration.md) when reading or preparing Jira.
+- [skill composition](../../../references/skill-composition.md) when dispatching a reviewer or handing off.
+- [work record](../../../references/work-record.md) and [criterion identifiers](../../../references/criterion-ids.md) when preparing or confirming publication.
+- [architecture decisions](../../../references/architecture-decisions.md) when an architecture record exists or a product wish might conflict with one.
+- [model evaluation](../../../references/model-evaluation.md) only when the planned work affects model or generative-system behavior.
+
+Do not invent NFR headings or thresholds. Propose local criterion identifiers only in the approved publication payload; do not overwrite a custom Product Owner template.

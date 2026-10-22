@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "hooks": {
+    "subagentStart": [
+      {
+        "command": ".cursor/hooks/observe.py --permission-allow",
+        "timeout": 5
+      }
+    ],
+    "subagentStop": [
+      {
+        "command": ".cursor/hooks/observe.py",
+        "timeout": 5
+      }
+    ],
+    "postToolUse": [
+      {
+        "command": ".cursor/hooks/observe.py",
+        "timeout": 5
+      }
+    ],
+    "postToolUseFailure": [
+      {
+        "command": ".cursor/hooks/observe.py",
+        "timeout": 5
+      }
+    ],
+    "afterMCPExecution": [
+      {
+        "command": ".cursor/hooks/observe.py",
+        "timeout": 5
+      }
+    ],
+    "stop": [
+      {
+        "command": ".cursor/hooks/observe.py",
+        "timeout": 5
+      }
+    ],
+    "afterAgentResponse": [
+      {
+        "command": ".cursor/hooks/observe.py",
+        "timeout": 5
+      }
+    ]
+  }
+}

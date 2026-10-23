@@ -8,6 +8,8 @@ description: Create or incrementally refresh repository context from current cod
 ## Purpose
 Create or refresh evidence-based repository context without scanning unrelated code.
 
+This skill is the one slash entry that Cursor may also select from a natural-language request (`disable-model-invocation` is absent on purpose). The other six skills stay slash-only. Naming this skill still does not start another skill.
+
 ## Response shape
 Follow the shared [compact response style](../../../references/response-style.md).
 

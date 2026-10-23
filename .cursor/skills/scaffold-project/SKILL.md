@@ -78,31 +78,20 @@ Return the approved scope, files created, files modified, how to run the foundat
 
 A generated file tree alone does not prove the foundation works. A successful build does not prove all runtime behavior works. Review completion does not replace executable validation.
 
-Read [foundation and review](references/foundation-and-review.md),
-[product purpose and scaffolding boundary](references/product-purpose.md),
-[repository preflight](../../../references/repository-preflight.md) for Git
-classification, authorization, and preservation rules,
-[artifact-home.md](../sync-context/references/artifact-home.md) for the
-`Product` and `Related repository` convention this skill reuses rather than
-inventing its own,
-[context-generation.md](../sync-context/references/context-generation.md) and
-[context-templates.md](../sync-context/references/context-templates.md) for
-the initial repository-index and module-context format and size budget this
-skill reuses rather than inventing its own,
-[validation.md](../sync-context/references/validation.md) for
-`validate_generated_context`,
-[bugbot-configuration.md](../sync-context/references/bugbot-configuration.md),
-[project-rules.md](../sync-context/references/project-rules.md), and
-[pull-request-template.md](../sync-context/references/pull-request-template.md)
-for the decision shape step 12 reuses rather than inventing its own,
-[review-handoff.md](../sync-context/references/review-handoff.md) for the
-`context-reviewer` handoff step 11 reuses,
-[canvas review](../../../references/canvas-review.md), and
-[skill composition](../../../references/skill-composition.md), and
-[architecture-decisions.md](../../../references/architecture-decisions.md)
-for material, explicitly approved decisions this run must persist after the
-same proposal approval. Creating the file is conditional. Recording a
-material approved decision is not optional. The
-context-discovery write list does not apply to approved scaffold files, except
-that the `.code-workspace` write still follows the bounded conditions in
-[repository preflight](../../../references/repository-preflight.md).
+## Reference loading
+The links below are an allowlist. Do not open every file at the start of the run.
+
+- [foundation and review](references/foundation-and-review.md) when classifying the destination, applying identity rules, running independent context review, attempting Bugbot, or closing through finalization.
+- [product purpose and scaffolding boundary](references/product-purpose.md) before choosing a stack, when writing the proposal, and when handing that purpose to the scaffolding reviewer.
+- [repository preflight](../../../references/repository-preflight.md) for Git classification, authorization, preservation, and an approved `.code-workspace` write.
+- [artifact-home.md](../sync-context/references/artifact-home.md) when confirming `Product` or `Related repository` membership.
+- [context-generation.md](../sync-context/references/context-generation.md) and [context-templates.md](../sync-context/references/context-templates.md) when proposing or writing the initial repository index and module context.
+- [validation.md](../sync-context/references/validation.md) when running `validate_generated_context`.
+- [bugbot-configuration.md](../sync-context/references/bugbot-configuration.md) and [project-rules.md](../sync-context/references/project-rules.md) during step 12 repository review configuration.
+- [pull-request-template.md](../sync-context/references/pull-request-template.md) before deciding, proposing, or writing a pull-request template.
+- [review-handoff.md](../sync-context/references/review-handoff.md) when dispatching `context-reviewer` in step 11.
+- [canvas review](../../../references/canvas-review.md) when closing with the review view.
+- [skill composition](../../../references/skill-composition.md) when dispatching a reviewer or naming another skill.
+- [architecture-decisions.md](../../../references/architecture-decisions.md) when a material, explicitly approved decision must persist after the same proposal approval.
+
+Creating the file is conditional. Recording a material approved decision is not optional. The context-discovery write list does not apply to approved scaffold files, except that the `.code-workspace` write still follows the bounded conditions in [repository preflight](../../../references/repository-preflight.md).

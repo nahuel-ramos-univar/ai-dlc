@@ -26,6 +26,10 @@ independent review was skipped and why.
 
 Give the reviewer:
 
+- pass reason: first review of this context set, or re-review of a
+  material revision;
+- document version or fingerprint, and the delta since the previous
+  review when this is a re-review;
 - repository or workspace identity and the declared scope;
 - the generated or changed context documents, with their diff against the
   prior version when one exists;

@@ -78,3 +78,13 @@ Show the approval-ready proposal, and refresh it from the Jira record just read 
 - after a write, the issue key and URL from the record just read, or a pending write.
 
 A short status with nothing new to show does not open a Canvas.
+
+## Run cost
+
+When the host supplies a usage summary, show it in this Canvas. Keep three distinctions:
+
+1. **Measured usage:** numbers the host provided, with the source and whether subagents are included.
+2. **Static size estimate:** character or word counts of loaded files, labeled as an estimate, not a bill.
+3. **Unknown coverage:** Missing fields say unavailable. Do not show 0 for a missing value. Do not present a parent-only total as the whole run.
+
+Do not query billing APIs from a skill unless the user authorized that adapter. Follow [host-run-observation.md](host-run-observation.md) only when installing or reading that optional Cursor observer. AI-DLC does not require the observer.

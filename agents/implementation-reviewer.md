@@ -22,7 +22,7 @@ Do not modify code, tests, Jira, Git state, permissions, infrastructure, or requ
 
 Use this mode only when `implement-change` asks for review of a proposed approach **before writing code**. The subject is the approach, not an implementation diff. Do not invent a code review when no new implementation exists. This mode does not replace scaffolding review mode, and it does not weaken the default implementation review.
 
-Receive the approved refinement, evidence from current code, and the proposed approach. Return risks, alternatives, blocking findings, and pending decisions. Name which findings and decisions must be resolved before the affected scope is edited. Stay brief.
+Receive the pass reason, the approved refinement, the delta against that refinement, evidence from current code, and the proposed approach. Return risks, alternatives, blocking findings, and pending decisions. Name which findings and decisions must be resolved before the affected scope is edited. Stay brief.
 
 Do not treat the presence of Terraform or IAM files as the reason this review exists. The calling skill decides whether a material new decision, uncertainty, or a relevant change against the already-reviewed design triggered this mode.
 

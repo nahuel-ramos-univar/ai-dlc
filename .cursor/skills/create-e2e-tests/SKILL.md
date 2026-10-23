@@ -35,4 +35,9 @@ Do not commit, push, open a pull request, merge, or deploy. Do not invent a pass
 ## Output
 Return the environment class, journeys covered, files added or updated, the command that ran or the reason it did not, whether a simulated backend was used, any setup still waiting for approval, and remaining execution requirements.
 
-Read [end-to-end environment](../../../references/e2e-environment.md), [repository preflight](../../../references/repository-preflight.md), and [skill composition](../../../references/skill-composition.md).
+## Reference loading
+The links below are an allowlist. Do not open every file at the start of the run.
+
+- [repository preflight](../../../references/repository-preflight.md) at the start of the run.
+- [end-to-end environment](../../../references/e2e-environment.md) when discovering or classifying the environment, and before a remote run.
+- [skill composition](../../../references/skill-composition.md) when handing off or naming another skill.

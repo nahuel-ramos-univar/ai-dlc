@@ -48,6 +48,7 @@ from context_tools import (  # noqa: E402
     git_output,
     historical_content_blocks_checkout_deletion,
     is_declared_submodule,
+    is_generated_artifact,
     legacy_architecture_prompt_required,
     legacy_baseline_comparison,
     legacy_inventory_fingerprint,
@@ -498,6 +499,38 @@ def test_generated_context_does_not_change_source_fingerprint() -> None:
         assert after_update == initial
 
 
+def test_observation_log_does_not_change_source_fingerprint() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp)
+        (root / "src").mkdir()
+        (root / "src" / "app.ts").write_text("export const app = 1;\n")
+        initial, paths = content_fingerprint(root)
+        assert paths == ("src/app.ts",)
+
+        aidlc = root / ".aidlc"
+        aidlc.mkdir()
+        log = aidlc / "observation.jsonl"
+        log.write_text("{}\n")
+        assert is_generated_artifact(log) is True
+        assert is_generated_artifact(aidlc / "notes.md") is False
+        after_log, after_paths = content_fingerprint(root)
+        assert after_log == initial
+        assert after_paths == ("src/app.ts",)
+
+        log.write_text('{"hook_event_name":"stop"}\n')
+        after_append, _ = content_fingerprint(root)
+        assert after_append == initial
+
+        (aidlc / "notes.md").write_text("human notes\n")
+        after_notes, note_paths = content_fingerprint(root)
+        assert after_notes != initial
+        assert ".aidlc/notes.md" in note_paths
+
+        (root / "src" / "app.ts").write_text("export const app = 2;\n")
+        after_source, _ = content_fingerprint(root)
+        assert after_source != after_notes
+
+
 def test_root_fingerprint_can_go_stale_while_module_fingerprint_does_not() -> None:
     # Mirrors a real scaffold shape: a root-level file (README, a manifest)
     # edited after the repository index was written leaves each module's own
@@ -813,6 +846,28 @@ def test_git_aware_fingerprint_excludes_generated_context() -> None:
 
         # Untracked, generated: must never enter the source fingerprint.
         (root / "AIDLC_CONTEXT.md").write_text("fingerprint: deadbeef\n")
+        after, after_paths = content_fingerprint(root)
+        assert after == initial
+        assert after_paths == ("src/app.ts",)
+
+
+def test_git_aware_fingerprint_excludes_tracked_observation_log() -> None:
+    with tempfile.TemporaryDirectory() as temp:
+        root = Path(temp) / "repo"
+        root.mkdir()
+        init_repo(root)
+        (root / "src").mkdir()
+        (root / "src" / "app.ts").write_text("export const app = 1;\n")
+        run(root, "git", "add", ".")
+        run(root, "git", "commit", "-qm", "feat: initial")
+        initial, paths = content_fingerprint(root)
+        assert paths == ("src/app.ts",)
+
+        aidlc = root / ".aidlc"
+        aidlc.mkdir()
+        (aidlc / "observation.jsonl").write_text("{}\n")
+        run(root, "git", "add", ".aidlc/observation.jsonl")
+        run(root, "git", "commit", "-qm", "chore: observe")
         after, after_paths = content_fingerprint(root)
         assert after == initial
         assert after_paths == ("src/app.ts",)
@@ -7072,6 +7127,7 @@ if __name__ == "__main__":
         test_absent_destination_freshness_is_not_an_empty_directory_hash,
         test_fingerprint_detects_changes_and_excludes_generated_output,
         test_generated_context_does_not_change_source_fingerprint,
+        test_observation_log_does_not_change_source_fingerprint,
         test_root_fingerprint_can_go_stale_while_module_fingerprint_does_not,
         test_project_rule_file_changes_fingerprint_but_bugbot_file_does_not,
         test_readme_change_fails_validation_until_content_fingerprint_is_restored,
@@ -7084,6 +7140,7 @@ if __name__ == "__main__":
         test_git_aware_fingerprint_respects_nested_gitignore_for_a_module_scope,
         test_git_aware_fingerprint_detects_additions_deletions_and_renames,
         test_git_aware_fingerprint_excludes_generated_context,
+        test_git_aware_fingerprint_excludes_tracked_observation_log,
         test_git_discovery_failure_raises_instead_of_falling_back_to_the_walk,
         test_unborn_head_uses_git_discovery_and_no_commit_baseline,
         test_git_fingerprint_skips_a_tracked_file_behind_an_external_directory_symlink,

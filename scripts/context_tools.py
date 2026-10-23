@@ -1332,7 +1332,10 @@ def is_generated_artifact(path: Path) -> bool:
     filename = path.name.lower()
     if filename in GENERATED_FILENAMES:
         return True
-    return path.name == "BUGBOT.md" and path.parent.name == ".cursor"
+    if path.name == "BUGBOT.md" and path.parent.name == ".cursor":
+        return True
+    # Optional Cursor observer output. Do not exclude the rest of `.aidlc/`.
+    return path.name == "observation.jsonl" and path.parent.name == ".aidlc"
 
 
 def is_nested_git_root(path: Path, scope_root: Path) -> bool:

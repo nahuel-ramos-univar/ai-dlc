@@ -73,6 +73,8 @@ After a reload, the agent chat should offer:
 
 `/sync-context` can also start from a plain request such as "refresh the repository context". The other six commands stay slash-only. Choosing a skill does not by itself approve a write.
 
+Optional Cursor run observation lives in [host-run-observation.md](references/host-run-observation.md). Copy it into a workspace only when you want to measure tool calls or host-supplied token fields. The plugin does not install those hooks in consumer repositories.
+
 Cursor does not refresh an already installed plugin by itself. After a new release tag, reinstall or reload if you need that version.
 
 ### What you need locally
@@ -231,7 +233,11 @@ Plugin maintainers can run:
 python3 tests/skill_contracts.py
 python3 tests/context_tools_tests.py
 python3 tests/release_contracts.py
+python3 tests/aidlc_explorer_tests.py
+python3 tests/host_observation_tests.py
 ```
+
+`documentation/aidlc-explorer.html` is a generated snapshot of the plugin. After editing skills, agents, references, rules, or `plugin.json`, refresh it with `python3 scripts/generate_aidlc_explorer.py`. A project `afterFileEdit` hook does the same refresh in Cursor. The explorer test fails if the snapshot drifts.
 
 Those checks do not open Cursor, Jira, Figma, or Canvas. Use [MANUAL_EVALUATION.md](MANUAL_EVALUATION.md) for the live scenarios.
 

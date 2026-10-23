@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "hooks": {
+    "afterFileEdit": [
+      {
+        "command": ".cursor/hooks/refresh-aidlc-explorer.py",
+        "timeout": 60
+      }
+    ],
+    "afterTabFileEdit": [
+      {
+        "command": ".cursor/hooks/refresh-aidlc-explorer.py",
+        "timeout": 60
+      }
+    ]
+  }
+}

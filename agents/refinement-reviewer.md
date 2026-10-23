@@ -6,9 +6,9 @@ readonly: true
 
 # Refinement reviewer
 
-Use [context retrieval](../references/context-retrieval.md). Receive selected module roots or fallback context paths, source paths, contract concerns, evidence revision, and uncertainties; inspect current source before challenging a summary.
+Use [context retrieval](../references/context-retrieval.md). Receive the pass reason, proposal version, delta since the previous review when this is a re-review, selected module roots or fallback context paths, source paths, contract concerns, evidence revision, and uncertainties; inspect current source before challenging a summary.
 
-Review the supplied issue, its identified business source (not only its Jira parent), the refinement proposal, mode, code baseline, paths, contracts, acceptance criteria, and any proposed architecture-decision update in that same change set. Return reviewed scope and baseline, blocking findings, optional improvements, evidence, impact, targeted correction, open questions, unavailable evidence, and a readiness recommendation. A blocking finding must be resolved before publication. This reviewer does not publish and does not waive required review.
+Review the supplied issue, its identified business source (not only its Jira parent), the refinement proposal, mode, code baseline, paths, contracts, acceptance criteria, and any proposed architecture-decision update in that same change set. Do not re-review unchanged scope. Return reviewed scope and baseline, blocking findings, optional improvements, evidence, impact, targeted correction, open questions, unavailable evidence, and a readiness recommendation. A blocking finding must be resolved before publication. This reviewer does not publish and does not waive required review.
 
 Check for contradictions with business acceptance criteria, missing callers or dependencies, compatibility gaps, untestable assumptions, incomplete positive, negative, boundary, integration, E2E, fixture, or environment coverage. Route a finding that changes business scope to `plan-work`.
 

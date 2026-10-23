@@ -1868,6 +1868,7 @@ def test_manual_evaluation_and_shared_contracts_exist() -> None:
         "architecture-decisions.md",
         "criterion-ids.md",
         "model-evaluation.md",
+        "host-run-observation.md",
     ):
         assert (ROOT / "references" / filename).is_file()
     assert not (ROOT / ".cursor" / "skills" / "plan-work" / "references" / "approval-contract.md").exists()
@@ -2001,6 +2002,166 @@ def test_architecture_decision_write_to_retrieval_handoff_is_documented() -> Non
     assert "Partial Jira and repository failure is reported honestly" in manual
 
 
+ALLOWLIST_SKILLS = (
+    "plan-work",
+    "refine-story",
+    "implement-change",
+    "validate-change",
+    "scaffold-project",
+    "create-e2e-tests",
+)
+
+
+def test_reference_lists_are_allowlists_not_load_now_batches() -> None:
+    """Closing reference links must not instruct the agent to open every
+    file at the start of the run. This is a structural check, not proof
+    that a live agent obeyed the condition."""
+    allowlist = "The links below are an allowlist. Do not open every file at the start of the run."
+    for name in ALLOWLIST_SKILLS:
+        skill = (ROOT / ".cursor" / "skills" / name / "SKILL.md").read_text(
+            encoding="utf-8"
+        )
+        assert allowlist in skill, name
+    plan = (ROOT / ".cursor" / "skills" / "plan-work" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    assert "Read only the routed reference, [jira-story-template.md]" not in plan
+    assert "only when preparing a User Story Jira write payload" in plan
+    assert "Do not open it during product questions or while drafting" in plan
+    refine = (ROOT / ".cursor" / "skills" / "refine-story" / "SKILL.md").read_text(
+        encoding="utf-8"
+    )
+    assert "only when publication is allowed" in refine
+    implement = (
+        ROOT / ".cursor" / "skills" / "implement-change" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    assert "before modifying or executing existing end-to-end coverage" in implement
+    validate = (
+        ROOT / ".cursor" / "skills" / "validate-change" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    assert "only when an existing end-to-end check is in play" in validate
+    scaffold = (
+        ROOT / ".cursor" / "skills" / "scaffold-project" / "SKILL.md"
+    ).read_text(encoding="utf-8")
+    assert "Read [foundation and review](references/foundation-and-review.md)," not in scaffold
+    assert "when classifying the destination" in scaffold
+    assert "Do not send the full conversation, then wait" not in implement
+    assert "Then wait for its result." in implement
+
+
+def test_sync_context_natural_language_exception_is_documented() -> None:
+    skill = " ".join(
+        (ROOT / ".cursor" / "skills" / "sync-context" / "SKILL.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    composition = " ".join(
+        (ROOT / "references" / "skill-composition.md").read_text(encoding="utf-8").split()
+    )
+    assert "disable-model-invocation` is absent on purpose" in skill
+    assert "other six skills stay slash-only" in skill
+    assert "sync-context` is the natural-language exception" in composition
+    assert "other six skills stay slash-only" in composition
+
+
+def test_independent_review_handoff_names_pass_reason_version_and_delta() -> None:
+    product_review = " ".join(
+        (
+            ROOT
+            / ".cursor"
+            / "skills"
+            / "plan-work"
+            / "references"
+            / "product-review.md"
+        )
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    product_reviewer = " ".join(
+        (ROOT / "agents" / "product-reviewer.md").read_text(encoding="utf-8").split()
+    )
+    refine = " ".join(
+        (ROOT / ".cursor" / "skills" / "refine-story" / "SKILL.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    refinement_reviewer = " ".join(
+        (ROOT / "agents" / "refinement-reviewer.md").read_text(encoding="utf-8").split()
+    )
+    review_handoff = " ".join(
+        (
+            ROOT
+            / ".cursor"
+            / "skills"
+            / "sync-context"
+            / "references"
+            / "review-handoff.md"
+        )
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    validate = " ".join(
+        (ROOT / ".cursor" / "skills" / "validate-change" / "SKILL.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    for text in (
+        product_review,
+        product_reviewer,
+        refine,
+        refinement_reviewer,
+        review_handoff,
+        validate,
+    ):
+        assert "pass reason" in text
+    assert "draft version identifier" in product_review
+    assert "delta since the previous review" in product_review
+    assert "Do not send the full conversation" in product_review
+    assert "Do not re-review unchanged scope" in product_review
+
+
+def test_optional_host_observation_is_opt_in_and_does_not_invent_usage() -> None:
+    observation = " ".join(
+        (ROOT / "references" / "host-run-observation.md").read_text(encoding="utf-8").split()
+    )
+    canvas = " ".join(
+        (ROOT / "references" / "canvas-review.md").read_text(encoding="utf-8").split()
+    )
+    composition = (ROOT / "references" / "skill-composition.md").read_text(
+        encoding="utf-8"
+    )
+    hooks = (ROOT / ".cursor" / "hooks.json").read_text(encoding="utf-8")
+    assert "Do not install this observer in consumer repositories automatically" in observation
+    assert "Missing token fields are unavailable, not zero" in observation
+    assert "Do not store prompts, file contents, tool arguments, or MCP bodies" in observation
+    assert "--permission-allow" in observation
+    assert '{"permission":"allow"}' in observation or '`"permission":"allow"`' in observation
+    assert "outside the source repository" in observation
+    assert "content_fingerprint` still excludes that known telemetry file" in observation
+    assert "Observation files are never source evidence" in observation
+    fragment = (
+        ROOT / "optional" / "cursor-observation" / "hooks.fragment.json"
+    ).read_text(encoding="utf-8")
+    assert "--permission-allow" in fragment
+    assert "Measured usage" in canvas
+    assert "Static size estimate" in canvas
+    assert "Missing fields say unavailable" in canvas
+    assert "Do not show 0 for a missing value" in canvas
+    assert "host-run-observation.md" in composition
+    assert "observe.py" not in hooks
+    assert (ROOT / "optional" / "cursor-observation" / "observe.py").is_file()
+    assert (ROOT / "optional" / "cursor-observation" / "hooks.fragment.json").is_file()
+    manual = (ROOT / "MANUAL_EVALUATION.md").read_text(encoding="utf-8")
+    for scenario in (
+        "Plan-work does not load the Jira story template during product questions",
+        "Independent review handoff names pass reason, draft version, and delta",
+        "Canvas run cost shows unavailable rather than zero",
+        "Optional Cursor observation hooks are not installed in a clean consumer",
+        "Sync-context can start from a natural-language request",
+    ):
+        assert scenario in manual, scenario
+
+
 if __name__ == "__main__":
     tests = [
         test_manifest_paths_and_plugin_identity,
@@ -2032,6 +2193,10 @@ if __name__ == "__main__":
         test_legacy_aidlc_migration_contract_is_specific,
         test_manual_evaluation_and_shared_contracts_exist,
         test_architecture_decision_write_to_retrieval_handoff_is_documented,
+        test_reference_lists_are_allowlists_not_load_now_batches,
+        test_sync_context_natural_language_exception_is_documented,
+        test_independent_review_handoff_names_pass_reason_version_and_delta,
+        test_optional_host_observation_is_opt_in_and_does_not_invent_usage,
     ]
     for test in tests:
         test()

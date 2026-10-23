@@ -1,6 +1,6 @@
 # Approval contract
 
-Shared by every skill that writes to Jira. Approval must come from the role the calling skill authorizes for this kind of change; this contract does not itself name that role. `plan-work` requires Product Owner, or another business-authorized approver, for business content. `refine-story` allows the authorized developer to approve technical implementation content; a change to business scope, expected behavior, or business acceptance criteria still requires Product Owner approval through `/plan-work`.
+Shared by every skill that writes to Jira. Approval must come from the role the calling skill authorizes for this kind of change; this contract does not itself name that role. `plan-work` requires Product Owner, or another business-authorized approver, for business content. For a defect draft in `plan-work`, the authorized user in this session approves the exact Jira payload; do not require a second Product Owner or a dedicated defect-owner role. `refine-story` allows the authorized developer to approve technical implementation content; a change to business scope, expected behavior, or business acceptance criteria still requires Product Owner approval through `/plan-work`.
 
 Before any external write, present the exact target and material changes to that authorized approver:
 

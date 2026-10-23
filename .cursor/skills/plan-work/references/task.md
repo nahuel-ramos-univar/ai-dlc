@@ -9,7 +9,7 @@ Propose:
 - title;
 - objective, stated as the technical outcome this work produces;
 - reason or context: why this work is needed now;
-- parent User Story or Epic, when one applies — see [epic-discovery.md](epic-discovery.md) for a Story or Epic parent recommendation. That parent is a logical relationship ("this Task supports that Story"), not a Jira issue type. When preparing the Jira write, discover the site's hierarchy and let the Product Owner approve the exact issue type: a Jira Subtask under the Story, or a Jira Task linked to the Story. Do not silently change a Task into a Subtask. See [Jira integration](../../../../references/jira-integration.md);
+- parent User Story, Epic, or defect, when one applies — see [epic-discovery.md](epic-discovery.md) for a Story or Epic parent recommendation. That parent is a logical relationship ("this Task supports that Story" or "this Task supports that defect"), not a Jira issue type. When preparing the Jira write, discover the site's hierarchy and let the authorized approver approve the exact issue type: a Jira Subtask under that parent, or a Jira Task linked to it. Do not silently change a Task into a Subtask. See [Jira integration](../../../../references/jira-integration.md);
 - completion criteria, observable and specific;
 - affected area or repository, when known from context already read;
 - dependencies;

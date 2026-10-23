@@ -4188,19 +4188,24 @@ def validate_generated_context(
 # Epic is the correct parent, or how a Story should be written -- that
 # judgment stays in the skill's prose and the main chat's reasoning.
 #
-# `WORK_ITEM_TYPES` ("epic", "user-story", "task") is this plugin's own
-# conceptual planning model, not Jira's issue-type hierarchy. Standard Jira
-# places Story, Task, and Bug as peers directly under an Epic, with Subtask
-# under any of those three -- a Task does not take a Story as a Jira parent.
+# `WORK_ITEM_TYPES` ("epic", "user-story", "task", "defect") is this plugin's
+# own conceptual planning model, not Jira's issue-type hierarchy. Standard
+# Jira places Story, Task, and Bug as peers directly under an Epic, with
+# Subtask under any of those three -- a Task does not take a Story as a
+# Jira parent. `"defect"` is a drafting kind for an incident ticket. It is
+# not a fourth parent level in Epic → User Story → Task. The Jira issue
+# type for that ticket is discovered at publication; this label is not
+# that type name.
 # `validate_parent_reference` below validates only this plugin's own model;
 # it has no knowledge of a connected Jira site's real issue types, and
-# mapping a validated "task under user-story" relationship to an actual
-# Jira write is the skill's and `references/jira-integration.md`'s job,
-# not this module's. That mapping is a choice the Product Owner approves
-# (typically a Jira Subtask under the Story, or a Jira Task linked to the
-# Story). This module never turns a planning-model Task into a Subtask.
+# mapping a validated "task under user-story" or "task under defect"
+# relationship to an actual Jira write is the skill's and
+# `references/jira-integration.md`'s job, not this module's. That mapping
+# is a choice the authorized approver approves (typically a Jira Subtask
+# under the Story or defect ticket, or a Jira Task linked to it). This
+# module never turns a planning-model Task into a Subtask.
 
-WORK_ITEM_TYPES = frozenset({"epic", "user-story", "task"})
+WORK_ITEM_TYPES = frozenset({"epic", "user-story", "task", "defect"})
 
 PLAN_ITEM_ID_PATTERN = re.compile(r"^(?:[a-z0-9]+(?:-[a-z0-9]+)*|[A-Z][A-Z0-9]*-[0-9]+)$")
 
@@ -4214,12 +4219,14 @@ PLAN_ITEM_STATUSES = frozenset(
 def validate_work_item_type(item_type: str) -> str:
     """Return `item_type` if it is a supported planning level, else raise.
 
-    Supported values are `"epic"`, `"user-story"`, and `"task"`. Sprint
-    Backlog is a planning collection of selected work items, not a level in
-    this hierarchy, so it is never a valid input here. This only checks
-    that the label is one the hierarchy recognizes; it never decides which
-    level a given request actually belongs to -- that classification is
-    Product Owner judgment made in chat, not in Python.
+    Supported values are `"epic"`, `"user-story"`, `"task"`, and `"defect"`.
+    Sprint Backlog is a planning collection of selected work items, not a
+    level in this hierarchy, so it is never a valid input here. `"defect"`
+    is a drafting kind, not a fourth parent level. This only checks that
+    the label is one the model recognizes; it never decides which kind a
+    given request actually belongs to -- that classification is judgment
+    made in chat, not in Python. It never treats a Jira type name such as
+    `Bug` as this label.
     """
     if item_type not in WORK_ITEM_TYPES:
         raise ValueError(f"unsupported work item type: {item_type!r}")
@@ -4255,7 +4262,11 @@ def validate_parent_reference(
 
     - an epic must not declare a parent;
     - a user story's parent, when one is given, must be an epic;
-    - a task's parent, when one is given, must be a user story or an epic;
+    - a task's parent, when one is given, must be a user story, an epic,
+      or a defect; that conceptual relationship is not a Jira parent
+      mapping — publication still discovers Subtask versus linked Task;
+    - a defect's related parent, when one is given, must be an epic, a
+      user story, or a task; a defect with no parent is valid;
     - a parent type outside this planning model is a reason, not an exception;
     - a parent id must be a local slug or a Jira issue key;
     - an item must not declare itself as its own parent;
@@ -4300,8 +4311,14 @@ def validate_parent_reference(
             reasons.append("an epic must not declare a parent")
         elif item_type == "user-story" and parent_type != "epic":
             reasons.append("a user story's parent must be an epic")
-        elif item_type == "task" and parent_type not in {"user-story", "epic"}:
-            reasons.append("a task's parent must be a user story or an epic")
+        elif item_type == "task" and parent_type not in {"user-story", "epic", "defect"}:
+            reasons.append(
+                "a task's parent must be a user story, an epic, or a defect"
+            )
+        elif item_type == "defect" and parent_type not in {"epic", "user-story", "task"}:
+            reasons.append(
+                "a defect's related parent must be an epic, user story, or task"
+            )
     parent_id_ok = True
     try:
         validate_plan_item_id(parent_id)  # type: ignore[arg-type]
@@ -4439,8 +4456,8 @@ def plan_outcome(item_statuses: dict[str, str]) -> str:
 
     Each value is one of: `"drafted"` (not yet reviewed), `"reviewed"`
     (independent review completed with no unresolved blocker), `"approved"`
-    (the Product Owner approved the local plan, not yet written; this is
-    not Jira publication approval), `"persisted"`
+    (the authorized approver approved the local plan, not yet written;
+    this is not Jira publication approval), `"persisted"`
     (the approved write happened and was re-read back), `"blocked"` (a
     blocking review finding or an approval boundary is unresolved), or
     `"unavailable"` (Jira or evidence needed for this item could not be
@@ -6343,7 +6360,7 @@ def plan_validate_proposal(proposal: object) -> list[ValidationCheck]:
 
     - `"id"` (required): the item's local slug or Jira issue key. Ids are
       unique within the proposal.
-    - `"type"` (required): `"epic"`, `"user-story"`, or `"task"`.
+    - `"type"` (required): `"epic"`, `"user-story"`, `"task"`, or `"defect"`.
     - `"parent_type"` / `"parent_id"` (optional, both or neither): the
       declared parent's type and id. `parent_id` must itself be a local
       slug or a Jira issue key. An unsupported `parent_type` is a failed

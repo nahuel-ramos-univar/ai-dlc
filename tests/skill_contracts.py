@@ -609,10 +609,28 @@ def test_plan_work_contract_has_required_language() -> None:
     )
 
     # Section 1/17: Epic, User Story, Task, Sprint Backlog hierarchy; Sprint
-    # Backlog is a collection, not a fourth parent level.
+    # Backlog is a collection, not a fourth parent level. Defect is a
+    # drafting kind, not a fourth parent level.
     assert "Epic" in skill and "User Story" in skill and "Task" in skill
     assert "Sprint Backlog is a planning collection" in skill
+    assert "not a fourth parent level either" in skill
     assert "project-onboarding.md" not in skill
+    defect = flat("references/defect.md")
+    assert "Do not force this into" in defect
+    assert "Do not require a confirmed root cause" in defect
+    assert "dedicated defect-owner" in defect
+    assert "Give a `/implement-change` handoff" in defect
+    assert "Honor an explicit request to draft or update" in defect
+    assert "did not ask to draft, update, or analyze" in skill
+    assert "When the Task supports a defect" in skill
+    assert "fix this defect" in skill
+    assert "Do not apply that template to a defect" in skill
+    assert "dedicated defect-owner role" in skill
+    assert "Review completion never authorizes a Jira write" in skill
+    assert "Review completion never authorizes a Jira write" in product_review
+    assert "authorized approver for this work kind" in skill
+    assert "For a defect, evaluate expected versus actual" in reviewer
+    assert "missing confirmed root cause is not by itself a Blocker" in reviewer
 
     # Section 5: no fake "As a developer" Story-washing of technical work.
     assert "As a developer" in task
@@ -821,6 +839,11 @@ def test_refine_story_contract_has_required_language() -> None:
     assert "Epic" in skill and "refine it directly" in skill
     assert "artificial intermediate Story" in skill
     assert "Do not invent a root cause" in skill
+    assert "Refinement is not required for every bug" in skill
+    assert "Honor an explicit request for development or QA refinement" in skill
+    assert "implementation is the intended next action" in skill
+    assert "Do not ask a mandatory" in skill
+    assert "verification-evidence.md" in skill
 
     # The technical discussion/challenge step always runs, independent of
     # the fast/standard/deep review-profile selection, and must not invent
@@ -1000,6 +1023,16 @@ def test_implement_and_validate_change_contract_has_required_language() -> None:
     assert "does not own independent validation or Bugbot" in implement
     assert "Do not invent those statuses" in implement
     assert "An implementation-only close-out is not delivery-ready validation" in implement
+    assert "This mode supplements the main workflow" in implement
+    assert "does not skip repository preflight" in implement
+    assert "waiting for that reviewer" in implement
+    assert "Never destructively check out" in implement
+    assert "testing strategy" in implement
+    assert "existing defect that already has expected versus actual" in implement
+    assert "or a defined defect" in implement
+    assert "Do not require a prior `/refine-story` run" in implement
+    assert "When test-first is the selected or default strategy" in implement
+    assert "Report test-first evidence and behavioral verification separately" in implement
 
     assert "authorized that successor workflow" in validate
     assert "does not require an extra `/implement-change` slash command" in validate
@@ -1020,6 +1053,11 @@ def test_implement_and_validate_change_contract_has_required_language() -> None:
     assert "does not commit" in validate
     assert "what each check actually demonstrates" in validate
     assert "Passing mocks do not prove deployed integration" in validate
+    assert "TDD verified" in validate
+    assert "justified TDD exception" in validate
+    assert "red–green evidence unavailable" in validate
+    assert "not fields of `closeout-validate`" in validate
+    assert "green tests alone prove adequate coverage" in validate
     assert "Do not generate a new end-to-end suite" in validate
     assert "e2e-environment.md" in validate
     assert "pre-existing failure with baseline evidence" in validate
@@ -1077,6 +1115,14 @@ def test_implement_and_validate_change_contract_has_required_language() -> None:
     assert "Passing mocks do not prove deployed integration" in evidence
 
     assert "does not prove behavior it replaced with a fake" in verification
+    assert "Follow the testing strategy agreed during refinement" in verification
+    assert "default to test-first development" in verification
+    assert "When test-first is the selected or default strategy" in verification
+    assert "explicitly agreed, justified alternative" in verification
+    assert "Do not add a mandatory" in verification
+    assert "These labels are narrative" in verification
+    assert "not fields of `closeout-validate`" in verification
+    assert "Never destructively check out" in verification
     assert "A separate QA item does not remove" in verification
     assert "Do not impose a mocking library" in verification
     assert "Do not ask for cloud credentials" in verification
@@ -1187,6 +1233,18 @@ def test_implement_and_validate_change_contract_has_required_language() -> None:
         "Implement-change updates existing E2E without named files",
         "Implement-change hands off new E2E authorship",
         "Implement-change loads the E2E environment contract before running existing coverage",
+        "Plan-work drafts a defect without a confirmed root cause",
+        "Plan-work preserves a supplied diagnosis as a hypothesis until evidence confirms it",
+        "Defined defects go to implement-change without re-drafting",
+        "Explicit updates to a defined defect stay in plan-work",
+        "Explicit QA refinement of a defined Bug stays in refine-story",
+        "Defect approval does not require an extra Product Owner",
+        "Implement-change uses test-first for automatable approved behavior",
+        "Reproducible defect adds a regression test that fails before the fix",
+        "Justified TDD exception still requires behavioral validation",
+        "Agreed testing alternative is followed",
+        "Unavailable test execution is reported as unavailable",
+        "Defect mode keeps preflight, snapshot, approach review, and approval gates",
     ):
         assert scenario in manual, scenario
 

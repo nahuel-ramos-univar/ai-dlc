@@ -26,7 +26,7 @@ Route by the supplied issue's type:
 - **Epic** — refine it directly when it supports meaningful technical enablement, dependencies, or decomposition. Do not force the developer through an artificial intermediate Story first. Return unresolved business scope to the Product Owner through `/plan-work` rather than guessing it. Do not parent a Subtask under an Epic.
 - **Story** — refine the implementation and validation of its already-approved business outcome.
 - **Technical Task** — prefer updating that existing item over creating another one, when the update stays coherent.
-- **Bug** — inspect the reproduction, the expected behavior, the available evidence, and what still needs investigation. Do not invent a root cause.
+- **Bug** — inspect the reproduction, the expected behavior, the available evidence, and what still needs investigation. Do not invent a root cause. Refinement is not required for every bug. Honor an explicit request for development or QA refinement even when the Bug is ready to code. If implementation is the intended next action and expected versus actual behavior, reproduction, and resolution criteria are already enough, offer a `/implement-change` handoff. Agree a testing strategy only when this refinement needs one; follow [verification evidence](../../../references/verification-evidence.md). Do not ask a mandatory "TDD or BDD?" question.
 
 Discover the connected site's actual Jira issue types and hierarchy before proposing a relationship. This plugin's own planning levels (Epic, User Story, Task) are a conceptual model, not Jira's parent rules — see [Jira integration](../../../references/jira-integration.md).
 
@@ -60,6 +60,7 @@ Return the analyzed baseline, the identified business source, scoped findings wi
 The links below are an allowlist. Do not open every file at the start of the run.
 
 - [modes-and-drift.md](references/modes-and-drift.md) when recording the baseline or revalidating before publication.
+- [verification evidence](../../../references/verification-evidence.md) when naming unprotected behavior or agreeing a testing strategy.
 - [review-profiles.md](references/review-profiles.md) when selecting fast, standard, or deep independent review.
 - [technical-task-template.md](references/technical-task-template.md) only when publication is allowed (step 14).
 - [canvas review](../../../references/canvas-review.md) when showing the approval-ready proposal or the post-write result.

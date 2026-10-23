@@ -21,6 +21,53 @@ Include, briefly:
 Do not assume a cloud provider, a container runtime, a local stack, or a
 hosted Git forge. Use what the repository already has.
 
+## Testing strategy
+
+This is the canonical testing-strategy rule. `/implement-change` and
+`/validate-change` follow it. `/refine-story` may record an agreed
+strategy. Do not copy this paragraph into every skill.
+
+Follow the testing strategy agreed during refinement or explicitly
+selected by the developer. Otherwise, default to test-first development
+(TDD) for automatable behavior changes and reproducible defects. Use
+behavior examples (BDD) to clarify expected outcomes. BDD and TDD are
+complementary. Ask only when the choice materially affects scope,
+tooling, or feasibility. Report justified exceptions and never claim an
+unexecuted red–green cycle.
+
+Do not add a mandatory "TDD or BDD?" question. Do not mandate Gherkin,
+Cucumber, or a new framework. Discover and reuse the repository's test
+tools. Challenge an insufficient testing strategy with concrete
+evidence.
+
+When test-first is the selected or default strategy, write the test
+first, observe that it fails for the expected behavioral reason,
+implement the change, then observe that it passes. For a reproducible
+defect under that strategy, the new test is the narrowest regression
+check that detects the original failure. Then run affected existing
+regression coverage.
+
+When an explicitly agreed, justified alternative is in force, follow
+that strategy instead of the red–green procedure above. Still require
+meaningful behavioral and regression validation.
+
+Never destructively check out, reset, clean, or stash someone else's
+work to demonstrate red. Use an isolated comparison only when that is
+needed and safe.
+
+In the closing report, name test-first evidence as one of:
+
+- TDD verified;
+- justified TDD exception;
+- red–green evidence unavailable.
+
+These labels are narrative. They are not fields of `closeout-validate`.
+A justified exception does not waive behavioral validation. Missing red
+evidence does not automatically mean the corrected behavior is
+unverified. Do not repeat an already evidenced red demonstration without
+a concrete reason. Do not claim green tests alone prove adequate
+coverage.
+
 ## What a check proves
 
 Mocks are valid for a bounded unit of logic. A test does not prove behavior
@@ -113,7 +160,8 @@ Before editing, discover existing relevant tests and coverage. Run the
 pertinent checks when they can run on this host. Record observed failures and
 the code state they belong to. If a baseline could not be obtained, say that
 limitation. Do not reset, clean, or move unrelated changes to obtain a
-baseline.
+baseline. Never destructively check out, reset, clean, or stash someone
+else's work to demonstrate a red test.
 
 ## After the change
 

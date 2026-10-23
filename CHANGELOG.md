@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.18.0 — 2026-10-23
+
+Bump: `minor`
+Compare: [v0.17.0...v0.18.0](https://github.com/nahuel-ramos-univar/ai-dlc/compare/v0.17.0...v0.18.0)
+
+### Added
+
+- feat: complete optional Cursor observer summary and harden correlation ([`74c2c9e`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/74c2c9e2bd98553678d29c3964afc5ba95abeb92))
+- feat: draft defects in existing skills and default to test-first ([`9725b30`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/9725b306189eeb06697d9cb4e8d2991b9ceeab0a))
+
+### Other
+
+- Merge pull request #29 from nahuel-ramos-univar/CTY-313-validate-and-improve-worflow-4 ([`950519b`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/950519b515aaaa38e2344f8c08fcaae7483fa40b))
+- chore: refresh explorer snapshot for 0.17.0 and defect skills ([`cb8ddaa`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/cb8ddaa9558a38cafbcd382c194ad57f9d8281c3))
+- Merge branch 'main' into CTY-313-validate-and-improve-worflow-4 ([`cffdb45`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/cffdb453739029f6b484eed7c591a4a6c821f23a))
+
 ## 0.17.0 — 2026-10-23
 
 Bump: `minor`

@@ -5105,11 +5105,13 @@ def test_context_sync_outcome_membership_pending_is_reachable() -> None:
 
 def test_validate_work_item_type_accepts_hierarchy_rejects_sprint_backlog() -> None:
     # Epic, user story, and task are the three planning levels this
-    # function recognizes. Sprint Backlog is a collection of selected work
-    # items, not a level in the hierarchy, so it is never a valid input.
-    for item_type in ("epic", "user-story", "task"):
+    # function recognizes. Defect is a drafting kind, not a fourth parent
+    # level. Sprint Backlog is a collection of selected work items, not a
+    # level in the hierarchy, so it is never a valid input. A Jira type
+    # name such as Bug is not this label.
+    for item_type in ("epic", "user-story", "task", "defect"):
         assert validate_work_item_type(item_type) == item_type
-    for bad_type in ("sprint-backlog", "feature", "Epic", ""):
+    for bad_type in ("sprint-backlog", "feature", "Epic", "bug", ""):
         try:
             validate_work_item_type(bad_type)
             raise AssertionError(f"expected ValueError for {bad_type!r}")
@@ -5143,6 +5145,22 @@ def test_validate_parent_reference_hierarchy_rules() -> None:
     # A user story with no declared parent at all is structurally valid:
     # the methodology does not require a parent before drafting.
     assert validate_parent_reference("user-story", None, "cancel-order", None) == ()
+    # A defect with no related parent is valid. A related epic is valid.
+    # Another defect is not a valid related parent in this model.
+    assert validate_parent_reference("defect", None, "login-timeout", None) == ()
+    assert validate_parent_reference("defect", "epic", "login-timeout", "checkout") == ()
+    assert validate_parent_reference(
+        "defect", "defect", "login-timeout", "other-defect"
+    ) != ()
+    # A planning-model Task may support a defect. That is a conceptual
+    # relationship, not a Jira Subtask mapping.
+    assert validate_parent_reference(
+        "task", "defect", "restore-session", "login-timeout"
+    ) == ()
+    # A user story still cannot take a defect as its planning parent.
+    assert validate_parent_reference(
+        "user-story", "defect", "cancel-order", "login-timeout"
+    ) != ()
     # An epic must never declare a parent.
     assert validate_parent_reference("epic", "epic", "checkout", "other-epic") != ()
     # A user story's parent must be an epic, not another story or a task.
@@ -5354,6 +5372,43 @@ def test_plan_validate_proposal_runs_every_deterministic_check() -> None:
         and "CTY-100" in check.detail
         for check in valid
     )
+
+    defect_proposal = plan_validate_proposal(
+        {
+            "items": [
+                {
+                    "id": "login-timeout",
+                    "type": "defect",
+                    "status": "drafted",
+                }
+            ]
+        }
+    )
+    assert all(check.status in ("passed", "external") for check in defect_proposal)
+    assert any(
+        check.name == "plan:outcome" and "outcome: drafting" in check.detail
+        for check in defect_proposal
+    )
+
+    supported = plan_validate_proposal(
+        {
+            "items": [
+                {
+                    "id": "login-timeout",
+                    "type": "defect",
+                    "status": "drafted",
+                },
+                {
+                    "id": "restore-session",
+                    "type": "task",
+                    "parent_type": "defect",
+                    "parent_id": "login-timeout",
+                    "status": "drafted",
+                },
+            ]
+        }
+    )
+    assert all(check.status in ("passed", "external") for check in supported)
 
     # A structurally broken proposal (bad parent, duplicate edge, no status
     # anywhere) is reported as failed/unresolved, not silently passed.

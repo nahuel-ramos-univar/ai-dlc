@@ -60,7 +60,7 @@ Show:
 - the Jira payload split into description and acceptance criteria (field or Description fallback), and whether a Jira write is approved;
 - after a write, the issue key and URL from the record just read, or a pending write.
 
-A Task or an Epic uses its own fields. Do not force either into the User Story description skeleton.
+A Task or an Epic uses its own fields. Do not force either into the User Story description skeleton. A defect uses expected versus actual behavior, impact, evidence, and resolution criteria. Do not force a defect into User Story wording.
 
 ## refine-story
 

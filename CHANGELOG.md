@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.17.0 — 2026-10-23
+
+Bump: `minor`
+Compare: [v0.16.0...v0.17.0](https://github.com/nahuel-ramos-univar/ai-dlc/compare/v0.16.0...v0.17.0)
+
+### Added
+
+- feat: load skill references on demand and add optional run observation ([`2325cb4`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/2325cb468be548317036485f8e3882a91dae5348))
+
+### Fixed
+
+- fix: make recording an approved ADR required, not optional ([`ad6aeb2`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/ad6aeb2a50824fbfd16bd594873846ec020a7b7b))
+
+### Other
+
+- Merge pull request #28 from nahuel-ramos-univar/CTY-313-validate-and-improve-worflow-3 ([`c6f8611`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/c6f86118ed7942b0bebd91e7eb16a47533830820))
+- Merge pull request #27 from nahuel-ramos-univar/CTY-313-validate-and-improve-worflow-2 ([`58a8296`](https://github.com/nahuel-ramos-univar/ai-dlc/commit/58a82960b44ed2837a76bc108f57bc19e341810c))
+
 ## 0.16.0 — 2026-10-21
 
 Bump: `minor`

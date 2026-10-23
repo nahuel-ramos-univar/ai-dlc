@@ -3,43 +3,49 @@
   "hooks": {
     "subagentStart": [
       {
-        "command": ".cursor/hooks/observe.py --permission-allow",
+        "command": "python3 .cursor/hooks/observe.py --permission-allow",
         "timeout": 5
       }
     ],
     "subagentStop": [
       {
-        "command": ".cursor/hooks/observe.py",
+        "command": "python3 .cursor/hooks/observe.py",
         "timeout": 5
       }
     ],
     "postToolUse": [
       {
-        "command": ".cursor/hooks/observe.py",
+        "command": "python3 .cursor/hooks/observe.py",
         "timeout": 5
       }
     ],
     "postToolUseFailure": [
       {
-        "command": ".cursor/hooks/observe.py",
+        "command": "python3 .cursor/hooks/observe.py",
         "timeout": 5
       }
     ],
     "afterMCPExecution": [
       {
-        "command": ".cursor/hooks/observe.py",
+        "command": "python3 .cursor/hooks/observe.py",
+        "timeout": 5
+      }
+    ],
+    "preCompact": [
+      {
+        "command": "python3 .cursor/hooks/observe.py",
         "timeout": 5
       }
     ],
     "stop": [
       {
-        "command": ".cursor/hooks/observe.py",
+        "command": "python3 .cursor/hooks/observe.py",
         "timeout": 5
       }
     ],
     "afterAgentResponse": [
       {
-        "command": ".cursor/hooks/observe.py",
+        "command": "python3 .cursor/hooks/observe.py",
         "timeout": 5
       }
     ]

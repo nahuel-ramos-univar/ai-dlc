@@ -2196,11 +2196,16 @@ def test_optional_host_observation_is_opt_in_and_does_not_invent_usage() -> None
     assert '{"permission":"allow"}' in observation or '`"permission":"allow"`' in observation
     assert "outside the source repository" in observation
     assert "content_fingerprint` still excludes that known telemetry file" in observation
+    assert "Fingerprint exclusion does not itself make a file Git-ignored" in observation
     assert "Observation files are never source evidence" in observation
+    assert "python3 .cursor/hooks/observe.py" in observation
+    assert "preCompact" in observation
     fragment = (
         ROOT / "optional" / "cursor-observation" / "hooks.fragment.json"
     ).read_text(encoding="utf-8")
     assert "--permission-allow" in fragment
+    assert "python3 .cursor/hooks/observe.py" in fragment
+    assert "preCompact" in fragment
     assert "Measured usage" in canvas
     assert "Static size estimate" in canvas
     assert "Missing fields say unavailable" in canvas
@@ -2215,6 +2220,8 @@ def test_optional_host_observation_is_opt_in_and_does_not_invent_usage() -> None
         "Independent review handoff names pass reason, draft version, and delta",
         "Canvas run cost shows unavailable rather than zero",
         "Optional Cursor observation hooks are not installed in a clean consumer",
+        "Optional Cursor observation smoke writes a JSONL record",
+        "Optional Cursor observation native dispatch",
         "Sync-context can start from a natural-language request",
     ):
         assert scenario in manual, scenario
